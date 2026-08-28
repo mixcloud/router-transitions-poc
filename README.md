@@ -132,10 +132,14 @@ triggered:
   acknowledgement;
 - `Matches` acknowledges the exact rendered `frameId`, so a superseded
   navigation cannot settle a newer one;
-- every reactive read selects from that frame instead of subscribing to an atom.
+- selector hooks read a *stable* owner context and subscribe to it, and the
+  owner notifies subscribers from inside that same `startTransition`.
 
-Because the frame is plain React state set inside `startTransition`, the update
-keeps its transition lane, and `<ViewTransition>` fires.
+Because the update reaching each consumer is plain React state set inside
+`startTransition`, it keeps its transition lane and `<ViewTransition>` fires.
+Because each consumer only re-renders when its own selection changes, the
+existing fine-grained selector behaviour is preserved — a consumer whose
+selection is unchanged does not re-render during a navigation.
 
 It is enabled in `src/router.tsx`. Set it to `false` and the app reverts to the
 `main` behaviour without reinstalling — the patch is inert unless opted in.

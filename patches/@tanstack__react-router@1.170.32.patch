@@ -65,7 +65,7 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..dc8ba27619636baaae94ee26e5d5ac1d
  		children: nextMatch
  	});
 diff --git a/dist/cjs/Matches.cjs b/dist/cjs/Matches.cjs
-index 0678b4dd2961608b74f486fe9bb68663ecdfc1da..3628b30ab0687fbaa90b88298d4f91139536250c 100644
+index 0678b4dd2961608b74f486fe9bb68663ecdfc1da..6e2ba23734279194cd8a3df6f0290c895a82e004 100644
 --- a/dist/cjs/Matches.cjs
 +++ b/dist/cjs/Matches.cjs
 @@ -2,8 +2,10 @@
@@ -83,9 +83,9 @@ index 0678b4dd2961608b74f486fe9bb68663ecdfc1da..3628b30ab0687fbaa90b88298d4f9113
  */
  function Matches() {
  	const router = require_useRouter.useRouter();
-+	const routerStateOwner = require_routerStateContext.useRouterStateOwner();
++	const committedFrame = require_routerStateContext.useRouterFrame();
 +	const [renderFrame, setRenderFrame] = react.useState();
-+	const activeFrame = renderFrame ?? routerStateOwner?.frame;
++	const activeFrame = renderFrame ?? committedFrame;
  	const rootRoute = router.routesById[_tanstack_router_core.rootRouteId];
  	const pendingElement = require_Match.renderPending(router, rootRoute);
 -	const ResolvedSuspense = (_tanstack_router_core_isServer.isServer ?? router.isServer) || router.ssr ? require_SafeFragment.SafeFragment : react.Suspense;
@@ -532,10 +532,10 @@ index f71f69ac907e209179b3c41be9db4dc6f6d38524..ef02b697228b62577302c1000e48357f
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b53c730f8c573999d45a3bd5c3b292fc7a6c71f2
+index 0000000000000000000000000000000000000000..15add79c89bf46af116a362c590a5547bae1d612
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,134 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -546,90 +546,126 @@ index 0000000000000000000000000000000000000000..b53c730f8c573999d45a3bd5c3b292fc
 +let _tanstack_react_store = require("@tanstack/react-store");
 +//#region src/routerStateContext.tsx
 +var defaultCompare = (a, b) => a === b;
-+var routerStateContext = react.createContext(void 0);
++/**
++* Stable for the lifetime of the Router. Selector hooks read this and
++* subscribe, so publishing a frame does not invalidate every consumer.
++*/
++var routerStateOwnerContext = react.createContext(void 0);
++/**
++* Carries the exact frame a subtree is rendering. Only route presentation
++* reads it, because those components re-render per navigation regardless.
++*/
++var routerFrameContext = react.createContext(void 0);
 +function RouterStateProvider({ router, children }) {
-+	const staging = react.useRef(false);
-+	const pendingFrame = react.useRef(void 0);
-+	const [frame, setFrame] = react.useState(() => router.stores.__store.get());
-+	const publish = react.useCallback(() => {
-+		if (staging.current || pendingFrame.current) return;
-+		const nextFrame = router.stores.__store.get();
-+		if (nextFrame.status === "pending") return;
-+		setFrame((previous) => previous.frameId === nextFrame.frameId ? previous : nextFrame);
-+	}, [router]);
-+	const begin = react.useCallback(() => {
-+		staging.current = true;
-+	}, []);
-+	const stage = react.useCallback((nextFrame) => {
-+		staging.current = false;
-+		pendingFrame.current = nextFrame;
-+		return nextFrame;
-+	}, []);
-+	const cancel = react.useCallback(() => {
-+		staging.current = false;
-+		pendingFrame.current = void 0;
-+		publish();
-+	}, [publish]);
-+	const commit = react.useCallback((nextFrame) => {
-+		if (pendingFrame.current?.frameId !== nextFrame.frameId) return false;
-+		pendingFrame.current = void 0;
-+		setFrame(nextFrame);
-+		return true;
-+	}, []);
++	const [committed, setCommitted] = react.useState(() => router.stores.__store.get());
++	const ownerRef = react.useRef(void 0);
++	if (!ownerRef.current) {
++		const subscribers = /* @__PURE__ */ new Set();
++		let staging = false;
++		let pending;
++		const notify = (frame) => {
++			for (const subscriber of Array.from(subscribers)) subscriber(frame);
++		};
++		const owner = {
++			router,
++			frame: committed,
++			getRenderFrame: () => pending ?? owner.frame,
++			subscribe: (subscriber) => {
++				subscribers.add(subscriber);
++				return () => {
++					subscribers.delete(subscriber);
++				};
++			},
++			begin: () => {
++				staging = true;
++			},
++			stage: (nextFrame) => {
++				staging = false;
++				pending = nextFrame;
++				notify(nextFrame);
++				return nextFrame;
++			},
++			cancel: () => {
++				staging = false;
++				pending = void 0;
++				owner.publish();
++			},
++			commit: (nextFrame) => {
++				if (pending?.frameId !== nextFrame.frameId) return false;
++				pending = void 0;
++				owner.frame = nextFrame;
++				setCommitted(nextFrame);
++				return true;
++			},
++			publish: () => {
++				if (staging || pending) return;
++				const nextFrame = router.stores.__store.get();
++				if (nextFrame.status === "pending") return;
++				if (nextFrame.frameId === owner.frame.frameId) return;
++				owner.frame = nextFrame;
++				setCommitted(nextFrame);
++				notify(nextFrame);
++			}
++		};
++		ownerRef.current = owner;
++	}
++	const owner = ownerRef.current;
 +	require_utils.useLayoutEffect(() => {
-+		const subscription = router.stores.__store.subscribe(() => publish());
-+		publish();
++		const subscription = router.stores.__store.subscribe(() => owner.publish());
++		owner.publish();
 +		return () => subscription.unsubscribe();
-+	}, [publish, router]);
-+	const value = react.useMemo(() => ({
-+		router,
-+		frame,
-+		begin,
-+		stage,
-+		cancel,
-+		commit
-+	}), [
-+		router,
-+		frame,
-+		begin,
-+		stage,
-+		cancel,
-+		commit
-+	]);
-+	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateContext.Provider, {
-+		value,
-+		children
++	}, [owner, router]);
++	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateOwnerContext.Provider, {
++		value: owner,
++		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerFrameContext.Provider, {
++			value: committed,
++			children
++		})
 +	});
 +}
++/** Override the frame for a subtree that is rendering a staged successor. */
 +function RouterStateFrame({ frame, children }) {
-+	const owner = react.useContext(routerStateContext);
-+	const value = react.useMemo(() => ({
-+		...owner,
-+		frame
-+	}), [owner, frame]);
-+	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateContext.Provider, {
-+		value,
++	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerFrameContext.Provider, {
++		value: frame,
 +		children
 +	});
 +}
 +function useRouterStateOwner() {
-+	return react.useContext(routerStateContext);
++	return react.useContext(routerStateOwnerContext);
++}
++/** The committed frame, for route presentation that must track every frame. */
++function useRouterFrame() {
++	return react.useContext(routerFrameContext);
 +}
 +function useRouterStateSelector(router, selector, compare = defaultCompare) {
-+	const context = react.useContext(routerStateContext);
-+	const contextState = context?.router === router ? context.frame : null;
-+	const selection = react.useRef(void 0);
-+	if (contextState) {
-+		const next = selector(contextState);
-+		if (!selection.current || !compare(selection.current.value, next)) selection.current = { value: next };
-+		return selection.current.value;
++	const owner = react.useContext(routerStateOwnerContext);
++	if (!owner || owner.router !== router) {
++		if (_tanstack_router_core_isServer.isServer ?? router.isServer) return selector(router.stores.__store.get());
++		return (0, _tanstack_react_store.useStore)(router.stores.__store, selector, compare);
 +	}
-+	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return selector(router.stores.__store.get());
-+	return (0, _tanstack_react_store.useStore)(router.stores.__store, selector, compare);
++	const [, forceRender] = react.useReducer((count) => count + 1, 0);
++	const selection = react.useRef(void 0);
++	const latest = react.useRef({
++		selector,
++		compare
++	});
++	latest.current = {
++		selector,
++		compare
++	};
++	selection.current = selector(owner.getRenderFrame());
++	react.useEffect(() => {
++		return owner.subscribe((frame) => {
++			const next = latest.current.selector(frame);
++			if (!latest.current.compare(selection.current, next)) forceRender();
++		});
++	}, [owner]);
++	return selection.current;
 +}
 +//#endregion
 +exports.RouterStateFrame = RouterStateFrame;
 +exports.RouterStateProvider = RouterStateProvider;
++exports.useRouterFrame = useRouterFrame;
 +exports.useRouterStateOwner = useRouterStateOwner;
 +exports.useRouterStateSelector = useRouterStateSelector;
 +
@@ -637,30 +673,44 @@ index 0000000000000000000000000000000000000000..b53c730f8c573999d45a3bd5c3b292fc
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..345f911bbc7dbeb9988d9796ebd284b08f62f450
+index 0000000000000000000000000000000000000000..992c3868c2ad1b87a97ac6c755a1a98c6b60aa37
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,36 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import * as React from 'react';
 +export type RouterRenderFrame = RouterState<any>;
-+type RouterStateContextValue = {
++type FrameSubscriber = (frame: RouterRenderFrame) => void;
++type RouterStateOwner = {
 +    router: AnyRouter;
++    /** The frame React has committed and painted. */
 +    frame: RouterRenderFrame;
++    /** The frame the tree should render now: a staged successor, else committed. */
++    getRenderFrame: () => RouterRenderFrame;
++    /**
++     * Register for frame publications. Subscribers are notified from inside the
++     * Router's `startTransition`, so their updates keep the transition lane.
++     */
++    subscribe: (subscriber: FrameSubscriber) => () => void;
 +    begin: () => void;
 +    stage: (frame: RouterRenderFrame) => RouterRenderFrame;
 +    cancel: () => void;
 +    commit: (frame: RouterRenderFrame) => boolean;
++    /** Adopt head state as the committed frame when no navigation is staged. */
++    publish: () => void;
 +};
 +export declare function RouterStateProvider({ router, children, }: {
 +    router: AnyRouter;
 +    children: React.ReactNode;
 +}): import("react/jsx-runtime").JSX.Element;
++/** Override the frame for a subtree that is rendering a staged successor. */
 +export declare function RouterStateFrame({ frame, children, }: {
 +    frame: RouterRenderFrame;
 +    children: React.ReactNode;
 +}): import("react/jsx-runtime").JSX.Element;
-+export declare function useRouterStateOwner(): RouterStateContextValue | undefined;
++export declare function useRouterStateOwner(): RouterStateOwner | undefined;
++/** The committed frame, for route presentation that must track every frame. */
++export declare function useRouterFrame(): RouterRenderFrame | undefined;
 +export declare function useRouterStateSelector<TSelected>(router: AnyRouter, selector: (state: RouterState<any>) => TSelected, compare?: (a: TSelected, b: TSelected) => boolean): TSelected;
 +export {};
 diff --git a/dist/cjs/useCanGoBack.cjs b/dist/cjs/useCanGoBack.cjs
@@ -883,7 +933,7 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..1458142eec1bb3ec4145db5fc464e961
  		children: nextMatch
  	});
 diff --git a/dist/esm/Matches.js b/dist/esm/Matches.js
-index 68657a0e5a4b11962e415bc86e28cccc25f000d3..0a97803a52d73e7ec0f524d9ecbf173a1716424d 100644
+index 68657a0e5a4b11962e415bc86e28cccc25f000d3..c20d244a1657f3ef4400bd889dead5a665eb56c3 100644
 --- a/dist/esm/Matches.js
 +++ b/dist/esm/Matches.js
 @@ -1,8 +1,10 @@
@@ -893,7 +943,7 @@ index 68657a0e5a4b11962e415bc86e28cccc25f000d3..0a97803a52d73e7ec0f524d9ecbf173a
 +import { useHydrated } from "./ClientOnly.js";
  import { matchContext } from "./matchContext.js";
  import { useRouter } from "./useRouter.js";
-+import { RouterStateFrame, useRouterStateOwner, useRouterStateSelector } from "./routerStateContext.js";
++import { RouterStateFrame, useRouterFrame, useRouterStateOwner, useRouterStateSelector } from "./routerStateContext.js";
  import { useStructuralSharing } from "./useMatch.js";
  import { Transitioner, settleOwner } from "./Transitioner.js";
  import { SafeFragment } from "./SafeFragment.js";
@@ -901,9 +951,9 @@ index 68657a0e5a4b11962e415bc86e28cccc25f000d3..0a97803a52d73e7ec0f524d9ecbf173a
  */
  function Matches() {
  	const router = useRouter();
-+	const routerStateOwner = useRouterStateOwner();
++	const committedFrame = useRouterFrame();
 +	const [renderFrame, setRenderFrame] = React$1.useState();
-+	const activeFrame = renderFrame ?? routerStateOwner?.frame;
++	const activeFrame = renderFrame ?? committedFrame;
  	const rootRoute = router.routesById[rootRouteId];
  	const pendingElement = renderPending(router, rootRoute);
 -	const ResolvedSuspense = (isServer ?? router.isServer) || router.ssr ? SafeFragment : React$1.Suspense;
@@ -1347,38 +1397,52 @@ index 311e1bf0375a336e2bd7abe41203fe383d199af6..3d69a2e5f5f26f693906819bd9335a08
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..345f911bbc7dbeb9988d9796ebd284b08f62f450
+index 0000000000000000000000000000000000000000..992c3868c2ad1b87a97ac6c755a1a98c6b60aa37
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,36 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import * as React from 'react';
 +export type RouterRenderFrame = RouterState<any>;
-+type RouterStateContextValue = {
++type FrameSubscriber = (frame: RouterRenderFrame) => void;
++type RouterStateOwner = {
 +    router: AnyRouter;
++    /** The frame React has committed and painted. */
 +    frame: RouterRenderFrame;
++    /** The frame the tree should render now: a staged successor, else committed. */
++    getRenderFrame: () => RouterRenderFrame;
++    /**
++     * Register for frame publications. Subscribers are notified from inside the
++     * Router's `startTransition`, so their updates keep the transition lane.
++     */
++    subscribe: (subscriber: FrameSubscriber) => () => void;
 +    begin: () => void;
 +    stage: (frame: RouterRenderFrame) => RouterRenderFrame;
 +    cancel: () => void;
 +    commit: (frame: RouterRenderFrame) => boolean;
++    /** Adopt head state as the committed frame when no navigation is staged. */
++    publish: () => void;
 +};
 +export declare function RouterStateProvider({ router, children, }: {
 +    router: AnyRouter;
 +    children: React.ReactNode;
 +}): import("react/jsx-runtime").JSX.Element;
++/** Override the frame for a subtree that is rendering a staged successor. */
 +export declare function RouterStateFrame({ frame, children, }: {
 +    frame: RouterRenderFrame;
 +    children: React.ReactNode;
 +}): import("react/jsx-runtime").JSX.Element;
-+export declare function useRouterStateOwner(): RouterStateContextValue | undefined;
++export declare function useRouterStateOwner(): RouterStateOwner | undefined;
++/** The committed frame, for route presentation that must track every frame. */
++export declare function useRouterFrame(): RouterRenderFrame | undefined;
 +export declare function useRouterStateSelector<TSelected>(router: AnyRouter, selector: (state: RouterState<any>) => TSelected, compare?: (a: TSelected, b: TSelected) => boolean): TSelected;
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..9aa532a29b7c38e594cd6060b67185dbe0697a01
+index 0000000000000000000000000000000000000000..b90fa31110b7bcd7d828e54a601a73421dd8a701
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,128 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -1387,89 +1451,124 @@ index 0000000000000000000000000000000000000000..9aa532a29b7c38e594cd6060b67185db
 +import { useStore } from "@tanstack/react-store";
 +//#region src/routerStateContext.tsx
 +var defaultCompare = (a, b) => a === b;
-+var routerStateContext = React$1.createContext(void 0);
++/**
++* Stable for the lifetime of the Router. Selector hooks read this and
++* subscribe, so publishing a frame does not invalidate every consumer.
++*/
++var routerStateOwnerContext = React$1.createContext(void 0);
++/**
++* Carries the exact frame a subtree is rendering. Only route presentation
++* reads it, because those components re-render per navigation regardless.
++*/
++var routerFrameContext = React$1.createContext(void 0);
 +function RouterStateProvider({ router, children }) {
-+	const staging = React$1.useRef(false);
-+	const pendingFrame = React$1.useRef(void 0);
-+	const [frame, setFrame] = React$1.useState(() => router.stores.__store.get());
-+	const publish = React$1.useCallback(() => {
-+		if (staging.current || pendingFrame.current) return;
-+		const nextFrame = router.stores.__store.get();
-+		if (nextFrame.status === "pending") return;
-+		setFrame((previous) => previous.frameId === nextFrame.frameId ? previous : nextFrame);
-+	}, [router]);
-+	const begin = React$1.useCallback(() => {
-+		staging.current = true;
-+	}, []);
-+	const stage = React$1.useCallback((nextFrame) => {
-+		staging.current = false;
-+		pendingFrame.current = nextFrame;
-+		return nextFrame;
-+	}, []);
-+	const cancel = React$1.useCallback(() => {
-+		staging.current = false;
-+		pendingFrame.current = void 0;
-+		publish();
-+	}, [publish]);
-+	const commit = React$1.useCallback((nextFrame) => {
-+		if (pendingFrame.current?.frameId !== nextFrame.frameId) return false;
-+		pendingFrame.current = void 0;
-+		setFrame(nextFrame);
-+		return true;
-+	}, []);
++	const [committed, setCommitted] = React$1.useState(() => router.stores.__store.get());
++	const ownerRef = React$1.useRef(void 0);
++	if (!ownerRef.current) {
++		const subscribers = /* @__PURE__ */ new Set();
++		let staging = false;
++		let pending;
++		const notify = (frame) => {
++			for (const subscriber of Array.from(subscribers)) subscriber(frame);
++		};
++		const owner = {
++			router,
++			frame: committed,
++			getRenderFrame: () => pending ?? owner.frame,
++			subscribe: (subscriber) => {
++				subscribers.add(subscriber);
++				return () => {
++					subscribers.delete(subscriber);
++				};
++			},
++			begin: () => {
++				staging = true;
++			},
++			stage: (nextFrame) => {
++				staging = false;
++				pending = nextFrame;
++				notify(nextFrame);
++				return nextFrame;
++			},
++			cancel: () => {
++				staging = false;
++				pending = void 0;
++				owner.publish();
++			},
++			commit: (nextFrame) => {
++				if (pending?.frameId !== nextFrame.frameId) return false;
++				pending = void 0;
++				owner.frame = nextFrame;
++				setCommitted(nextFrame);
++				return true;
++			},
++			publish: () => {
++				if (staging || pending) return;
++				const nextFrame = router.stores.__store.get();
++				if (nextFrame.status === "pending") return;
++				if (nextFrame.frameId === owner.frame.frameId) return;
++				owner.frame = nextFrame;
++				setCommitted(nextFrame);
++				notify(nextFrame);
++			}
++		};
++		ownerRef.current = owner;
++	}
++	const owner = ownerRef.current;
 +	useLayoutEffect(() => {
-+		const subscription = router.stores.__store.subscribe(() => publish());
-+		publish();
++		const subscription = router.stores.__store.subscribe(() => owner.publish());
++		owner.publish();
 +		return () => subscription.unsubscribe();
-+	}, [publish, router]);
-+	const value = React$1.useMemo(() => ({
-+		router,
-+		frame,
-+		begin,
-+		stage,
-+		cancel,
-+		commit
-+	}), [
-+		router,
-+		frame,
-+		begin,
-+		stage,
-+		cancel,
-+		commit
-+	]);
-+	return /* @__PURE__ */ jsx(routerStateContext.Provider, {
-+		value,
-+		children
++	}, [owner, router]);
++	return /* @__PURE__ */ jsx(routerStateOwnerContext.Provider, {
++		value: owner,
++		children: /* @__PURE__ */ jsx(routerFrameContext.Provider, {
++			value: committed,
++			children
++		})
 +	});
 +}
++/** Override the frame for a subtree that is rendering a staged successor. */
 +function RouterStateFrame({ frame, children }) {
-+	const owner = React$1.useContext(routerStateContext);
-+	const value = React$1.useMemo(() => ({
-+		...owner,
-+		frame
-+	}), [owner, frame]);
-+	return /* @__PURE__ */ jsx(routerStateContext.Provider, {
-+		value,
++	return /* @__PURE__ */ jsx(routerFrameContext.Provider, {
++		value: frame,
 +		children
 +	});
 +}
 +function useRouterStateOwner() {
-+	return React$1.useContext(routerStateContext);
++	return React$1.useContext(routerStateOwnerContext);
++}
++/** The committed frame, for route presentation that must track every frame. */
++function useRouterFrame() {
++	return React$1.useContext(routerFrameContext);
 +}
 +function useRouterStateSelector(router, selector, compare = defaultCompare) {
-+	const context = React$1.useContext(routerStateContext);
-+	const contextState = context?.router === router ? context.frame : null;
-+	const selection = React$1.useRef(void 0);
-+	if (contextState) {
-+		const next = selector(contextState);
-+		if (!selection.current || !compare(selection.current.value, next)) selection.current = { value: next };
-+		return selection.current.value;
++	const owner = React$1.useContext(routerStateOwnerContext);
++	if (!owner || owner.router !== router) {
++		if (isServer ?? router.isServer) return selector(router.stores.__store.get());
++		return useStore(router.stores.__store, selector, compare);
 +	}
-+	if (isServer ?? router.isServer) return selector(router.stores.__store.get());
-+	return useStore(router.stores.__store, selector, compare);
++	const [, forceRender] = React$1.useReducer((count) => count + 1, 0);
++	const selection = React$1.useRef(void 0);
++	const latest = React$1.useRef({
++		selector,
++		compare
++	});
++	latest.current = {
++		selector,
++		compare
++	};
++	selection.current = selector(owner.getRenderFrame());
++	React$1.useEffect(() => {
++		return owner.subscribe((frame) => {
++			const next = latest.current.selector(frame);
++			if (!latest.current.compare(selection.current, next)) forceRender();
++		});
++	}, [owner]);
++	return selection.current;
 +}
 +//#endregion
-+export { RouterStateFrame, RouterStateProvider, useRouterStateOwner, useRouterStateSelector };
++export { RouterStateFrame, RouterStateProvider, useRouterFrame, useRouterStateOwner, useRouterStateSelector };
 +
 +//# sourceMappingURL=routerStateContext.js.map
 \ No newline at end of file
@@ -1739,16 +1838,17 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..a3309d489286e2e6c34571260cfa50cb
        <React.Suspense fallback={renderPending(router)}>
          {nextMatch}
 diff --git a/src/Matches.tsx b/src/Matches.tsx
-index cada2373ff9a6ea8e971763712798e23bef10d34..df3065b441019d743a8e3eadb2235eccdf907b30 100644
+index cada2373ff9a6ea8e971763712798e23bef10d34..a71248746f3b6a664ea4eabd35f0273e879096e0 100644
 --- a/src/Matches.tsx
 +++ b/src/Matches.tsx
-@@ -12,12 +12,20 @@ import { Transitioner, settleOwner } from './Transitioner'
+@@ -12,12 +12,21 @@ import { Transitioner, settleOwner } from './Transitioner'
  import { matchContext } from './matchContext'
  import { Match, renderPending } from './Match'
  import { SafeFragment } from './SafeFragment'
 +import { useHydrated } from './ClientOnly'
 +import {
 +  RouterStateFrame,
++  useRouterFrame,
 +  useRouterStateOwner,
 +  useRouterStateSelector,
 +} from './routerStateContext'
@@ -1763,13 +1863,13 @@ index cada2373ff9a6ea8e971763712798e23bef10d34..df3065b441019d743a8e3eadb2235ecc
    AnyRouter,
    DeepPartial,
    Expand,
-@@ -47,13 +55,26 @@ declare module '@tanstack/router-core' {
+@@ -47,13 +56,26 @@ declare module '@tanstack/router-core' {
   */
  export function Matches() {
    const router = useRouter()
-+  const routerStateOwner = useRouterStateOwner()
++  const committedFrame = useRouterFrame()
 +  const [renderFrame, setRenderFrame] = React.useState<RouterRenderFrame>()
-+  const activeFrame = renderFrame ?? routerStateOwner?.frame
++  const activeFrame = renderFrame ?? committedFrame
    const rootRoute: AnyRoute = router.routesById[rootRouteId]
  
    const pendingElement = renderPending(router, rootRoute)
@@ -1792,7 +1892,7 @@ index cada2373ff9a6ea8e971763712798e23bef10d34..df3065b441019d743a8e3eadb2235ecc
  
    const inner = (
      <>
-@@ -65,10 +86,21 @@ export function Matches() {
+@@ -65,10 +87,21 @@ export function Matches() {
            // router object, so React skips the update.
            // eslint-disable-next-line react-hooks/rules-of-hooks -- server only, condition is static
            t={React.useState<AnyRouter>()[1]}
@@ -1815,7 +1915,7 @@ index cada2373ff9a6ea8e971763712798e23bef10d34..df3065b441019d743a8e3eadb2235ecc
        </ResolvedSuspense>
      </>
    )
-@@ -80,25 +112,57 @@ export function Matches() {
+@@ -80,25 +113,57 @@ export function Matches() {
    )
  }
  
@@ -1884,7 +1984,7 @@ index cada2373ff9a6ea8e971763712798e23bef10d34..df3065b441019d743a8e3eadb2235ecc
  
    const matchComponent = routeId ? <Match routeId={routeId} /> : null
  
-@@ -177,6 +241,33 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
+@@ -177,6 +242,33 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
      }
    }
  
@@ -1918,7 +2018,7 @@ index cada2373ff9a6ea8e971763712798e23bef10d34..df3065b441019d743a8e3eadb2235ecc
    // eslint-disable-next-line react-hooks/rules-of-hooks
    return React.useCallback(
      (opts) => {
-@@ -267,6 +358,17 @@ export function useMatches<
+@@ -267,6 +359,17 @@ export function useMatches<
  ): UseMatchesResult<TRouter, TSelected> {
    const router = useRouter<TRouter>()
  
@@ -2430,10 +2530,10 @@ index 178eace31bd84cef131aa743993beea9ac92b30a..3b1c647dde9d5220c112a7a67828eb69
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..3c0ca999c36877b6979496dff3ad2ce48925aab6
+index 0000000000000000000000000000000000000000..a4d2b12bf8ce2579e06f0f42a6340b07a8165480
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,210 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -2444,20 +2544,44 @@ index 0000000000000000000000000000000000000000..3c0ca999c36877b6979496dff3ad2ce4
 +
 +export type RouterRenderFrame = RouterState<any>
 +
-+type RouterStateContextValue = {
++type FrameSubscriber = (frame: RouterRenderFrame) => void
++
++type RouterStateOwner = {
 +  router: AnyRouter
++  /** The frame React has committed and painted. */
 +  frame: RouterRenderFrame
++  /** The frame the tree should render now: a staged successor, else committed. */
++  getRenderFrame: () => RouterRenderFrame
++  /**
++   * Register for frame publications. Subscribers are notified from inside the
++   * Router's `startTransition`, so their updates keep the transition lane.
++   */
++  subscribe: (subscriber: FrameSubscriber) => () => void
 +  begin: () => void
 +  stage: (frame: RouterRenderFrame) => RouterRenderFrame
 +  cancel: () => void
 +  commit: (frame: RouterRenderFrame) => boolean
++  /** Adopt head state as the committed frame when no navigation is staged. */
++  publish: () => void
 +}
 +
 +const defaultCompare = (a: unknown, b: unknown) => a === b
 +
-+const routerStateContext = React.createContext<
-+  RouterStateContextValue | undefined
++/**
++ * Stable for the lifetime of the Router. Selector hooks read this and
++ * subscribe, so publishing a frame does not invalidate every consumer.
++ */
++const routerStateOwnerContext = React.createContext<
++  RouterStateOwner | undefined
 +>(undefined)
++
++/**
++ * Carries the exact frame a subtree is rendering. Only route presentation
++ * reads it, because those components re-render per navigation regardless.
++ */
++const routerFrameContext = React.createContext<RouterRenderFrame | undefined>(
++  undefined,
++)
 +
 +export function RouterStateProvider({
 +  router,
@@ -2466,68 +2590,96 @@ index 0000000000000000000000000000000000000000..3c0ca999c36877b6979496dff3ad2ce4
 +  router: AnyRouter
 +  children: React.ReactNode
 +}) {
-+  const staging = React.useRef(false)
-+  const pendingFrame = React.useRef<RouterRenderFrame | undefined>(undefined)
-+  const [frame, setFrame] = React.useState<RouterRenderFrame>(() =>
++  const [committed, setCommitted] = React.useState<RouterRenderFrame>(() =>
 +    router.stores.__store.get(),
 +  )
 +
-+  const publish = React.useCallback(() => {
-+    if (staging.current || pendingFrame.current) {
-+      return
++  const ownerRef = React.useRef<RouterStateOwner | undefined>(undefined)
++  if (!ownerRef.current) {
++    const subscribers = new Set<FrameSubscriber>()
++    let staging = false
++    let pending: RouterRenderFrame | undefined
++
++    const notify = (frame: RouterRenderFrame) => {
++      // Copy first: a subscriber may unsubscribe while we iterate.
++      for (const subscriber of Array.from(subscribers)) {
++        subscriber(frame)
++      }
 +    }
-+    const nextFrame = router.stores.__store.get()
-+    if (nextFrame.status === 'pending') {
-+      return
++
++    const owner: RouterStateOwner = {
++      router,
++      frame: committed,
++      getRenderFrame: () => pending ?? owner.frame,
++      subscribe: (subscriber) => {
++        subscribers.add(subscriber)
++        return () => {
++          subscribers.delete(subscriber)
++        }
++      },
++      begin: () => {
++        staging = true
++      },
++      stage: (nextFrame) => {
++        staging = false
++        pending = nextFrame
++        notify(nextFrame)
++        return nextFrame
++      },
++      cancel: () => {
++        staging = false
++        pending = undefined
++        owner.publish()
++      },
++      commit: (nextFrame) => {
++        if (pending?.frameId !== nextFrame.frameId) {
++          return false
++        }
++        pending = undefined
++        owner.frame = nextFrame
++        setCommitted(nextFrame)
++        return true
++      },
++      // Publication outside a Router transition: adopt the head state as the
++      // committed frame, unless a navigation is being staged or is pending.
++      publish: () => {
++        if (staging || pending) {
++          return
++        }
++        const nextFrame = router.stores.__store.get()
++        if (nextFrame.status === 'pending') {
++          return
++        }
++        if (nextFrame.frameId === owner.frame.frameId) {
++          return
++        }
++        owner.frame = nextFrame
++        setCommitted(nextFrame)
++        notify(nextFrame)
++      },
 +    }
-+    setFrame((previous) =>
-+      previous.frameId === nextFrame.frameId ? previous : nextFrame,
-+    )
-+  }, [router])
 +
-+  const begin = React.useCallback(() => {
-+    staging.current = true
-+  }, [])
++    ownerRef.current = owner
++  }
 +
-+  const stage = React.useCallback((nextFrame: RouterRenderFrame) => {
-+    staging.current = false
-+    pendingFrame.current = nextFrame
-+    return nextFrame
-+  }, [])
-+
-+  const cancel = React.useCallback(() => {
-+    staging.current = false
-+    pendingFrame.current = undefined
-+    publish()
-+  }, [publish])
-+
-+  const commit = React.useCallback((nextFrame: RouterRenderFrame) => {
-+    if (pendingFrame.current?.frameId !== nextFrame.frameId) {
-+      return false
-+    }
-+    pendingFrame.current = undefined
-+    setFrame(nextFrame)
-+    return true
-+  }, [])
++  const owner = ownerRef.current
 +
 +  useLayoutEffect(() => {
-+    const subscription = router.stores.__store.subscribe(() => publish())
-+    publish()
++    const subscription = router.stores.__store.subscribe(() => owner.publish())
++    owner.publish()
 +    return () => subscription.unsubscribe()
-+  }, [publish, router])
-+
-+  const value = React.useMemo(
-+    () => ({ router, frame, begin, stage, cancel, commit }),
-+    [router, frame, begin, stage, cancel, commit],
-+  )
++  }, [owner, router])
 +
 +  return (
-+    <routerStateContext.Provider value={value}>
-+      {children}
-+    </routerStateContext.Provider>
++    <routerStateOwnerContext.Provider value={owner}>
++      <routerFrameContext.Provider value={committed}>
++        {children}
++      </routerFrameContext.Provider>
++    </routerStateOwnerContext.Provider>
 +  )
 +}
 +
++/** Override the frame for a subtree that is rendering a staged successor. */
 +export function RouterStateFrame({
 +  frame,
 +  children,
@@ -2535,17 +2687,20 @@ index 0000000000000000000000000000000000000000..3c0ca999c36877b6979496dff3ad2ce4
 +  frame: RouterRenderFrame
 +  children: React.ReactNode
 +}) {
-+  const owner = React.useContext(routerStateContext)!
-+  const value = React.useMemo(() => ({ ...owner, frame }), [owner, frame])
 +  return (
-+    <routerStateContext.Provider value={value}>
++    <routerFrameContext.Provider value={frame}>
 +      {children}
-+    </routerStateContext.Provider>
++    </routerFrameContext.Provider>
 +  )
 +}
 +
 +export function useRouterStateOwner() {
-+  return React.useContext(routerStateContext)
++  return React.useContext(routerStateOwnerContext)
++}
++
++/** The committed frame, for route presentation that must track every frame. */
++export function useRouterFrame() {
++  return React.useContext(routerFrameContext)
 +}
 +
 +export function useRouterStateSelector<TSelected>(
@@ -2553,26 +2708,41 @@ index 0000000000000000000000000000000000000000..3c0ca999c36877b6979496dff3ad2ce4
 +  selector: (state: RouterState<any>) => TSelected,
 +  compare: (a: TSelected, b: TSelected) => boolean = defaultCompare,
 +): TSelected {
-+  const context = React.useContext(routerStateContext)
-+  const contextState = context?.router === router ? context.frame : null
-+  const selection = React.useRef<{ value: TSelected } | undefined>(undefined)
++  const owner = React.useContext(routerStateOwnerContext)
 +
-+  if (contextState) {
-+    const next = selector(contextState)
-+    if (!selection.current || !compare(selection.current.value, next)) {
-+      selection.current = { value: next }
++  if (!owner || owner.router !== router) {
++    if (isServer ?? router.isServer) {
++      return selector(router.stores.__store.get())
 +    }
-+    return selection.current.value
++    // The frame option is fixed when the router is created, so this branch
++    // cannot change hook order during the lifetime of a mounted router.
++    // eslint-disable-next-line react-hooks/rules-of-hooks
++    return useStore(router.stores.__store, selector, compare)
 +  }
 +
-+  if (isServer ?? router.isServer) {
-+    return selector(router.stores.__store.get())
-+  }
-+
-+  // The frame option is fixed when the router is created, so this branch
-+  // cannot change hook order during the lifetime of a mounted router.
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
-+  return useStore(router.stores.__store, selector, compare)
++  const [, forceRender] = React.useReducer((count: number) => count + 1, 0)
++  // eslint-disable-next-line react-hooks/rules-of-hooks
++  const selection = React.useRef<TSelected>(undefined as TSelected)
++  // eslint-disable-next-line react-hooks/rules-of-hooks
++  const latest = React.useRef({ selector, compare })
++  latest.current = { selector, compare }
++
++  selection.current = selector(owner.getRenderFrame())
++
++  // eslint-disable-next-line react-hooks/rules-of-hooks
++  React.useEffect(() => {
++    // Re-render only when this subscriber's own selection changed, which is
++    // what keeps selector-level render counts identical to the store path.
++    return owner.subscribe((frame) => {
++      const next = latest.current.selector(frame)
++      if (!latest.current.compare(selection.current, next)) {
++        forceRender()
++      }
++    })
++  }, [owner])
++
++  return selection.current
 +}
 diff --git a/src/useCanGoBack.ts b/src/useCanGoBack.ts
 index a20f947f438b0c9170284a3f751a98d1feeddb44..6482fdc5ecc050e5b23b3aa3425d1c6ea76e9e38 100644
