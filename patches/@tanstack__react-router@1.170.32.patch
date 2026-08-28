@@ -1,0 +1,2812 @@
+diff --git a/dist/cjs/Match.cjs b/dist/cjs/Match.cjs
+index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..dc8ba27619636baaae94ee26e5d5ac1db6b8b31d 100644
+--- a/dist/cjs/Match.cjs
++++ b/dist/cjs/Match.cjs
+@@ -5,6 +5,7 @@ const require_CatchBoundary = require("./CatchBoundary.cjs");
+ const require_ClientOnly = require("./ClientOnly.cjs");
+ const require_matchContext = require("./matchContext.cjs");
+ const require_useRouter = require("./useRouter.cjs");
++const require_routerStateContext = require("./routerStateContext.cjs");
+ const require_not_found = require("./not-found.cjs");
+ const require_SafeFragment = require("./SafeFragment.cjs");
+ const require_renderRouteNotFound = require("./renderRouteNotFound.cjs");
+@@ -23,9 +24,14 @@ function renderPending(router, route) {
+ 	return process.env.NODE_ENV !== "production" ? require_nonRouteComponentContext.wrapInNonRouteComponentContext(pendingElement, "pendingComponent") : pendingElement;
+ }
+ var outletMatchSelectionEqual = (a, b) => a[0] === b[0] && a[1] === b[1];
++var concurrentOutletMatchSelectionEqual = (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+ var canWrapInSuspense = (router, route, ssr) => !route.isRoot || route.options.shellComponent || route.options.wrapInSuspense || ssr === false || ssr === "data-only" || !((_tanstack_router_core_isServer.isServer ?? router.isServer) || router.ssr);
+ var Match = react.memo(function MatchImpl({ routeId }) {
+ 	const router = require_useRouter.useRouter();
++	if (router.options.experimental_concurrentRenderFrames) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MatchView, {
++		router,
++		match: require_routerStateContext.useRouterStateSelector(router, (state) => state.matches.find((candidate) => candidate.routeId === routeId))
++	});
+ 	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MatchView, {
+ 		router,
+ 		match: router.stores.byRoute.get(routeId).get()
+@@ -42,7 +48,9 @@ function MatchView({ router, match }) {
+ 	const routeOnCatch = route.options.onCatch ?? router.options.defaultOnCatch;
+ 	const routeNotFoundComponent = route.isRoot ? route.options.notFoundComponent ?? router.options.notFoundRoute?.options.component : route.options.notFoundComponent;
+ 	const resolvedNoSsr = match.ssr === false || match.ssr === "data-only";
+-	const ResolvedSuspenseBoundary = canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? react.Suspense : require_SafeFragment.SafeFragment;
++	const _isServer = _tanstack_router_core_isServer.isServer ?? router.isServer;
++	const isHydrating = Boolean(router.ssr) && !require_ClientOnly.useHydrated();
++	const ResolvedSuspenseBoundary = !(router.options.experimental_concurrentRenderFrames && !_isServer && !isHydrating) && canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? react.Suspense : require_SafeFragment.SafeFragment;
+ 	const ResolvedCatchBoundary = routeErrorComponent ? require_CatchBoundary.CatchBoundary : require_SafeFragment.SafeFragment;
+ 	const ResolvedNotFoundBoundary = routeNotFoundComponent ? require_not_found.CatchNotFound : require_SafeFragment.SafeFragment;
+ 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(route.isRoot ? route.options.shellComponent ?? require_SafeFragment.SafeFragment : require_SafeFragment.SafeFragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_matchContext.matchContext.Provider, {
+@@ -139,7 +147,17 @@ var Outlet = react.memo(function OutletImpl() {
+ 	let parentGlobalNotFound;
+ 	let parentNotFoundError;
+ 	let childRouteId;
+-	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
++	if (router.options.experimental_concurrentRenderFrames) [parentGlobalNotFound, parentNotFoundError, childRouteId] = require_routerStateContext.useRouterStateSelector(router, (state) => {
++		const matches = state.matches;
++		const parentIndex = matches.findIndex((match) => match.routeId === routeId);
++		const parentMatch = matches[parentIndex];
++		return [
++			!!parentMatch._notFound,
++			parentMatch.error,
++			matches[parentIndex + 1]?.routeId
++		];
++	}, concurrentOutletMatchSelectionEqual);
++	else if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
+ 		const matches = router.stores.matches.get();
+ 		const parentIndex = matches.findIndex((match) => match.routeId === routeId);
+ 		const parentMatch = matches[parentIndex];
+@@ -156,7 +174,7 @@ var Outlet = react.memo(function OutletImpl() {
+ 	if (parentGlobalNotFound) return require_renderRouteNotFound.renderRouteNotFound(router, router.routesById[routeId], parentNotFoundError);
+ 	if (!childRouteId) return null;
+ 	const nextMatch = /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Match, { routeId: childRouteId });
+-	if (routeId === _tanstack_router_core.rootRouteId) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(react.Suspense, {
++	if (routeId === _tanstack_router_core.rootRouteId && !router.options.experimental_concurrentRenderFrames) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(react.Suspense, {
+ 		fallback: renderPending(router),
+ 		children: nextMatch
+ 	});
+diff --git a/dist/cjs/Matches.cjs b/dist/cjs/Matches.cjs
+index 0678b4dd2961608b74f486fe9bb68663ecdfc1da..3628b30ab0687fbaa90b88298d4f91139536250c 100644
+--- a/dist/cjs/Matches.cjs
++++ b/dist/cjs/Matches.cjs
+@@ -2,8 +2,10 @@
+ const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
+ const require_utils = require("./utils.cjs");
+ const require_CatchBoundary = require("./CatchBoundary.cjs");
++const require_ClientOnly = require("./ClientOnly.cjs");
+ const require_matchContext = require("./matchContext.cjs");
+ const require_useRouter = require("./useRouter.cjs");
++const require_routerStateContext = require("./routerStateContext.cjs");
+ const require_useMatch = require("./useMatch.cjs");
+ const require_Transitioner = require("./Transitioner.cjs");
+ const require_SafeFragment = require("./SafeFragment.cjs");
+@@ -21,24 +23,54 @@ let _tanstack_react_store = require("@tanstack/react-store");
+ */
+ function Matches() {
+ 	const router = require_useRouter.useRouter();
++	const routerStateOwner = require_routerStateContext.useRouterStateOwner();
++	const [renderFrame, setRenderFrame] = react.useState();
++	const activeFrame = renderFrame ?? routerStateOwner?.frame;
+ 	const rootRoute = router.routesById[_tanstack_router_core.rootRouteId];
+ 	const pendingElement = require_Match.renderPending(router, rootRoute);
+-	const ResolvedSuspense = (_tanstack_router_core_isServer.isServer ?? router.isServer) || router.ssr ? require_SafeFragment.SafeFragment : react.Suspense;
+-	const inner = /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [!(_tanstack_router_core_isServer.isServer ?? router.isServer) && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_Transitioner.Transitioner, { t: react.useState()[1] }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ResolvedSuspense, {
++	const _isServer = _tanstack_router_core_isServer.isServer ?? router.isServer;
++	const isHydrating = Boolean(router.ssr) && !require_ClientOnly.useHydrated();
++	const useFrameRootBoundary = router.options.experimental_concurrentRenderFrames && !_isServer && !isHydrating;
++	const ResolvedSuspense = _isServer || router.ssr && !useFrameRootBoundary ? require_SafeFragment.SafeFragment : react.Suspense;
++	const inner = /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [!(_tanstack_router_core_isServer.isServer ?? router.isServer) && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_Transitioner.Transitioner, {
++		t: react.useState()[1],
++		setRenderFrame
++	}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ResolvedSuspense, {
+ 		fallback: pendingElement,
+-		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MatchesInner, {})
++		children: activeFrame ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_routerStateContext.RouterStateFrame, {
++			frame: activeFrame,
++			children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MatchesInner, {
++				activeFrame,
++				renderFrame,
++				setRenderFrame
++			})
++		}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MatchesInner, { setRenderFrame })
+ 	})] });
+ 	return router.options.InnerWrap ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(router.options.InnerWrap, { children: inner }) : inner;
+ }
+-function MatchesInner() {
++function MatchesInner({ activeFrame, renderFrame, setRenderFrame }) {
+ 	const router = require_useRouter.useRouter();
++	const routerStateOwner = require_routerStateContext.useRouterStateOwner();
+ 	const acknowledgement = router._rendered;
+-	const matches = _tanstack_router_core_isServer.isServer ?? router.isServer ? router.stores.matches.get() : (0, _tanstack_react_store.useStore)(router.stores.matches, (value) => acknowledgement[0] ?? value);
++	let matches;
++	if (router.options.experimental_concurrentRenderFrames) matches = require_routerStateContext.useRouterStateSelector(router, (state) => state.matches);
++	else if (_tanstack_router_core_isServer.isServer ?? router.isServer) matches = router.stores.matches.get();
++	else matches = (0, _tanstack_react_store.useStore)(router.stores.matches, (value) => Array.isArray(acknowledgement[0]) ? acknowledgement[0] : value);
+ 	const match = matches[0];
+ 	const routeId = match?.routeId;
+ 	require_utils.useLayoutEffect(() => {
+-		if (acknowledgement[0] === matches) require_Transitioner.settleOwner(acknowledgement, true);
+-	}, [acknowledgement, matches]);
++		if (router.options.experimental_concurrentRenderFrames ? acknowledgement[0] === activeFrame?.frameId : acknowledgement[0] === matches) {
++			if (renderFrame && routerStateOwner?.commit(renderFrame)) setRenderFrame(void 0);
++			require_Transitioner.settleOwner(acknowledgement, true);
++		}
++	}, [
++		acknowledgement,
++		activeFrame,
++		matches,
++		renderFrame,
++		routerStateOwner,
++		setRenderFrame
++	]);
+ 	const matchComponent = routeId ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_Match.Match, { routeId }) : null;
+ 	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_matchContext.matchContext.Provider, {
+ 		value: routeId,
+@@ -79,6 +111,19 @@ function useMatchRoute() {
+ 			includeSearch
+ 		});
+ 	};
++	if (router.options.experimental_concurrentRenderFrames) {
++		const state = require_routerStateContext.useRouterStateSelector(router, (frameState) => frameState);
++		return react.useCallback((opts) => {
++			const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
++			return router.matchRoute(rest, {
++				pending,
++				caseSensitive,
++				fuzzy,
++				includeSearch,
++				_state: state
++			});
++		}, [router, state]);
++	}
+ 	return react.useCallback((opts) => {
+ 		const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
+ 		return router.matchRoute(rest, {
+@@ -108,6 +153,10 @@ function MatchRoute(props) {
+ }
+ function useMatches(opts) {
+ 	const router = require_useRouter.useRouter();
++	if (router.options.experimental_concurrentRenderFrames) {
++		const selectMatches = require_useMatch.useStructuralSharing(opts, router);
++		return require_routerStateContext.useRouterStateSelector(router, (state) => selectMatches(state.matches));
++	}
+ 	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
+ 		const matches = router.stores.matches.get();
+ 		return opts?.select ? opts.select(matches) : matches;
+diff --git a/dist/cjs/RouterProvider.cjs b/dist/cjs/RouterProvider.cjs
+index b656365a95110796038c0dc47160d210d196c7a8..7b2fc0b514b0d4b012eaf7c677e06f2c034b3c33 100644
+--- a/dist/cjs/RouterProvider.cjs
++++ b/dist/cjs/RouterProvider.cjs
+@@ -1,6 +1,7 @@
+ "use client";
+ const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
+ const require_routerContext = require("./routerContext.cjs");
++const require_routerStateContext = require("./routerStateContext.cjs");
+ const require_Matches = require("./Matches.cjs");
+ let _tanstack_router_core = require("@tanstack/router-core");
+ let react = require("react");
+@@ -20,9 +21,13 @@ function RouterContextProvider({ router, children, ...rest }) {
+ 			...rest.context
+ 		}
+ 	});
++	const childrenWithState = router.options.experimental_concurrentRenderFrames ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_routerStateContext.RouterStateProvider, {
++		router,
++		children
++	}) : children;
+ 	const provider = /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_routerContext.routerContext.Provider, {
+ 		value: router,
+-		children
++		children: childrenWithState
+ 	});
+ 	if (router.options.Wrap) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(router.options.Wrap, { children: provider });
+ 	return provider;
+diff --git a/dist/cjs/Scripts.cjs b/dist/cjs/Scripts.cjs
+index 59dc6365b09bf8688ad59d4ed2aeb4231e6b536d..f0e0f55f4cd4c85291a4b89d3f4460c17df1be93 100644
+--- a/dist/cjs/Scripts.cjs
++++ b/dist/cjs/Scripts.cjs
+@@ -1,4 +1,5 @@
+ const require_useRouter = require("./useRouter.cjs");
++const require_routerStateContext = require("./routerStateContext.cjs");
+ const require_Asset = require("./Asset.cjs");
+ let _tanstack_router_core = require("@tanstack/router-core");
+ let react = require("react");
+@@ -41,8 +42,11 @@ var Scripts = () => {
+ 		}
+ 		return scripts;
+ 	};
+-	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return renderScripts(router, getScripts(router.stores.matches.get()));
+-	return renderScripts(router, (0, _tanstack_react_store.useStore)(router.stores.matches, getScripts, _tanstack_router_core.deepEqual));
++	let scripts;
++	if (router.options.experimental_concurrentRenderFrames) scripts = require_routerStateContext.useRouterStateSelector(router, (state) => getScripts(state.matches), _tanstack_router_core.deepEqual);
++	else if (_tanstack_router_core_isServer.isServer ?? router.isServer) scripts = getScripts(router.stores.matches.get());
++	else scripts = (0, _tanstack_react_store.useStore)(router.stores.matches, getScripts, _tanstack_router_core.deepEqual);
++	return renderScripts(router, scripts);
+ };
+ function renderScripts(router, scripts) {
+ 	if ((_tanstack_router_core_isServer.isServer ?? router.isServer) && router.serverSsr) {
+diff --git a/dist/cjs/Transitioner.cjs b/dist/cjs/Transitioner.cjs
+index 43ace5eb908d6e4629e887a4c4baec475e6cbb49..bdb30f4d0483c7d6b783ad30b4bc5b93bc6b5f42 100644
+--- a/dist/cjs/Transitioner.cjs
++++ b/dist/cjs/Transitioner.cjs
+@@ -2,6 +2,7 @@
+ const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
+ const require_utils = require("./utils.cjs");
+ const require_useRouter = require("./useRouter.cjs");
++const require_routerStateContext = require("./routerStateContext.cjs");
+ let _tanstack_router_core = require("@tanstack/router-core");
+ let react = require("react");
+ react = require_runtime.__toESM(react, 1);
+@@ -11,15 +12,30 @@ function settleOwner(owner, rendered) {
+ 	owner.length = 0;
+ 	settle?.(rendered);
+ }
+-function Transitioner({ t }) {
++function Transitioner({ t, setRenderFrame }) {
+ 	const router = require_useRouter.useRouter();
++	const routerStateOwner = require_routerStateContext.useRouterStateOwner();
+ 	const acknowledgement = router._rendered ??= [];
+ 	const mounted = process.env.NODE_ENV !== "production" ? react.useRef(false) : void 0;
+ 	router.startTransition = (fn, expected) => new Promise((resolve) => {
+ 		settleOwner(acknowledgement, false);
+ 		acknowledgement.push(expected, resolve);
+ 		t(router);
+-		react.startTransition(fn);
++		react.startTransition(() => {
++			routerStateOwner?.begin();
++			try {
++				const headFrame = fn();
++				const frame = routerStateOwner?.stage(headFrame);
++				if (frame) {
++					acknowledgement[0] = frame.frameId;
++					setRenderFrame(frame);
++				}
++			} catch (cause) {
++				routerStateOwner?.cancel();
++				setRenderFrame(void 0);
++				throw cause;
++			}
++		});
+ 	});
+ 	require_utils.useLayoutEffect(() => {
+ 		const unsub = router.history.subscribe(router.load);
+@@ -44,7 +60,7 @@ function Transitioner({ t }) {
+ 			return unsub;
+ 		}
+ 		const resolvedLocation = router.stores.resolvedLocation.get();
+-		if (resolvedLocation?.href === location.href && resolvedLocation.state.__TSR_key === location.state.__TSR_key) acknowledgement.push(router.stores.matches.get(), (rendered) => {
++		if (resolvedLocation?.href === location.href && resolvedLocation.state.__TSR_key === location.state.__TSR_key) acknowledgement.push(routerStateOwner?.frame.frameId ?? router.stores.matches.get(), (rendered) => {
+ 			if (rendered) router.emit({
+ 				type: "onRendered",
+ 				...(0, _tanstack_router_core.getLocationChangeInfo)(resolvedLocation, resolvedLocation)
+diff --git a/dist/cjs/Transitioner.d.cts b/dist/cjs/Transitioner.d.cts
+index 0e0c6ec7c0e0053e08422a83ab63100243a9752b..11f09978df6f5534b173cc527f7c2f0a082bd7ef 100644
+--- a/dist/cjs/Transitioner.d.cts
++++ b/dist/cjs/Transitioner.d.cts
+@@ -1,6 +1,8 @@
+ import { AnyRouter } from '@tanstack/router-core';
++import { RouterRenderFrame } from './routerStateContext.cjs';
+ import * as React from 'react';
+ export declare function settleOwner(owner: NonNullable<AnyRouter['_rendered']>, rendered: boolean): void;
+-export declare function Transitioner({ t, }: {
++export declare function Transitioner({ t, setRenderFrame, }: {
+     t: React.Dispatch<React.SetStateAction<AnyRouter | undefined>>;
++    setRenderFrame: React.Dispatch<React.SetStateAction<RouterRenderFrame | undefined>>;
+ }): null;
+diff --git a/dist/cjs/fileRoute.cjs b/dist/cjs/fileRoute.cjs
+index 9baeacdeda0db03f2e2cd6b0f90fd1d1e72e6710..0afde466a71ad6af0490952f954e5854c0efb9d2 100644
+--- a/dist/cjs/fileRoute.cjs
++++ b/dist/cjs/fileRoute.cjs
+@@ -56,9 +56,8 @@ var LazyRoute = class {
+ 	constructor(opts) {
+ 		this.useMatch = (opts) => {
+ 			return require_useMatch.useMatch({
+-				select: opts?.select,
+-				from: this.options.id,
+-				structuralSharing: opts?.structuralSharing
++				...opts,
++				from: this.options.id
+ 			});
+ 		};
+ 		this.useRouteContext = (opts) => {
+@@ -69,15 +68,13 @@ var LazyRoute = class {
+ 		};
+ 		this.useSearch = (opts) => {
+ 			return require_useSearch.useSearch({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.options.id
+ 			});
+ 		};
+ 		this.useParams = (opts) => {
+ 			return require_useParams.useParams({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.options.id
+ 			});
+ 		};
+diff --git a/dist/cjs/headContentUtils.cjs b/dist/cjs/headContentUtils.cjs
+index 95f41b30083d10440cf5312819132bdfc941cdca..042fb60292ede2b6e7900b34f7d36b7977fe69a1 100644
+--- a/dist/cjs/headContentUtils.cjs
++++ b/dist/cjs/headContentUtils.cjs
+@@ -1,5 +1,6 @@
+ const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
+ const require_useRouter = require("./useRouter.cjs");
++const require_routerStateContext = require("./routerStateContext.cjs");
+ let _tanstack_router_core = require("@tanstack/router-core");
+ let react = require("react");
+ react = require_runtime.__toESM(react, 1);
+@@ -132,12 +133,13 @@ function buildTagsFromMatches(router, nonce, matches, assetCrossOrigin) {
+ var useTags = (assetCrossOrigin) => {
+ 	const router = require_useRouter.useRouter();
+ 	const nonce = router.options.ssr?.nonce;
+-	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return buildTagsFromMatches(router, nonce, router.stores.matches.get(), assetCrossOrigin);
+ 	const selectTags = react.useCallback((matches) => buildTagsFromMatches(router, nonce, matches, assetCrossOrigin), [
+ 		assetCrossOrigin,
+ 		nonce,
+ 		router
+ 	]);
++	if (router.options.experimental_concurrentRenderFrames) return require_routerStateContext.useRouterStateSelector(router, (state) => selectTags(state.matches), _tanstack_router_core.deepEqual);
++	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return selectTags(router.stores.matches.get());
+ 	return (0, _tanstack_react_store.useStore)(router.stores.matches, selectTags, _tanstack_router_core.deepEqual);
+ };
+ //#endregion
+diff --git a/dist/cjs/link.cjs b/dist/cjs/link.cjs
+index 87738841c6eb417521b9421b1f47207949f7c5d5..95a2f08c98604b9d0dbecc0453b8c344cef79642 100644
+--- a/dist/cjs/link.cjs
++++ b/dist/cjs/link.cjs
+@@ -3,6 +3,7 @@ const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
+ const require_utils = require("./utils.cjs");
+ const require_ClientOnly = require("./ClientOnly.cjs");
+ const require_useRouter = require("./useRouter.cjs");
++const require_routerStateContext = require("./routerStateContext.cjs");
+ let _tanstack_router_core = require("@tanstack/router-core");
+ let react = require("react");
+ react = require_runtime.__toESM(react, 1);
+@@ -235,7 +236,7 @@ function useLinkProps(options, forwardedRef) {
+ 		router,
+ 		to
+ 	]);
+-	const [href, externalLink, isActive] = (0, _tanstack_react_store.useStore)(router.stores.location, selectLinkState, compareLinkState);
++	const [href, externalLink, isActive] = router.options.experimental_concurrentRenderFrames ? require_routerStateContext.useRouterStateSelector(router, (state) => selectLinkState(state.location), compareLinkState) : (0, _tanstack_react_store.useStore)(router.stores.location, selectLinkState, compareLinkState);
+ 	const resolvedActiveProps = isActive ? (0, _tanstack_router_core.functionalUpdate)(activeProps, {}) ?? STATIC_ACTIVE_OBJECT : STATIC_EMPTY_OBJECT;
+ 	const resolvedInactiveProps = isActive ? STATIC_EMPTY_OBJECT : (0, _tanstack_router_core.functionalUpdate)(inactiveProps, {}) ?? STATIC_EMPTY_OBJECT;
+ 	const resolvedClassName = [
+diff --git a/dist/cjs/not-found.cjs b/dist/cjs/not-found.cjs
+index 076fa4638cddb621cb9e8c7ecbc007319da8c124..cfbbc114c978092502434cb77ad73ff29cad084b 100644
+--- a/dist/cjs/not-found.cjs
++++ b/dist/cjs/not-found.cjs
+@@ -1,6 +1,7 @@
+ const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
+ const require_CatchBoundary = require("./CatchBoundary.cjs");
+ const require_useRouter = require("./useRouter.cjs");
++const require_routerStateContext = require("./routerStateContext.cjs");
+ let _tanstack_router_core = require("@tanstack/router-core");
+ let react = require("react");
+ react = require_runtime.__toESM(react, 1);
+@@ -10,22 +11,17 @@ let _tanstack_react_store = require("@tanstack/react-store");
+ //#region src/not-found.tsx
+ function CatchNotFound(props) {
+ 	const router = require_useRouter.useRouter();
+-	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
+-		const resetKey = `not-found-${router.stores.location.get().pathname}-${router.stores.status.get()}`;
+-		return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_CatchBoundary.CatchBoundary, {
+-			getResetKey: () => resetKey,
+-			onCatch: (error, errorInfo) => {
+-				if ((0, _tanstack_router_core.isNotFound)(error)) props.onCatch?.(error, errorInfo);
+-				else throw error;
+-			},
+-			errorComponent: ({ error }) => {
+-				if ((0, _tanstack_router_core.isNotFound)(error)) return props.fallback?.(error);
+-				else throw error;
+-			},
+-			children: props.children
+-		});
++	let pathname;
++	let status;
++	if (router.options.experimental_concurrentRenderFrames) [pathname, status] = require_routerStateContext.useRouterStateSelector(router, (state) => [state.location.pathname, state.status], (a, b) => a[0] === b[0] && a[1] === b[1]);
++	else if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
++		pathname = router.stores.location.get().pathname;
++		status = router.stores.status.get();
++	} else {
++		pathname = (0, _tanstack_react_store.useStore)(router.stores.location, (location) => location.pathname);
++		status = (0, _tanstack_react_store.useStore)(router.stores.status, (status) => status);
+ 	}
+-	const resetKey = `not-found-${(0, _tanstack_react_store.useStore)(router.stores.location, (location) => location.pathname)}-${(0, _tanstack_react_store.useStore)(router.stores.status, (status) => status)}`;
++	const resetKey = `not-found-${pathname}-${status}`;
+ 	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_CatchBoundary.CatchBoundary, {
+ 		getResetKey: () => resetKey,
+ 		onCatch: (error, errorInfo) => {
+diff --git a/dist/cjs/route.cjs b/dist/cjs/route.cjs
+index 825fd133c2cb74b2e7b75124483b57d08ca1e008..34eb1bc5f52b39f964527694fa602f4104aa9af8 100644
+--- a/dist/cjs/route.cjs
++++ b/dist/cjs/route.cjs
+@@ -33,9 +33,8 @@ var RouteApi = class extends _tanstack_router_core.BaseRouteApi {
+ 		super({ id });
+ 		this.useMatch = (opts) => {
+ 			return require_useMatch.useMatch({
+-				select: opts?.select,
+-				from: this.id,
+-				structuralSharing: opts?.structuralSharing
++				...opts,
++				from: this.id
+ 			});
+ 		};
+ 		this.useRouteContext = (opts) => {
+@@ -46,15 +45,13 @@ var RouteApi = class extends _tanstack_router_core.BaseRouteApi {
+ 		};
+ 		this.useSearch = (opts) => {
+ 			return require_useSearch.useSearch({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.id
+ 			});
+ 		};
+ 		this.useParams = (opts) => {
+ 			return require_useParams.useParams({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.id
+ 			});
+ 		};
+@@ -99,9 +96,8 @@ var Route = class extends _tanstack_router_core.BaseRoute {
+ 		super(options);
+ 		this.useMatch = (opts) => {
+ 			return require_useMatch.useMatch({
+-				select: opts?.select,
+-				from: this.id,
+-				structuralSharing: opts?.structuralSharing
++				...opts,
++				from: this.id
+ 			});
+ 		};
+ 		this.useRouteContext = (opts) => {
+@@ -112,15 +108,13 @@ var Route = class extends _tanstack_router_core.BaseRoute {
+ 		};
+ 		this.useSearch = (opts) => {
+ 			return require_useSearch.useSearch({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.id
+ 			});
+ 		};
+ 		this.useParams = (opts) => {
+ 			return require_useParams.useParams({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.id
+ 			});
+ 		};
+@@ -188,9 +182,8 @@ var RootRoute = class extends _tanstack_router_core.BaseRootRoute {
+ 		super(options);
+ 		this.useMatch = (opts) => {
+ 			return require_useMatch.useMatch({
+-				select: opts?.select,
+-				from: this.id,
+-				structuralSharing: opts?.structuralSharing
++				...opts,
++				from: this.id
+ 			});
+ 		};
+ 		this.useRouteContext = (opts) => {
+@@ -201,15 +194,13 @@ var RootRoute = class extends _tanstack_router_core.BaseRootRoute {
+ 		};
+ 		this.useSearch = (opts) => {
+ 			return require_useSearch.useSearch({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.id
+ 			});
+ 		};
+ 		this.useParams = (opts) => {
+ 			return require_useParams.useParams({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.id
+ 			});
+ 		};
+diff --git a/dist/cjs/router.d.cts b/dist/cjs/router.d.cts
+index f71f69ac907e209179b3c41be9db4dc6f6d38524..ef02b697228b62577302c1000e48357f5e2460fe 100644
+--- a/dist/cjs/router.d.cts
++++ b/dist/cjs/router.d.cts
+@@ -3,6 +3,14 @@ import { RouterHistory } from '@tanstack/history';
+ import { ErrorRouteComponent, NotFoundRouteComponent, RouteComponent } from './route.cjs';
+ declare module '@tanstack/router-core' {
+     interface RouterOptionsExtensions {
++        /**
++         * Publish one immutable router snapshot through React state per navigation.
++         * This keeps urgent renders on the committed route while a newer route is
++         * pending, at the cost of broad context invalidation.
++         *
++         * @experimental
++         */
++        experimental_concurrentRenderFrames?: boolean;
+         /**
+          * The default `component` a route should use if no component is provided.
+          *
+diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..b53c730f8c573999d45a3bd5c3b292fc7a6c71f2
+--- /dev/null
++++ b/dist/cjs/routerStateContext.cjs
+@@ -0,0 +1,98 @@
++"use client";
++const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
++const require_utils = require("./utils.cjs");
++let react = require("react");
++react = require_runtime.__toESM(react, 1);
++let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
++let react_jsx_runtime = require("react/jsx-runtime");
++let _tanstack_react_store = require("@tanstack/react-store");
++//#region src/routerStateContext.tsx
++var defaultCompare = (a, b) => a === b;
++var routerStateContext = react.createContext(void 0);
++function RouterStateProvider({ router, children }) {
++	const staging = react.useRef(false);
++	const pendingFrame = react.useRef(void 0);
++	const [frame, setFrame] = react.useState(() => router.stores.__store.get());
++	const publish = react.useCallback(() => {
++		if (staging.current || pendingFrame.current) return;
++		const nextFrame = router.stores.__store.get();
++		if (nextFrame.status === "pending") return;
++		setFrame((previous) => previous.frameId === nextFrame.frameId ? previous : nextFrame);
++	}, [router]);
++	const begin = react.useCallback(() => {
++		staging.current = true;
++	}, []);
++	const stage = react.useCallback((nextFrame) => {
++		staging.current = false;
++		pendingFrame.current = nextFrame;
++		return nextFrame;
++	}, []);
++	const cancel = react.useCallback(() => {
++		staging.current = false;
++		pendingFrame.current = void 0;
++		publish();
++	}, [publish]);
++	const commit = react.useCallback((nextFrame) => {
++		if (pendingFrame.current?.frameId !== nextFrame.frameId) return false;
++		pendingFrame.current = void 0;
++		setFrame(nextFrame);
++		return true;
++	}, []);
++	require_utils.useLayoutEffect(() => {
++		const subscription = router.stores.__store.subscribe(() => publish());
++		publish();
++		return () => subscription.unsubscribe();
++	}, [publish, router]);
++	const value = react.useMemo(() => ({
++		router,
++		frame,
++		begin,
++		stage,
++		cancel,
++		commit
++	}), [
++		router,
++		frame,
++		begin,
++		stage,
++		cancel,
++		commit
++	]);
++	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateContext.Provider, {
++		value,
++		children
++	});
++}
++function RouterStateFrame({ frame, children }) {
++	const owner = react.useContext(routerStateContext);
++	const value = react.useMemo(() => ({
++		...owner,
++		frame
++	}), [owner, frame]);
++	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateContext.Provider, {
++		value,
++		children
++	});
++}
++function useRouterStateOwner() {
++	return react.useContext(routerStateContext);
++}
++function useRouterStateSelector(router, selector, compare = defaultCompare) {
++	const context = react.useContext(routerStateContext);
++	const contextState = context?.router === router ? context.frame : null;
++	const selection = react.useRef(void 0);
++	if (contextState) {
++		const next = selector(contextState);
++		if (!selection.current || !compare(selection.current.value, next)) selection.current = { value: next };
++		return selection.current.value;
++	}
++	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return selector(router.stores.__store.get());
++	return (0, _tanstack_react_store.useStore)(router.stores.__store, selector, compare);
++}
++//#endregion
++exports.RouterStateFrame = RouterStateFrame;
++exports.RouterStateProvider = RouterStateProvider;
++exports.useRouterStateOwner = useRouterStateOwner;
++exports.useRouterStateSelector = useRouterStateSelector;
++
++//# sourceMappingURL=routerStateContext.cjs.map
+\ No newline at end of file
+diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
+new file mode 100644
+index 0000000000000000000000000000000000000000..345f911bbc7dbeb9988d9796ebd284b08f62f450
+--- /dev/null
++++ b/dist/cjs/routerStateContext.d.cts
+@@ -0,0 +1,22 @@
++import { AnyRouter, RouterState } from '@tanstack/router-core';
++import * as React from 'react';
++export type RouterRenderFrame = RouterState<any>;
++type RouterStateContextValue = {
++    router: AnyRouter;
++    frame: RouterRenderFrame;
++    begin: () => void;
++    stage: (frame: RouterRenderFrame) => RouterRenderFrame;
++    cancel: () => void;
++    commit: (frame: RouterRenderFrame) => boolean;
++};
++export declare function RouterStateProvider({ router, children, }: {
++    router: AnyRouter;
++    children: React.ReactNode;
++}): import("react/jsx-runtime").JSX.Element;
++export declare function RouterStateFrame({ frame, children, }: {
++    frame: RouterRenderFrame;
++    children: React.ReactNode;
++}): import("react/jsx-runtime").JSX.Element;
++export declare function useRouterStateOwner(): RouterStateContextValue | undefined;
++export declare function useRouterStateSelector<TSelected>(router: AnyRouter, selector: (state: RouterState<any>) => TSelected, compare?: (a: TSelected, b: TSelected) => boolean): TSelected;
++export {};
+diff --git a/dist/cjs/useCanGoBack.cjs b/dist/cjs/useCanGoBack.cjs
+index 42e5fb8bce9c3101b83534bcd089e669e31bf99a..03c6d44450c4fe9ad7e63c477c51331374f3a380 100644
+--- a/dist/cjs/useCanGoBack.cjs
++++ b/dist/cjs/useCanGoBack.cjs
+@@ -1,9 +1,11 @@
+ const require_useRouter = require("./useRouter.cjs");
++const require_routerStateContext = require("./routerStateContext.cjs");
+ let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
+ let _tanstack_react_store = require("@tanstack/react-store");
+ //#region src/useCanGoBack.ts
+ function useCanGoBack() {
+ 	const router = require_useRouter.useRouter();
++	if (router.options.experimental_concurrentRenderFrames) return require_routerStateContext.useRouterStateSelector(router, (state) => state.location.state.__TSR_index !== 0);
+ 	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return router.stores.location.get().state.__TSR_index !== 0;
+ 	return (0, _tanstack_react_store.useStore)(router.stores.location, (location) => location.state.__TSR_index !== 0);
+ }
+diff --git a/dist/cjs/useLocation.cjs b/dist/cjs/useLocation.cjs
+index 298ca58600c50aafbdea22de49de99cddfe53817..4de5d2b2daf1837f8cacd1f5bc0b28bb16f7d0df 100644
+--- a/dist/cjs/useLocation.cjs
++++ b/dist/cjs/useLocation.cjs
+@@ -1,5 +1,6 @@
+ "use client";
+ const require_useRouter = require("./useRouter.cjs");
++const require_routerStateContext = require("./routerStateContext.cjs");
+ const require_useMatch = require("./useMatch.cjs");
+ let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
+ let _tanstack_react_store = require("@tanstack/react-store");
+@@ -17,6 +18,10 @@ let _tanstack_react_store = require("@tanstack/react-store");
+ */
+ function useLocation(opts) {
+ 	const router = require_useRouter.useRouter();
++	if (router.options.experimental_concurrentRenderFrames) {
++		const selectLocation = require_useMatch.useStructuralSharing(opts, router);
++		return require_routerStateContext.useRouterStateSelector(router, (state) => selectLocation(state.location));
++	}
+ 	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
+ 		const location = router.stores.location.get();
+ 		return opts?.select ? opts.select(location) : location;
+diff --git a/dist/cjs/useMatch.cjs b/dist/cjs/useMatch.cjs
+index 75321489fcca8f6ee9117d3ace09facf6f00bbab..0c952b7485d7fc7781b979e67b38702214206240 100644
+--- a/dist/cjs/useMatch.cjs
++++ b/dist/cjs/useMatch.cjs
+@@ -2,6 +2,7 @@
+ const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
+ const require_matchContext = require("./matchContext.cjs");
+ const require_useRouter = require("./useRouter.cjs");
++const require_routerStateContext = require("./routerStateContext.cjs");
+ let _tanstack_router_core = require("@tanstack/router-core");
+ let react = require("react");
+ react = require_runtime.__toESM(react, 1);
+@@ -26,20 +27,29 @@ function useMatch(opts) {
+ 	const nearestRouteId = react.useContext(opts.from ? require_matchContext.dummyMatchContext : require_matchContext.matchContext);
+ 	const routeId = opts.from ?? nearestRouteId;
+ 	const matchStore = router.stores.getMatchStore(routeId);
+-	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
+-		const match = matchStore.get();
+-		if (!match) {
+-			if (opts.shouldThrow ?? true) {
+-				if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
+-				(0, _tanstack_router_core.invariant)();
++	if (!router.options.experimental_concurrentRenderFrames) {
++		if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
++			const match = matchStore.get();
++			if (!match) {
++				if (opts.shouldThrow ?? true) {
++					if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
++					(0, _tanstack_router_core.invariant)();
++				}
++				return;
+ 			}
+-			return;
++			return opts.select ? opts.select(match) : match;
+ 		}
+-		return opts.select ? opts.select(match) : match;
++		const selector = useStructuralSharing(opts, router);
++		const matchSelection = (0, _tanstack_react_store.useStore)(matchStore, (match) => match ? selector(match) : dummyMatch);
++		if (matchSelection !== dummyMatch) return matchSelection;
++	} else {
++		const selector = useStructuralSharing(opts, router);
++		const matchSelection = require_routerStateContext.useRouterStateSelector(router, (state) => {
++			const match = state.matches.find((candidate) => candidate.routeId === routeId);
++			return match ? selector(match) : dummyMatch;
++		});
++		if (matchSelection !== dummyMatch) return matchSelection;
+ 	}
+-	const selector = useStructuralSharing(opts, router);
+-	const matchSelection = (0, _tanstack_react_store.useStore)(matchStore, (match) => match ? selector(match) : dummyMatch);
+-	if (matchSelection !== dummyMatch) return matchSelection;
+ 	if (opts.shouldThrow ?? true) {
+ 		if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
+ 		(0, _tanstack_router_core.invariant)();
+diff --git a/dist/cjs/useMatch.d.cts b/dist/cjs/useMatch.d.cts
+index 04593c535f3df46f8f2f27f247d77017753775bd..bc32be4fc07754780db3246bcea571fcad4f0cdd 100644
+--- a/dist/cjs/useMatch.d.cts
++++ b/dist/cjs/useMatch.d.cts
+@@ -8,7 +8,7 @@ export interface UseMatchBaseOptions<TRouter extends AnyRouter, TFrom, TStrict e
+     select?: (match: MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict>) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
+     shouldThrow?: TThrow;
+ }
+-export type UseMatchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean>(opts?: UseMatchBaseOptions<TRouter, TFrom, true, true, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => UseMatchResult<TRouter, TFrom, true, TSelected>;
++export type UseMatchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean, TThrow extends boolean = true>(opts?: UseMatchBaseOptions<TRouter, TFrom, true, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => ThrowOrOptional<UseMatchResult<TRouter, TFrom, true, TSelected>, TThrow>;
+ export type UseMatchOptions<TRouter extends AnyRouter, TFrom extends string | undefined, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing extends boolean> = StrictOrFrom<TRouter, TFrom, TStrict> & UseMatchBaseOptions<TRouter, TFrom, TStrict, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>;
+ export type UseMatchResult<TRouter extends AnyRouter, TFrom, TStrict extends boolean, TSelected> = unknown extends TSelected ? TStrict extends true ? MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict> : MakeRouteMatchUnion<TRouter> : TSelected;
+ /**
+diff --git a/dist/cjs/useParams.d.cts b/dist/cjs/useParams.d.cts
+index a5e7a60f5250402d845027a67e32fa12607e4618..8a8c2f629bd5e0b17cc0311e8ab02b3d90aafa2d 100644
+--- a/dist/cjs/useParams.d.cts
++++ b/dist/cjs/useParams.d.cts
+@@ -5,7 +5,7 @@ export interface UseParamsBaseOptions<TRouter extends AnyRouter, TFrom, TStrict
+     shouldThrow?: TThrow;
+ }
+ export type UseParamsOptions<TRouter extends AnyRouter, TFrom extends string | undefined, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing> = StrictOrFrom<TRouter, TFrom, TStrict> & UseParamsBaseOptions<TRouter, TFrom, TStrict, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>;
+-export type UseParamsRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean>(opts?: UseParamsBaseOptions<TRouter, TFrom, true, true, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => UseParamsResult<TRouter, TFrom, true, TSelected>;
++export type UseParamsRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean, TThrow extends boolean = true>(opts?: UseParamsBaseOptions<TRouter, TFrom, true, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => ThrowOrOptional<UseParamsResult<TRouter, TFrom, true, TSelected>, TThrow>;
+ /**
+  * Access the current route's path parameters with type-safety.
+  *
+diff --git a/dist/cjs/useRouterState.cjs b/dist/cjs/useRouterState.cjs
+index 678f71e93dd9d9dda1097dc2ccc2a1916b5ea9fd..945ddbb81d5f227b667131ae748f12c2da8c65be 100644
+--- a/dist/cjs/useRouterState.cjs
++++ b/dist/cjs/useRouterState.cjs
+@@ -1,5 +1,6 @@
+ "use client";
+ const require_useRouter = require("./useRouter.cjs");
++const require_routerStateContext = require("./routerStateContext.cjs");
+ const require_useMatch = require("./useMatch.cjs");
+ let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
+ let _tanstack_react_store = require("@tanstack/react-store");
+@@ -19,6 +20,7 @@ let _tanstack_react_store = require("@tanstack/react-store");
+ function useRouterState(opts) {
+ 	const contextRouter = require_useRouter.useRouter({ warn: opts?.router === void 0 });
+ 	const router = opts?.router || contextRouter;
++	if (router.options.experimental_concurrentRenderFrames) return require_routerStateContext.useRouterStateSelector(router, require_useMatch.useStructuralSharing(opts, router));
+ 	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
+ 		const state = router.stores.__store.get();
+ 		return opts?.select ? opts.select(state) : state;
+diff --git a/dist/cjs/useSearch.d.cts b/dist/cjs/useSearch.d.cts
+index ab4c65ea990e7d6dbbd1d9b6e1e92aa55167d115..d04d90fcad7a0249db5eec449af1474b6fb20ded 100644
+--- a/dist/cjs/useSearch.d.cts
++++ b/dist/cjs/useSearch.d.cts
+@@ -5,7 +5,7 @@ export interface UseSearchBaseOptions<TRouter extends AnyRouter, TFrom, TStrict
+     shouldThrow?: TThrow;
+ }
+ export type UseSearchOptions<TRouter extends AnyRouter, TFrom, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing> = StrictOrFrom<TRouter, TFrom, TStrict> & UseSearchBaseOptions<TRouter, TFrom, TStrict, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>;
+-export type UseSearchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean>(opts?: UseSearchBaseOptions<TRouter, TFrom, true, true, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => UseSearchResult<TRouter, TFrom, true, TSelected>;
++export type UseSearchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean, TThrow extends boolean = true>(opts?: UseSearchBaseOptions<TRouter, TFrom, true, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => ThrowOrOptional<UseSearchResult<TRouter, TFrom, true, TSelected>, TThrow>;
+ /**
+  * Read and select the current route's search parameters with type-safety.
+  *
+diff --git a/dist/esm/Match.js b/dist/esm/Match.js
+index 7dffc446e563ea4f5826c5714ef011a391114635..1458142eec1bb3ec4145db5fc464e96179f7d346 100644
+--- a/dist/esm/Match.js
++++ b/dist/esm/Match.js
+@@ -1,9 +1,10 @@
+ "use client";
+ import { nonRouteComponentContext, wrapInNonRouteComponentContext } from "./nonRouteComponentContext.js";
+ import { CatchBoundary, ErrorComponent } from "./CatchBoundary.js";
+-import { ClientOnly } from "./ClientOnly.js";
++import { ClientOnly, useHydrated } from "./ClientOnly.js";
+ import { matchContext } from "./matchContext.js";
+ import { useRouter } from "./useRouter.js";
++import { useRouterStateSelector } from "./routerStateContext.js";
+ import { CatchNotFound } from "./not-found.js";
+ import { SafeFragment } from "./SafeFragment.js";
+ import { renderRouteNotFound } from "./renderRouteNotFound.js";
+@@ -21,9 +22,14 @@ function renderPending(router, route) {
+ 	return process.env.NODE_ENV !== "production" ? wrapInNonRouteComponentContext(pendingElement, "pendingComponent") : pendingElement;
+ }
+ var outletMatchSelectionEqual = (a, b) => a[0] === b[0] && a[1] === b[1];
++var concurrentOutletMatchSelectionEqual = (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+ var canWrapInSuspense = (router, route, ssr) => !route.isRoot || route.options.shellComponent || route.options.wrapInSuspense || ssr === false || ssr === "data-only" || !((isServer ?? router.isServer) || router.ssr);
+ var Match = React$1.memo(function MatchImpl({ routeId }) {
+ 	const router = useRouter();
++	if (router.options.experimental_concurrentRenderFrames) return /* @__PURE__ */ jsx(MatchView, {
++		router,
++		match: useRouterStateSelector(router, (state) => state.matches.find((candidate) => candidate.routeId === routeId))
++	});
+ 	if (isServer ?? router.isServer) return /* @__PURE__ */ jsx(MatchView, {
+ 		router,
+ 		match: router.stores.byRoute.get(routeId).get()
+@@ -40,7 +46,9 @@ function MatchView({ router, match }) {
+ 	const routeOnCatch = route.options.onCatch ?? router.options.defaultOnCatch;
+ 	const routeNotFoundComponent = route.isRoot ? route.options.notFoundComponent ?? router.options.notFoundRoute?.options.component : route.options.notFoundComponent;
+ 	const resolvedNoSsr = match.ssr === false || match.ssr === "data-only";
+-	const ResolvedSuspenseBoundary = canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? React$1.Suspense : SafeFragment;
++	const _isServer = isServer ?? router.isServer;
++	const isHydrating = Boolean(router.ssr) && !useHydrated();
++	const ResolvedSuspenseBoundary = !(router.options.experimental_concurrentRenderFrames && !_isServer && !isHydrating) && canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? React$1.Suspense : SafeFragment;
+ 	const ResolvedCatchBoundary = routeErrorComponent ? CatchBoundary : SafeFragment;
+ 	const ResolvedNotFoundBoundary = routeNotFoundComponent ? CatchNotFound : SafeFragment;
+ 	return /* @__PURE__ */ jsxs(route.isRoot ? route.options.shellComponent ?? SafeFragment : SafeFragment, { children: [/* @__PURE__ */ jsx(matchContext.Provider, {
+@@ -137,7 +145,17 @@ var Outlet = React$1.memo(function OutletImpl() {
+ 	let parentGlobalNotFound;
+ 	let parentNotFoundError;
+ 	let childRouteId;
+-	if (isServer ?? router.isServer) {
++	if (router.options.experimental_concurrentRenderFrames) [parentGlobalNotFound, parentNotFoundError, childRouteId] = useRouterStateSelector(router, (state) => {
++		const matches = state.matches;
++		const parentIndex = matches.findIndex((match) => match.routeId === routeId);
++		const parentMatch = matches[parentIndex];
++		return [
++			!!parentMatch._notFound,
++			parentMatch.error,
++			matches[parentIndex + 1]?.routeId
++		];
++	}, concurrentOutletMatchSelectionEqual);
++	else if (isServer ?? router.isServer) {
+ 		const matches = router.stores.matches.get();
+ 		const parentIndex = matches.findIndex((match) => match.routeId === routeId);
+ 		const parentMatch = matches[parentIndex];
+@@ -154,7 +172,7 @@ var Outlet = React$1.memo(function OutletImpl() {
+ 	if (parentGlobalNotFound) return renderRouteNotFound(router, router.routesById[routeId], parentNotFoundError);
+ 	if (!childRouteId) return null;
+ 	const nextMatch = /* @__PURE__ */ jsx(Match, { routeId: childRouteId });
+-	if (routeId === rootRouteId) return /* @__PURE__ */ jsx(React$1.Suspense, {
++	if (routeId === rootRouteId && !router.options.experimental_concurrentRenderFrames) return /* @__PURE__ */ jsx(React$1.Suspense, {
+ 		fallback: renderPending(router),
+ 		children: nextMatch
+ 	});
+diff --git a/dist/esm/Matches.js b/dist/esm/Matches.js
+index 68657a0e5a4b11962e415bc86e28cccc25f000d3..0a97803a52d73e7ec0f524d9ecbf173a1716424d 100644
+--- a/dist/esm/Matches.js
++++ b/dist/esm/Matches.js
+@@ -1,8 +1,10 @@
+ "use client";
+ import { useLayoutEffect } from "./utils.js";
+ import { CatchBoundary } from "./CatchBoundary.js";
++import { useHydrated } from "./ClientOnly.js";
+ import { matchContext } from "./matchContext.js";
+ import { useRouter } from "./useRouter.js";
++import { RouterStateFrame, useRouterStateOwner, useRouterStateSelector } from "./routerStateContext.js";
+ import { useStructuralSharing } from "./useMatch.js";
+ import { Transitioner, settleOwner } from "./Transitioner.js";
+ import { SafeFragment } from "./SafeFragment.js";
+@@ -19,24 +21,54 @@ import { useStore } from "@tanstack/react-store";
+ */
+ function Matches() {
+ 	const router = useRouter();
++	const routerStateOwner = useRouterStateOwner();
++	const [renderFrame, setRenderFrame] = React$1.useState();
++	const activeFrame = renderFrame ?? routerStateOwner?.frame;
+ 	const rootRoute = router.routesById[rootRouteId];
+ 	const pendingElement = renderPending(router, rootRoute);
+-	const ResolvedSuspense = (isServer ?? router.isServer) || router.ssr ? SafeFragment : React$1.Suspense;
+-	const inner = /* @__PURE__ */ jsxs(Fragment, { children: [!(isServer ?? router.isServer) && /* @__PURE__ */ jsx(Transitioner, { t: React$1.useState()[1] }), /* @__PURE__ */ jsx(ResolvedSuspense, {
++	const _isServer = isServer ?? router.isServer;
++	const isHydrating = Boolean(router.ssr) && !useHydrated();
++	const useFrameRootBoundary = router.options.experimental_concurrentRenderFrames && !_isServer && !isHydrating;
++	const ResolvedSuspense = _isServer || router.ssr && !useFrameRootBoundary ? SafeFragment : React$1.Suspense;
++	const inner = /* @__PURE__ */ jsxs(Fragment, { children: [!(isServer ?? router.isServer) && /* @__PURE__ */ jsx(Transitioner, {
++		t: React$1.useState()[1],
++		setRenderFrame
++	}), /* @__PURE__ */ jsx(ResolvedSuspense, {
+ 		fallback: pendingElement,
+-		children: /* @__PURE__ */ jsx(MatchesInner, {})
++		children: activeFrame ? /* @__PURE__ */ jsx(RouterStateFrame, {
++			frame: activeFrame,
++			children: /* @__PURE__ */ jsx(MatchesInner, {
++				activeFrame,
++				renderFrame,
++				setRenderFrame
++			})
++		}) : /* @__PURE__ */ jsx(MatchesInner, { setRenderFrame })
+ 	})] });
+ 	return router.options.InnerWrap ? /* @__PURE__ */ jsx(router.options.InnerWrap, { children: inner }) : inner;
+ }
+-function MatchesInner() {
++function MatchesInner({ activeFrame, renderFrame, setRenderFrame }) {
+ 	const router = useRouter();
++	const routerStateOwner = useRouterStateOwner();
+ 	const acknowledgement = router._rendered;
+-	const matches = isServer ?? router.isServer ? router.stores.matches.get() : useStore(router.stores.matches, (value) => acknowledgement[0] ?? value);
++	let matches;
++	if (router.options.experimental_concurrentRenderFrames) matches = useRouterStateSelector(router, (state) => state.matches);
++	else if (isServer ?? router.isServer) matches = router.stores.matches.get();
++	else matches = useStore(router.stores.matches, (value) => Array.isArray(acknowledgement[0]) ? acknowledgement[0] : value);
+ 	const match = matches[0];
+ 	const routeId = match?.routeId;
+ 	useLayoutEffect(() => {
+-		if (acknowledgement[0] === matches) settleOwner(acknowledgement, true);
+-	}, [acknowledgement, matches]);
++		if (router.options.experimental_concurrentRenderFrames ? acknowledgement[0] === activeFrame?.frameId : acknowledgement[0] === matches) {
++			if (renderFrame && routerStateOwner?.commit(renderFrame)) setRenderFrame(void 0);
++			settleOwner(acknowledgement, true);
++		}
++	}, [
++		acknowledgement,
++		activeFrame,
++		matches,
++		renderFrame,
++		routerStateOwner,
++		setRenderFrame
++	]);
+ 	const matchComponent = routeId ? /* @__PURE__ */ jsx(Match, { routeId }) : null;
+ 	return /* @__PURE__ */ jsx(matchContext.Provider, {
+ 		value: routeId,
+@@ -77,6 +109,19 @@ function useMatchRoute() {
+ 			includeSearch
+ 		});
+ 	};
++	if (router.options.experimental_concurrentRenderFrames) {
++		const state = useRouterStateSelector(router, (frameState) => frameState);
++		return React$1.useCallback((opts) => {
++			const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
++			return router.matchRoute(rest, {
++				pending,
++				caseSensitive,
++				fuzzy,
++				includeSearch,
++				_state: state
++			});
++		}, [router, state]);
++	}
+ 	return React$1.useCallback((opts) => {
+ 		const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
+ 		return router.matchRoute(rest, {
+@@ -106,6 +151,10 @@ function MatchRoute(props) {
+ }
+ function useMatches(opts) {
+ 	const router = useRouter();
++	if (router.options.experimental_concurrentRenderFrames) {
++		const selectMatches = useStructuralSharing(opts, router);
++		return useRouterStateSelector(router, (state) => selectMatches(state.matches));
++	}
+ 	if (isServer ?? router.isServer) {
+ 		const matches = router.stores.matches.get();
+ 		return opts?.select ? opts.select(matches) : matches;
+diff --git a/dist/esm/RouterProvider.js b/dist/esm/RouterProvider.js
+index 572653edbeee98466ef60bb88bf0ce9c63bacc3f..0b65b220a13986749bf36daf5cbb98041603b20c 100644
+--- a/dist/esm/RouterProvider.js
++++ b/dist/esm/RouterProvider.js
+@@ -1,5 +1,6 @@
+ "use client";
+ import { routerContext } from "./routerContext.js";
++import { RouterStateProvider } from "./routerStateContext.js";
+ import { Matches } from "./Matches.js";
+ import { hasKeys } from "@tanstack/router-core";
+ import "react";
+@@ -18,9 +19,13 @@ function RouterContextProvider({ router, children, ...rest }) {
+ 			...rest.context
+ 		}
+ 	});
++	const childrenWithState = router.options.experimental_concurrentRenderFrames ? /* @__PURE__ */ jsx(RouterStateProvider, {
++		router,
++		children
++	}) : children;
+ 	const provider = /* @__PURE__ */ jsx(routerContext.Provider, {
+ 		value: router,
+-		children
++		children: childrenWithState
+ 	});
+ 	if (router.options.Wrap) return /* @__PURE__ */ jsx(router.options.Wrap, { children: provider });
+ 	return provider;
+diff --git a/dist/esm/Scripts.js b/dist/esm/Scripts.js
+index 19e559af255e745a0b2e46bdf5dcd18f5c6f1ff4..5c5e4d1c8de9986e8ae0340bed967af2798b607e 100644
+--- a/dist/esm/Scripts.js
++++ b/dist/esm/Scripts.js
+@@ -1,4 +1,5 @@
+ import { useRouter } from "./useRouter.js";
++import { useRouterStateSelector } from "./routerStateContext.js";
+ import { Asset } from "./Asset.js";
+ import { _getAssetMatches, deepEqual } from "@tanstack/router-core";
+ import { createElement } from "react";
+@@ -41,8 +42,11 @@ var Scripts = () => {
+ 		}
+ 		return scripts;
+ 	};
+-	if (isServer ?? router.isServer) return renderScripts(router, getScripts(router.stores.matches.get()));
+-	return renderScripts(router, useStore(router.stores.matches, getScripts, deepEqual));
++	let scripts;
++	if (router.options.experimental_concurrentRenderFrames) scripts = useRouterStateSelector(router, (state) => getScripts(state.matches), deepEqual);
++	else if (isServer ?? router.isServer) scripts = getScripts(router.stores.matches.get());
++	else scripts = useStore(router.stores.matches, getScripts, deepEqual);
++	return renderScripts(router, scripts);
+ };
+ function renderScripts(router, scripts) {
+ 	if ((isServer ?? router.isServer) && router.serverSsr) {
+diff --git a/dist/esm/Transitioner.d.ts b/dist/esm/Transitioner.d.ts
+index 0e0c6ec7c0e0053e08422a83ab63100243a9752b..0d80aa89739162c8304775cdcbfc723c8ace740b 100644
+--- a/dist/esm/Transitioner.d.ts
++++ b/dist/esm/Transitioner.d.ts
+@@ -1,6 +1,8 @@
+ import { AnyRouter } from '@tanstack/router-core';
++import { RouterRenderFrame } from './routerStateContext.js';
+ import * as React from 'react';
+ export declare function settleOwner(owner: NonNullable<AnyRouter['_rendered']>, rendered: boolean): void;
+-export declare function Transitioner({ t, }: {
++export declare function Transitioner({ t, setRenderFrame, }: {
+     t: React.Dispatch<React.SetStateAction<AnyRouter | undefined>>;
++    setRenderFrame: React.Dispatch<React.SetStateAction<RouterRenderFrame | undefined>>;
+ }): null;
+diff --git a/dist/esm/Transitioner.js b/dist/esm/Transitioner.js
+index 51d7e69e3b1ad5a656d4c4e6f3ef690520effbf5..e5aa02cf2b9fffd0107fffb95f2097bcd44489ee 100644
+--- a/dist/esm/Transitioner.js
++++ b/dist/esm/Transitioner.js
+@@ -1,6 +1,7 @@
+ "use client";
+ import { useLayoutEffect } from "./utils.js";
+ import { useRouter } from "./useRouter.js";
++import { useRouterStateOwner } from "./routerStateContext.js";
+ import { getLocationChangeInfo, trimPathRight } from "@tanstack/router-core";
+ import * as React$1 from "react";
+ //#region src/Transitioner.tsx
+@@ -9,15 +10,30 @@ function settleOwner(owner, rendered) {
+ 	owner.length = 0;
+ 	settle?.(rendered);
+ }
+-function Transitioner({ t }) {
++function Transitioner({ t, setRenderFrame }) {
+ 	const router = useRouter();
++	const routerStateOwner = useRouterStateOwner();
+ 	const acknowledgement = router._rendered ??= [];
+ 	const mounted = process.env.NODE_ENV !== "production" ? React$1.useRef(false) : void 0;
+ 	router.startTransition = (fn, expected) => new Promise((resolve) => {
+ 		settleOwner(acknowledgement, false);
+ 		acknowledgement.push(expected, resolve);
+ 		t(router);
+-		React$1.startTransition(fn);
++		React$1.startTransition(() => {
++			routerStateOwner?.begin();
++			try {
++				const headFrame = fn();
++				const frame = routerStateOwner?.stage(headFrame);
++				if (frame) {
++					acknowledgement[0] = frame.frameId;
++					setRenderFrame(frame);
++				}
++			} catch (cause) {
++				routerStateOwner?.cancel();
++				setRenderFrame(void 0);
++				throw cause;
++			}
++		});
+ 	});
+ 	useLayoutEffect(() => {
+ 		const unsub = router.history.subscribe(router.load);
+@@ -42,7 +58,7 @@ function Transitioner({ t }) {
+ 			return unsub;
+ 		}
+ 		const resolvedLocation = router.stores.resolvedLocation.get();
+-		if (resolvedLocation?.href === location.href && resolvedLocation.state.__TSR_key === location.state.__TSR_key) acknowledgement.push(router.stores.matches.get(), (rendered) => {
++		if (resolvedLocation?.href === location.href && resolvedLocation.state.__TSR_key === location.state.__TSR_key) acknowledgement.push(routerStateOwner?.frame.frameId ?? router.stores.matches.get(), (rendered) => {
+ 			if (rendered) router.emit({
+ 				type: "onRendered",
+ 				...getLocationChangeInfo(resolvedLocation, resolvedLocation)
+diff --git a/dist/esm/fileRoute.js b/dist/esm/fileRoute.js
+index bf5fdc373695dcc5871ea9fcd9ba4da559d6127f..04f88081a5a160285bcf8b759a914b07d0e99af1 100644
+--- a/dist/esm/fileRoute.js
++++ b/dist/esm/fileRoute.js
+@@ -56,9 +56,8 @@ var LazyRoute = class {
+ 	constructor(opts) {
+ 		this.useMatch = (opts) => {
+ 			return useMatch({
+-				select: opts?.select,
+-				from: this.options.id,
+-				structuralSharing: opts?.structuralSharing
++				...opts,
++				from: this.options.id
+ 			});
+ 		};
+ 		this.useRouteContext = (opts) => {
+@@ -69,15 +68,13 @@ var LazyRoute = class {
+ 		};
+ 		this.useSearch = (opts) => {
+ 			return useSearch({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.options.id
+ 			});
+ 		};
+ 		this.useParams = (opts) => {
+ 			return useParams({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.options.id
+ 			});
+ 		};
+diff --git a/dist/esm/headContentUtils.js b/dist/esm/headContentUtils.js
+index 25367c5d2fad601817cb97a4b2717ffaa15f663d..4ac565559d15b239c9a14ff4849b4a004302e032 100644
+--- a/dist/esm/headContentUtils.js
++++ b/dist/esm/headContentUtils.js
+@@ -1,4 +1,5 @@
+ import { useRouter } from "./useRouter.js";
++import { useRouterStateSelector } from "./routerStateContext.js";
+ import { _getAssetMatches, appendUniqueUserTags, deepEqual, escapeHtml, getAssetCrossOrigin, getScriptPreloadAttrs, resolveManifestCssLink } from "@tanstack/router-core";
+ import * as React$1 from "react";
+ import { isServer } from "@tanstack/router-core/isServer";
+@@ -130,12 +131,13 @@ function buildTagsFromMatches(router, nonce, matches, assetCrossOrigin) {
+ var useTags = (assetCrossOrigin) => {
+ 	const router = useRouter();
+ 	const nonce = router.options.ssr?.nonce;
+-	if (isServer ?? router.isServer) return buildTagsFromMatches(router, nonce, router.stores.matches.get(), assetCrossOrigin);
+ 	const selectTags = React$1.useCallback((matches) => buildTagsFromMatches(router, nonce, matches, assetCrossOrigin), [
+ 		assetCrossOrigin,
+ 		nonce,
+ 		router
+ 	]);
++	if (router.options.experimental_concurrentRenderFrames) return useRouterStateSelector(router, (state) => selectTags(state.matches), deepEqual);
++	if (isServer ?? router.isServer) return selectTags(router.stores.matches.get());
+ 	return useStore(router.stores.matches, selectTags, deepEqual);
+ };
+ //#endregion
+diff --git a/dist/esm/link.js b/dist/esm/link.js
+index 726a26e42ac00d041bc5b09c2b441f5d0b442d53..d46bd27747197397bc4db5c572463b1e89626c20 100644
+--- a/dist/esm/link.js
++++ b/dist/esm/link.js
+@@ -2,6 +2,7 @@
+ import { useForwardedRef, useIntersectionObserver } from "./utils.js";
+ import { useHydrated } from "./ClientOnly.js";
+ import { useRouter } from "./useRouter.js";
++import { useRouterStateSelector } from "./routerStateContext.js";
+ import { deepEqual, exactPathTest, functionalUpdate, hasKeys, isDangerousProtocol, preloadWarning, removeTrailingSlash } from "@tanstack/router-core";
+ import * as React$1 from "react";
+ import { isServer } from "@tanstack/router-core/isServer";
+@@ -233,7 +234,7 @@ function useLinkProps(options, forwardedRef) {
+ 		router,
+ 		to
+ 	]);
+-	const [href, externalLink, isActive] = useStore(router.stores.location, selectLinkState, compareLinkState);
++	const [href, externalLink, isActive] = router.options.experimental_concurrentRenderFrames ? useRouterStateSelector(router, (state) => selectLinkState(state.location), compareLinkState) : useStore(router.stores.location, selectLinkState, compareLinkState);
+ 	const resolvedActiveProps = isActive ? functionalUpdate(activeProps, {}) ?? STATIC_ACTIVE_OBJECT : STATIC_EMPTY_OBJECT;
+ 	const resolvedInactiveProps = isActive ? STATIC_EMPTY_OBJECT : functionalUpdate(inactiveProps, {}) ?? STATIC_EMPTY_OBJECT;
+ 	const resolvedClassName = [
+diff --git a/dist/esm/not-found.js b/dist/esm/not-found.js
+index f53a10e876c58a632de2b616f679a24175b8b18f..87512658792c114764fcdd80f1f377b0e5fce80d 100644
+--- a/dist/esm/not-found.js
++++ b/dist/esm/not-found.js
+@@ -1,5 +1,6 @@
+ import { CatchBoundary } from "./CatchBoundary.js";
+ import { useRouter } from "./useRouter.js";
++import { useRouterStateSelector } from "./routerStateContext.js";
+ import { isNotFound } from "@tanstack/router-core";
+ import "react";
+ import { isServer } from "@tanstack/router-core/isServer";
+@@ -8,22 +9,17 @@ import { useStore } from "@tanstack/react-store";
+ //#region src/not-found.tsx
+ function CatchNotFound(props) {
+ 	const router = useRouter();
+-	if (isServer ?? router.isServer) {
+-		const resetKey = `not-found-${router.stores.location.get().pathname}-${router.stores.status.get()}`;
+-		return /* @__PURE__ */ jsx(CatchBoundary, {
+-			getResetKey: () => resetKey,
+-			onCatch: (error, errorInfo) => {
+-				if (isNotFound(error)) props.onCatch?.(error, errorInfo);
+-				else throw error;
+-			},
+-			errorComponent: ({ error }) => {
+-				if (isNotFound(error)) return props.fallback?.(error);
+-				else throw error;
+-			},
+-			children: props.children
+-		});
++	let pathname;
++	let status;
++	if (router.options.experimental_concurrentRenderFrames) [pathname, status] = useRouterStateSelector(router, (state) => [state.location.pathname, state.status], (a, b) => a[0] === b[0] && a[1] === b[1]);
++	else if (isServer ?? router.isServer) {
++		pathname = router.stores.location.get().pathname;
++		status = router.stores.status.get();
++	} else {
++		pathname = useStore(router.stores.location, (location) => location.pathname);
++		status = useStore(router.stores.status, (status) => status);
+ 	}
+-	const resetKey = `not-found-${useStore(router.stores.location, (location) => location.pathname)}-${useStore(router.stores.status, (status) => status)}`;
++	const resetKey = `not-found-${pathname}-${status}`;
+ 	return /* @__PURE__ */ jsx(CatchBoundary, {
+ 		getResetKey: () => resetKey,
+ 		onCatch: (error, errorInfo) => {
+diff --git a/dist/esm/route.js b/dist/esm/route.js
+index 877e9da2e359e70428c0bd296e5e6d1ff9097843..c4de337709560dadbca085269236481508bfde3d 100644
+--- a/dist/esm/route.js
++++ b/dist/esm/route.js
+@@ -31,9 +31,8 @@ var RouteApi = class extends BaseRouteApi {
+ 		super({ id });
+ 		this.useMatch = (opts) => {
+ 			return useMatch({
+-				select: opts?.select,
+-				from: this.id,
+-				structuralSharing: opts?.structuralSharing
++				...opts,
++				from: this.id
+ 			});
+ 		};
+ 		this.useRouteContext = (opts) => {
+@@ -44,15 +43,13 @@ var RouteApi = class extends BaseRouteApi {
+ 		};
+ 		this.useSearch = (opts) => {
+ 			return useSearch({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.id
+ 			});
+ 		};
+ 		this.useParams = (opts) => {
+ 			return useParams({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.id
+ 			});
+ 		};
+@@ -97,9 +94,8 @@ var Route = class extends BaseRoute {
+ 		super(options);
+ 		this.useMatch = (opts) => {
+ 			return useMatch({
+-				select: opts?.select,
+-				from: this.id,
+-				structuralSharing: opts?.structuralSharing
++				...opts,
++				from: this.id
+ 			});
+ 		};
+ 		this.useRouteContext = (opts) => {
+@@ -110,15 +106,13 @@ var Route = class extends BaseRoute {
+ 		};
+ 		this.useSearch = (opts) => {
+ 			return useSearch({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.id
+ 			});
+ 		};
+ 		this.useParams = (opts) => {
+ 			return useParams({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.id
+ 			});
+ 		};
+@@ -186,9 +180,8 @@ var RootRoute = class extends BaseRootRoute {
+ 		super(options);
+ 		this.useMatch = (opts) => {
+ 			return useMatch({
+-				select: opts?.select,
+-				from: this.id,
+-				structuralSharing: opts?.structuralSharing
++				...opts,
++				from: this.id
+ 			});
+ 		};
+ 		this.useRouteContext = (opts) => {
+@@ -199,15 +192,13 @@ var RootRoute = class extends BaseRootRoute {
+ 		};
+ 		this.useSearch = (opts) => {
+ 			return useSearch({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.id
+ 			});
+ 		};
+ 		this.useParams = (opts) => {
+ 			return useParams({
+-				select: opts?.select,
+-				structuralSharing: opts?.structuralSharing,
++				...opts,
+ 				from: this.id
+ 			});
+ 		};
+diff --git a/dist/esm/router.d.ts b/dist/esm/router.d.ts
+index 311e1bf0375a336e2bd7abe41203fe383d199af6..3d69a2e5f5f26f693906819bd9335a08c2896662 100644
+--- a/dist/esm/router.d.ts
++++ b/dist/esm/router.d.ts
+@@ -3,6 +3,14 @@ import { RouterHistory } from '@tanstack/history';
+ import { ErrorRouteComponent, NotFoundRouteComponent, RouteComponent } from './route.js';
+ declare module '@tanstack/router-core' {
+     interface RouterOptionsExtensions {
++        /**
++         * Publish one immutable router snapshot through React state per navigation.
++         * This keeps urgent renders on the committed route while a newer route is
++         * pending, at the cost of broad context invalidation.
++         *
++         * @experimental
++         */
++        experimental_concurrentRenderFrames?: boolean;
+         /**
+          * The default `component` a route should use if no component is provided.
+          *
+diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..345f911bbc7dbeb9988d9796ebd284b08f62f450
+--- /dev/null
++++ b/dist/esm/routerStateContext.d.ts
+@@ -0,0 +1,22 @@
++import { AnyRouter, RouterState } from '@tanstack/router-core';
++import * as React from 'react';
++export type RouterRenderFrame = RouterState<any>;
++type RouterStateContextValue = {
++    router: AnyRouter;
++    frame: RouterRenderFrame;
++    begin: () => void;
++    stage: (frame: RouterRenderFrame) => RouterRenderFrame;
++    cancel: () => void;
++    commit: (frame: RouterRenderFrame) => boolean;
++};
++export declare function RouterStateProvider({ router, children, }: {
++    router: AnyRouter;
++    children: React.ReactNode;
++}): import("react/jsx-runtime").JSX.Element;
++export declare function RouterStateFrame({ frame, children, }: {
++    frame: RouterRenderFrame;
++    children: React.ReactNode;
++}): import("react/jsx-runtime").JSX.Element;
++export declare function useRouterStateOwner(): RouterStateContextValue | undefined;
++export declare function useRouterStateSelector<TSelected>(router: AnyRouter, selector: (state: RouterState<any>) => TSelected, compare?: (a: TSelected, b: TSelected) => boolean): TSelected;
++export {};
+diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..9aa532a29b7c38e594cd6060b67185dbe0697a01
+--- /dev/null
++++ b/dist/esm/routerStateContext.js
+@@ -0,0 +1,93 @@
++"use client";
++import { useLayoutEffect } from "./utils.js";
++import * as React$1 from "react";
++import { isServer } from "@tanstack/router-core/isServer";
++import { jsx } from "react/jsx-runtime";
++import { useStore } from "@tanstack/react-store";
++//#region src/routerStateContext.tsx
++var defaultCompare = (a, b) => a === b;
++var routerStateContext = React$1.createContext(void 0);
++function RouterStateProvider({ router, children }) {
++	const staging = React$1.useRef(false);
++	const pendingFrame = React$1.useRef(void 0);
++	const [frame, setFrame] = React$1.useState(() => router.stores.__store.get());
++	const publish = React$1.useCallback(() => {
++		if (staging.current || pendingFrame.current) return;
++		const nextFrame = router.stores.__store.get();
++		if (nextFrame.status === "pending") return;
++		setFrame((previous) => previous.frameId === nextFrame.frameId ? previous : nextFrame);
++	}, [router]);
++	const begin = React$1.useCallback(() => {
++		staging.current = true;
++	}, []);
++	const stage = React$1.useCallback((nextFrame) => {
++		staging.current = false;
++		pendingFrame.current = nextFrame;
++		return nextFrame;
++	}, []);
++	const cancel = React$1.useCallback(() => {
++		staging.current = false;
++		pendingFrame.current = void 0;
++		publish();
++	}, [publish]);
++	const commit = React$1.useCallback((nextFrame) => {
++		if (pendingFrame.current?.frameId !== nextFrame.frameId) return false;
++		pendingFrame.current = void 0;
++		setFrame(nextFrame);
++		return true;
++	}, []);
++	useLayoutEffect(() => {
++		const subscription = router.stores.__store.subscribe(() => publish());
++		publish();
++		return () => subscription.unsubscribe();
++	}, [publish, router]);
++	const value = React$1.useMemo(() => ({
++		router,
++		frame,
++		begin,
++		stage,
++		cancel,
++		commit
++	}), [
++		router,
++		frame,
++		begin,
++		stage,
++		cancel,
++		commit
++	]);
++	return /* @__PURE__ */ jsx(routerStateContext.Provider, {
++		value,
++		children
++	});
++}
++function RouterStateFrame({ frame, children }) {
++	const owner = React$1.useContext(routerStateContext);
++	const value = React$1.useMemo(() => ({
++		...owner,
++		frame
++	}), [owner, frame]);
++	return /* @__PURE__ */ jsx(routerStateContext.Provider, {
++		value,
++		children
++	});
++}
++function useRouterStateOwner() {
++	return React$1.useContext(routerStateContext);
++}
++function useRouterStateSelector(router, selector, compare = defaultCompare) {
++	const context = React$1.useContext(routerStateContext);
++	const contextState = context?.router === router ? context.frame : null;
++	const selection = React$1.useRef(void 0);
++	if (contextState) {
++		const next = selector(contextState);
++		if (!selection.current || !compare(selection.current.value, next)) selection.current = { value: next };
++		return selection.current.value;
++	}
++	if (isServer ?? router.isServer) return selector(router.stores.__store.get());
++	return useStore(router.stores.__store, selector, compare);
++}
++//#endregion
++export { RouterStateFrame, RouterStateProvider, useRouterStateOwner, useRouterStateSelector };
++
++//# sourceMappingURL=routerStateContext.js.map
+\ No newline at end of file
+diff --git a/dist/esm/useCanGoBack.js b/dist/esm/useCanGoBack.js
+index edd68923c55ee831b53da0278a99fa2db82b378e..7b6c35ab7be34ebcf8ca97fd2fc976174e08d479 100644
+--- a/dist/esm/useCanGoBack.js
++++ b/dist/esm/useCanGoBack.js
+@@ -1,9 +1,11 @@
+ import { useRouter } from "./useRouter.js";
++import { useRouterStateSelector } from "./routerStateContext.js";
+ import { isServer } from "@tanstack/router-core/isServer";
+ import { useStore } from "@tanstack/react-store";
+ //#region src/useCanGoBack.ts
+ function useCanGoBack() {
+ 	const router = useRouter();
++	if (router.options.experimental_concurrentRenderFrames) return useRouterStateSelector(router, (state) => state.location.state.__TSR_index !== 0);
+ 	if (isServer ?? router.isServer) return router.stores.location.get().state.__TSR_index !== 0;
+ 	return useStore(router.stores.location, (location) => location.state.__TSR_index !== 0);
+ }
+diff --git a/dist/esm/useLocation.js b/dist/esm/useLocation.js
+index f0956ede1c6d3fd463201b281f4cd73073e5e9d7..92144f0db97ef99496e46ad1966e42147d1615ed 100644
+--- a/dist/esm/useLocation.js
++++ b/dist/esm/useLocation.js
+@@ -1,5 +1,6 @@
+ "use client";
+ import { useRouter } from "./useRouter.js";
++import { useRouterStateSelector } from "./routerStateContext.js";
+ import { useStructuralSharing } from "./useMatch.js";
+ import { isServer } from "@tanstack/router-core/isServer";
+ import { useStore } from "@tanstack/react-store";
+@@ -17,6 +18,10 @@ import { useStore } from "@tanstack/react-store";
+ */
+ function useLocation(opts) {
+ 	const router = useRouter();
++	if (router.options.experimental_concurrentRenderFrames) {
++		const selectLocation = useStructuralSharing(opts, router);
++		return useRouterStateSelector(router, (state) => selectLocation(state.location));
++	}
+ 	if (isServer ?? router.isServer) {
+ 		const location = router.stores.location.get();
+ 		return opts?.select ? opts.select(location) : location;
+diff --git a/dist/esm/useMatch.d.ts b/dist/esm/useMatch.d.ts
+index 4c8d6ff58af0c74739d5e0b226f5b07390b87d3e..c2623c5bb27a7c301c912404de0721c2d138e1f8 100644
+--- a/dist/esm/useMatch.d.ts
++++ b/dist/esm/useMatch.d.ts
+@@ -8,7 +8,7 @@ export interface UseMatchBaseOptions<TRouter extends AnyRouter, TFrom, TStrict e
+     select?: (match: MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict>) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
+     shouldThrow?: TThrow;
+ }
+-export type UseMatchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean>(opts?: UseMatchBaseOptions<TRouter, TFrom, true, true, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => UseMatchResult<TRouter, TFrom, true, TSelected>;
++export type UseMatchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean, TThrow extends boolean = true>(opts?: UseMatchBaseOptions<TRouter, TFrom, true, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => ThrowOrOptional<UseMatchResult<TRouter, TFrom, true, TSelected>, TThrow>;
+ export type UseMatchOptions<TRouter extends AnyRouter, TFrom extends string | undefined, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing extends boolean> = StrictOrFrom<TRouter, TFrom, TStrict> & UseMatchBaseOptions<TRouter, TFrom, TStrict, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>;
+ export type UseMatchResult<TRouter extends AnyRouter, TFrom, TStrict extends boolean, TSelected> = unknown extends TSelected ? TStrict extends true ? MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict> : MakeRouteMatchUnion<TRouter> : TSelected;
+ /**
+diff --git a/dist/esm/useMatch.js b/dist/esm/useMatch.js
+index 5d0c7a6a044c18341f101b8f5d5485cd06326c0d..2603f560fadf967952f0d3dd262f0cfd34e85e1f 100644
+--- a/dist/esm/useMatch.js
++++ b/dist/esm/useMatch.js
+@@ -1,6 +1,7 @@
+ "use client";
+ import { dummyMatchContext, matchContext } from "./matchContext.js";
+ import { useRouter } from "./useRouter.js";
++import { useRouterStateSelector } from "./routerStateContext.js";
+ import { invariant, replaceEqualDeep } from "@tanstack/router-core";
+ import * as React$1 from "react";
+ import { isServer } from "@tanstack/router-core/isServer";
+@@ -24,20 +25,29 @@ function useMatch(opts) {
+ 	const nearestRouteId = React$1.useContext(opts.from ? dummyMatchContext : matchContext);
+ 	const routeId = opts.from ?? nearestRouteId;
+ 	const matchStore = router.stores.getMatchStore(routeId);
+-	if (isServer ?? router.isServer) {
+-		const match = matchStore.get();
+-		if (!match) {
+-			if (opts.shouldThrow ?? true) {
+-				if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
+-				invariant();
++	if (!router.options.experimental_concurrentRenderFrames) {
++		if (isServer ?? router.isServer) {
++			const match = matchStore.get();
++			if (!match) {
++				if (opts.shouldThrow ?? true) {
++					if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
++					invariant();
++				}
++				return;
+ 			}
+-			return;
++			return opts.select ? opts.select(match) : match;
+ 		}
+-		return opts.select ? opts.select(match) : match;
++		const selector = useStructuralSharing(opts, router);
++		const matchSelection = useStore(matchStore, (match) => match ? selector(match) : dummyMatch);
++		if (matchSelection !== dummyMatch) return matchSelection;
++	} else {
++		const selector = useStructuralSharing(opts, router);
++		const matchSelection = useRouterStateSelector(router, (state) => {
++			const match = state.matches.find((candidate) => candidate.routeId === routeId);
++			return match ? selector(match) : dummyMatch;
++		});
++		if (matchSelection !== dummyMatch) return matchSelection;
+ 	}
+-	const selector = useStructuralSharing(opts, router);
+-	const matchSelection = useStore(matchStore, (match) => match ? selector(match) : dummyMatch);
+-	if (matchSelection !== dummyMatch) return matchSelection;
+ 	if (opts.shouldThrow ?? true) {
+ 		if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
+ 		invariant();
+diff --git a/dist/esm/useParams.d.ts b/dist/esm/useParams.d.ts
+index 99cc19882a22b76e0f81b726fedc6f7859675ec1..ef3780a0b246d5e888393f7745c4faf0d4cf87b5 100644
+--- a/dist/esm/useParams.d.ts
++++ b/dist/esm/useParams.d.ts
+@@ -5,7 +5,7 @@ export interface UseParamsBaseOptions<TRouter extends AnyRouter, TFrom, TStrict
+     shouldThrow?: TThrow;
+ }
+ export type UseParamsOptions<TRouter extends AnyRouter, TFrom extends string | undefined, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing> = StrictOrFrom<TRouter, TFrom, TStrict> & UseParamsBaseOptions<TRouter, TFrom, TStrict, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>;
+-export type UseParamsRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean>(opts?: UseParamsBaseOptions<TRouter, TFrom, true, true, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => UseParamsResult<TRouter, TFrom, true, TSelected>;
++export type UseParamsRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean, TThrow extends boolean = true>(opts?: UseParamsBaseOptions<TRouter, TFrom, true, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => ThrowOrOptional<UseParamsResult<TRouter, TFrom, true, TSelected>, TThrow>;
+ /**
+  * Access the current route's path parameters with type-safety.
+  *
+diff --git a/dist/esm/useRouterState.js b/dist/esm/useRouterState.js
+index d82afeead0daa8ccb8756ad3376a20015c4b7427..a02ded087ccd8b686947c157279dd94d67d4fce1 100644
+--- a/dist/esm/useRouterState.js
++++ b/dist/esm/useRouterState.js
+@@ -1,5 +1,6 @@
+ "use client";
+ import { useRouter } from "./useRouter.js";
++import { useRouterStateSelector } from "./routerStateContext.js";
+ import { useStructuralSharing } from "./useMatch.js";
+ import { isServer } from "@tanstack/router-core/isServer";
+ import { useStore } from "@tanstack/react-store";
+@@ -19,6 +20,7 @@ import { useStore } from "@tanstack/react-store";
+ function useRouterState(opts) {
+ 	const contextRouter = useRouter({ warn: opts?.router === void 0 });
+ 	const router = opts?.router || contextRouter;
++	if (router.options.experimental_concurrentRenderFrames) return useRouterStateSelector(router, useStructuralSharing(opts, router));
+ 	if (isServer ?? router.isServer) {
+ 		const state = router.stores.__store.get();
+ 		return opts?.select ? opts.select(state) : state;
+diff --git a/dist/esm/useSearch.d.ts b/dist/esm/useSearch.d.ts
+index 186053ecfdc6a204dc1e5b64cb5590d7bb90eccd..9a4b1044308655aa2b3d214b31223479491ab494 100644
+--- a/dist/esm/useSearch.d.ts
++++ b/dist/esm/useSearch.d.ts
+@@ -5,7 +5,7 @@ export interface UseSearchBaseOptions<TRouter extends AnyRouter, TFrom, TStrict
+     shouldThrow?: TThrow;
+ }
+ export type UseSearchOptions<TRouter extends AnyRouter, TFrom, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing> = StrictOrFrom<TRouter, TFrom, TStrict> & UseSearchBaseOptions<TRouter, TFrom, TStrict, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>;
+-export type UseSearchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean>(opts?: UseSearchBaseOptions<TRouter, TFrom, true, true, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => UseSearchResult<TRouter, TFrom, true, TSelected>;
++export type UseSearchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean, TThrow extends boolean = true>(opts?: UseSearchBaseOptions<TRouter, TFrom, true, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => ThrowOrOptional<UseSearchResult<TRouter, TFrom, true, TSelected>, TThrow>;
+ /**
+  * Read and select the current route's search parameters with type-safety.
+  *
+diff --git a/src/Match.tsx b/src/Match.tsx
+index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..a3309d489286e2e6c34571260cfa50cb1f8a52be 100644
+--- a/src/Match.tsx
++++ b/src/Match.tsx
+@@ -11,7 +11,8 @@ import { matchContext } from './matchContext'
+ import { SafeFragment } from './SafeFragment'
+ import { renderRouteNotFound } from './renderRouteNotFound'
+ import { ScrollRestoration } from './scroll-restoration'
+-import { ClientOnly } from './ClientOnly'
++import { ClientOnly, useHydrated } from './ClientOnly'
++import { useRouterStateSelector } from './routerStateContext'
+ import {
+   nonRouteComponentContext,
+   wrapInNonRouteComponentContext,
+@@ -43,11 +44,22 @@ type OutletMatchSelection = [
+   parentNotFoundError: unknown,
+ ]
+ 
++type ConcurrentOutletMatchSelection = [
++  parentGlobalNotFound: boolean,
++  parentNotFoundError: unknown,
++  childRouteId: string | undefined,
++]
++
+ const outletMatchSelectionEqual = (
+   a: OutletMatchSelection,
+   b: OutletMatchSelection,
+ ) => a[0] === b[0] && a[1] === b[1]
+ 
++const concurrentOutletMatchSelectionEqual = (
++  a: ConcurrentOutletMatchSelection,
++  b: ConcurrentOutletMatchSelection,
++) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2]
++
+ const canWrapInSuspense = (
+   router: ReturnType<typeof useRouter>,
+   route: AnyRoute,
+@@ -66,6 +78,15 @@ export const Match = React.memo(function MatchImpl({
+   routeId: string
+ }) {
+   const router = useRouter()
++  if (router.options.experimental_concurrentRenderFrames) {
++    // The option is fixed for the mounted router, so this branch cannot change
++    // hook order during the component's lifetime.
++    // eslint-disable-next-line react-hooks/rules-of-hooks
++    const match = useRouterStateSelector(router, (state) =>
++      state.matches.find((candidate) => candidate.routeId === routeId),
++    )
++    return <MatchView router={router} match={match!} />
++  }
+ 
+   if (isServer ?? router.isServer) {
+     const match = router.stores.byRoute.get(routeId)!.get()!
+@@ -101,9 +122,19 @@ function MatchView({
+     : route.options.notFoundComponent
+ 
+   const resolvedNoSsr = match.ssr === false || match.ssr === 'data-only'
++  const _isServer = isServer ?? router.isServer
++  const isHydrating = Boolean(router.ssr) && !useHydrated()
++  // Once hydrated, a concurrent frame must suspend and acknowledge as one
++  // unit. During SSR and hydration, retain the route boundaries so the server
++  // can stream its shell and the client hydrates the same boundary tree.
++  const useFrameRootBoundary =
++    router.options.experimental_concurrentRenderFrames &&
++    !_isServer &&
++    !isHydrating
+   // A root component may render the document itself. Only place its Suspense
+   // boundary in pure CSR, inside an explicit shell, or when explicitly opted in.
+   const ResolvedSuspenseBoundary =
++    !useFrameRootBoundary &&
+     canWrapInSuspense(router, route, match.ssr) &&
+     (route.options.wrapInSuspense ??
+       pendingElement ??
+@@ -277,7 +308,28 @@ export const Outlet = React.memo(function OutletImpl() {
+   let parentNotFoundError: unknown
+   let childRouteId: string | undefined
+ 
+-  if (isServer ?? router.isServer) {
++  if (router.options.experimental_concurrentRenderFrames) {
++    // The option is fixed for the mounted router, so this branch cannot change
++    // hook order during the component's lifetime.
++    // eslint-disable-next-line react-hooks/rules-of-hooks
++    ;[parentGlobalNotFound, parentNotFoundError, childRouteId] =
++      useRouterStateSelector(
++        router,
++        (state): ConcurrentOutletMatchSelection => {
++          const matches = state.matches
++          const parentIndex = matches.findIndex(
++            (match) => match.routeId === routeId,
++          )
++          const parentMatch = matches[parentIndex]!
++          return [
++            !!parentMatch._notFound,
++            parentMatch.error,
++            matches[parentIndex + 1]?.routeId,
++          ]
++        },
++        concurrentOutletMatchSelectionEqual,
++      )
++  } else if (isServer ?? router.isServer) {
+     const matches = router.stores.matches.get()
+     const parentIndex = matches.findIndex((match) => match.routeId === routeId)
+     const parentMatch = matches[parentIndex]!
+@@ -314,7 +366,11 @@ export const Outlet = React.memo(function OutletImpl() {
+ 
+   const nextMatch = <Match routeId={childRouteId} />
+ 
+-  if (routeId === rootRouteId) {
++  // Matches owns the experiment's single acknowledgement boundary.
++  if (
++    routeId === rootRouteId &&
++    !router.options.experimental_concurrentRenderFrames
++  ) {
+     return (
+       <React.Suspense fallback={renderPending(router)}>
+         {nextMatch}
+diff --git a/src/Matches.tsx b/src/Matches.tsx
+index cada2373ff9a6ea8e971763712798e23bef10d34..df3065b441019d743a8e3eadb2235eccdf907b30 100644
+--- a/src/Matches.tsx
++++ b/src/Matches.tsx
+@@ -12,12 +12,20 @@ import { Transitioner, settleOwner } from './Transitioner'
+ import { matchContext } from './matchContext'
+ import { Match, renderPending } from './Match'
+ import { SafeFragment } from './SafeFragment'
++import { useHydrated } from './ClientOnly'
++import {
++  RouterStateFrame,
++  useRouterStateOwner,
++  useRouterStateSelector,
++} from './routerStateContext'
++import type { RouterRenderFrame } from './routerStateContext'
+ import type {
+   StructuralSharingOption,
+   ValidateSelected,
+ } from './structuralSharing'
+ import type {
+   AnyRoute,
++  AnyRouteMatch,
+   AnyRouter,
+   DeepPartial,
+   Expand,
+@@ -47,13 +55,26 @@ declare module '@tanstack/router-core' {
+  */
+ export function Matches() {
+   const router = useRouter()
++  const routerStateOwner = useRouterStateOwner()
++  const [renderFrame, setRenderFrame] = React.useState<RouterRenderFrame>()
++  const activeFrame = renderFrame ?? routerStateOwner?.frame
+   const rootRoute: AnyRoute = router.routesById[rootRouteId]
+ 
+   const pendingElement = renderPending(router, rootRoute)
+ 
+-  // Do not render a root Suspense during SSR or hydrating from SSR
++  const _isServer = isServer ?? router.isServer
++  const isHydrating = Boolean(router.ssr) && !useHydrated()
++  // SSR and hydration keep upstream's route-level boundaries for streaming
++  // and an identical hydration tree. Afterwards, the frame path consolidates
++  // suspension at this root so one complete frame is acknowledged atomically.
++  const useFrameRootBoundary =
++    router.options.experimental_concurrentRenderFrames &&
++    !_isServer &&
++    !isHydrating
+   const ResolvedSuspense =
+-    (isServer ?? router.isServer) || router.ssr ? SafeFragment : React.Suspense
++    _isServer || (router.ssr && !useFrameRootBoundary)
++      ? SafeFragment
++      : React.Suspense
+ 
+   const inner = (
+     <>
+@@ -65,10 +86,21 @@ export function Matches() {
+           // router object, so React skips the update.
+           // eslint-disable-next-line react-hooks/rules-of-hooks -- server only, condition is static
+           t={React.useState<AnyRouter>()[1]}
++          setRenderFrame={setRenderFrame}
+         />
+       )}
+       <ResolvedSuspense fallback={pendingElement}>
+-        <MatchesInner />
++        {activeFrame ? (
++          <RouterStateFrame frame={activeFrame}>
++            <MatchesInner
++              activeFrame={activeFrame}
++              renderFrame={renderFrame}
++              setRenderFrame={setRenderFrame}
++            />
++          </RouterStateFrame>
++        ) : (
++          <MatchesInner setRenderFrame={setRenderFrame} />
++        )}
+       </ResolvedSuspense>
+     </>
+   )
+@@ -80,25 +112,57 @@ export function Matches() {
+   )
+ }
+ 
+-function MatchesInner() {
++function MatchesInner({
++  activeFrame,
++  renderFrame,
++  setRenderFrame,
++}: {
++  activeFrame?: RouterRenderFrame
++  renderFrame?: RouterRenderFrame
++  setRenderFrame: React.Dispatch<
++    React.SetStateAction<RouterRenderFrame | undefined>
++  >
++}) {
+   const router = useRouter()
++  const routerStateOwner = useRouterStateOwner()
+   const acknowledgement = router._rendered!
+-  const matches =
+-    (isServer ?? router.isServer)
+-      ? router.stores.matches.get()
+-      : // eslint-disable-next-line react-hooks/rules-of-hooks
+-        useStore(
+-          router.stores.matches,
+-          (value) => acknowledgement[0 /* offered */] ?? value,
+-        )
++  let matches: Array<AnyRouteMatch>
++  if (router.options.experimental_concurrentRenderFrames) {
++    // The option is fixed for the mounted router, so this branch cannot change
++    // hook order during the component's lifetime.
++    // eslint-disable-next-line react-hooks/rules-of-hooks
++    matches = useRouterStateSelector(router, (state) => state.matches)
++  } else if (isServer ?? router.isServer) {
++    matches = router.stores.matches.get()
++  } else {
++    // eslint-disable-next-line react-hooks/rules-of-hooks
++    matches = useStore(router.stores.matches, (value) =>
++      Array.isArray(acknowledgement[0 /* offered */])
++        ? acknowledgement[0 /* offered */]
++        : value,
++    )
++  }
+   const match = matches[0]
+   const routeId = match?.routeId
+ 
+   useLayoutEffect(() => {
+-    if (acknowledgement[0 /* offered */] === matches) {
++    const acknowledged = router.options.experimental_concurrentRenderFrames
++      ? acknowledgement[0 /* offered */] === activeFrame?.frameId
++      : acknowledgement[0 /* offered */] === matches
++    if (acknowledged) {
++      if (renderFrame && routerStateOwner?.commit(renderFrame)) {
++        setRenderFrame(undefined)
++      }
+       settleOwner(acknowledgement, true)
+     }
+-  }, [acknowledgement, matches])
++  }, [
++    acknowledgement,
++    activeFrame,
++    matches,
++    renderFrame,
++    routerStateOwner,
++    setRenderFrame,
++  ])
+ 
+   const matchComponent = routeId ? <Match routeId={routeId} /> : null
+ 
+@@ -177,6 +241,33 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
+     }
+   }
+ 
++  if (router.options.experimental_concurrentRenderFrames) {
++    // The option is fixed for the mounted router, so this branch cannot change
++    // hook order during the component's lifetime.
++    // eslint-disable-next-line react-hooks/rules-of-hooks
++    const state = useRouterStateSelector(router, (frameState) => frameState)
++    // eslint-disable-next-line react-hooks/rules-of-hooks
++    return React.useCallback(
++      (opts) => {
++        const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts
++
++        // Match against the presented frame so a pending imperative location
++        // cannot leak into the committed render.
++        return router.matchRoute(
++          rest as any,
++          {
++            pending,
++            caseSensitive,
++            fuzzy,
++            includeSearch,
++            _state: state,
++          } as any,
++        )
++      },
++      [router, state],
++    )
++  }
++
+   // eslint-disable-next-line react-hooks/rules-of-hooks
+   return React.useCallback(
+     (opts) => {
+@@ -267,6 +358,17 @@ export function useMatches<
+ ): UseMatchesResult<TRouter, TSelected> {
+   const router = useRouter<TRouter>()
+ 
++  if (router.options.experimental_concurrentRenderFrames) {
++    // The option is fixed for the mounted router, so this branch cannot change
++    // hook order during the component's lifetime.
++    // eslint-disable-next-line react-hooks/rules-of-hooks
++    const selectMatches = useStructuralSharing(opts, router)
++    // eslint-disable-next-line react-hooks/rules-of-hooks
++    return useRouterStateSelector(router, (state) =>
++      selectMatches(state.matches),
++    ) as UseMatchesResult<TRouter, TSelected>
++  }
++
+   if (isServer ?? router.isServer) {
+     const matches = router.stores.matches.get() as Array<
+       MakeRouteMatchUnion<TRouter>
+diff --git a/src/RouterProvider.tsx b/src/RouterProvider.tsx
+index 81c3fb4ece27ca0e8044f58a14677eb68628adb7..b767035e9220752d8d829193c5c4a5474cee309d 100644
+--- a/src/RouterProvider.tsx
++++ b/src/RouterProvider.tsx
+@@ -4,6 +4,7 @@ import * as React from 'react'
+ import { hasKeys } from '@tanstack/router-core'
+ import { Matches } from './Matches'
+ import { routerContext } from './routerContext'
++import { RouterStateProvider } from './routerStateContext'
+ import type {
+   AnyRouter,
+   RegisteredRouter,
+@@ -36,9 +37,16 @@ export function RouterContextProvider<
+     })
+   }
+ 
++  const childrenWithState = router.options
++    .experimental_concurrentRenderFrames ? (
++    <RouterStateProvider router={router}>{children}</RouterStateProvider>
++  ) : (
++    children
++  )
++
+   const provider = (
+     <routerContext.Provider value={router as AnyRouter}>
+-      {children}
++      {childrenWithState}
+     </routerContext.Provider>
+   )
+ 
+diff --git a/src/Scripts.tsx b/src/Scripts.tsx
+index a1b189d4c6a4dceacebf1330b5d39cfc02637437..d422cbfd80441bd12c3aa7fb4a56a80510ee0517 100644
+--- a/src/Scripts.tsx
++++ b/src/Scripts.tsx
+@@ -3,6 +3,7 @@ import { _getAssetMatches, deepEqual } from '@tanstack/router-core'
+ import { isServer } from '@tanstack/router-core/isServer'
+ import { Asset } from './Asset'
+ import { useRouter } from './useRouter'
++import { useRouterStateSelector } from './routerStateContext'
+ import type { RouterManagedTag } from '@tanstack/router-core'
+ 
+ type ScriptRenderAsset = RouterManagedTag & {
+@@ -62,15 +63,21 @@ export const Scripts = () => {
+     return scripts
+   }
+ 
+-  if (isServer ?? router.isServer) {
+-    const activeMatches = router.stores.matches.get()
+-    const scripts = getScripts(activeMatches)
+-    return renderScripts(router, scripts)
++  let scripts: ReturnType<typeof getScripts>
++  if (router.options.experimental_concurrentRenderFrames) {
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++    scripts = useRouterStateSelector(
++      router,
++      (state) => getScripts(state.matches),
++      deepEqual,
++    )
++  } else if (isServer ?? router.isServer) {
++    scripts = getScripts(router.stores.matches.get())
++  } else {
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
++    scripts = useStore(router.stores.matches, getScripts, deepEqual)
+   }
+ 
+-  // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
+-  const scripts = useStore(router.stores.matches, getScripts, deepEqual)
+-
+   return renderScripts(router, scripts)
+ }
+ 
+diff --git a/src/Transitioner.tsx b/src/Transitioner.tsx
+index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..ed03f04b0e87bacc30b3b0f1d07de4778acc9913 100644
+--- a/src/Transitioner.tsx
++++ b/src/Transitioner.tsx
+@@ -4,7 +4,9 @@ import * as React from 'react'
+ import { getLocationChangeInfo, trimPathRight } from '@tanstack/router-core'
+ import { useLayoutEffect } from './utils'
+ import { useRouter } from './useRouter'
++import { useRouterStateOwner } from './routerStateContext'
+ import type { AnyRouter } from '@tanstack/router-core'
++import type { RouterRenderFrame } from './routerStateContext'
+ 
+ export function settleOwner(
+   owner: NonNullable<AnyRouter['_rendered']>,
+@@ -17,10 +19,15 @@ export function settleOwner(
+ 
+ export function Transitioner({
+   t,
++  setRenderFrame,
+ }: {
+   t: React.Dispatch<React.SetStateAction<AnyRouter | undefined>>
++  setRenderFrame: React.Dispatch<
++    React.SetStateAction<RouterRenderFrame | undefined>
++  >
+ }) {
+   const router = useRouter()
++  const routerStateOwner = useRouterStateOwner()
+   const acknowledgement = (router._rendered ??= [])
+   const mounted =
+     process.env.NODE_ENV !== 'production'
+@@ -33,7 +40,21 @@ export function Transitioner({
+       settleOwner(acknowledgement, false)
+       acknowledgement.push(expected, resolve)
+       t(router)
+-      React.startTransition(fn)
++      React.startTransition(() => {
++        routerStateOwner?.begin()
++        try {
++          const headFrame = fn()
++          const frame = routerStateOwner?.stage(headFrame)
++          if (frame) {
++            acknowledgement[0 /* offered */] = frame.frameId
++            setRenderFrame(frame)
++          }
++        } catch (cause) {
++          routerStateOwner?.cancel()
++          setRenderFrame(undefined)
++          throw cause
++        }
++      })
+     })
+ 
+   // Subscribe before canonicalizing so the initial URL has exactly one load.
+@@ -78,14 +99,17 @@ export function Transitioner({
+       resolvedLocation?.href === location.href &&
+       resolvedLocation.state.__TSR_key === location.state.__TSR_key
+     ) {
+-      acknowledgement.push(router.stores.matches.get(), (rendered) => {
+-        if (rendered) {
+-          router.emit({
+-            type: 'onRendered',
+-            ...getLocationChangeInfo(resolvedLocation, resolvedLocation),
+-          })
+-        }
+-      })
++      acknowledgement.push(
++        routerStateOwner?.frame.frameId ?? router.stores.matches.get(),
++        (rendered) => {
++          if (rendered) {
++            router.emit({
++              type: 'onRendered',
++              ...getLocationChangeInfo(resolvedLocation, resolvedLocation),
++            })
++          }
++        },
++      )
+     } else if (!router._tx) {
+       router.load({ sync: true }).catch(console.error)
+     }
+diff --git a/src/fileRoute.ts b/src/fileRoute.ts
+index e5fdb4993b920c2907203b904308caa2d04195f8..f4d8c9b9676a0bb327a1f23bb08d9b8f39555855 100644
+--- a/src/fileRoute.ts
++++ b/src/fileRoute.ts
+@@ -218,11 +218,7 @@ export class LazyRoute<TRoute extends AnyRoute> {
+   }
+ 
+   useMatch: UseMatchRoute<TRoute['id']> = (opts) => {
+-    return useMatch({
+-      select: opts?.select,
+-      from: this.options.id,
+-      structuralSharing: opts?.structuralSharing,
+-    } as any) as any
++    return useMatch({ ...opts, from: this.options.id } as any) as any
+   }
+ 
+   useRouteContext: UseRouteContextRoute<TRoute['id']> = (opts) => {
+@@ -230,21 +226,11 @@ export class LazyRoute<TRoute extends AnyRoute> {
+   }
+ 
+   useSearch: UseSearchRoute<TRoute['id']> = (opts) => {
+-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+-    return useSearch({
+-      select: opts?.select,
+-      structuralSharing: opts?.structuralSharing,
+-      from: this.options.id,
+-    } as any) as any
++    return useSearch({ ...opts, from: this.options.id } as any)
+   }
+ 
+   useParams: UseParamsRoute<TRoute['id']> = (opts) => {
+-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+-    return useParams({
+-      select: opts?.select,
+-      structuralSharing: opts?.structuralSharing,
+-      from: this.options.id,
+-    } as any) as any
++    return useParams({ ...opts, from: this.options.id } as any)
+   }
+ 
+   useLoaderDeps: UseLoaderDepsRoute<TRoute['id']> = (opts) => {
+diff --git a/src/headContentUtils.tsx b/src/headContentUtils.tsx
+index d61ca829dbee43e402f743cc4b7788e44f7e7c39..1e4da11b70f45b20e3378984a88f2e3879fb95ab 100644
+--- a/src/headContentUtils.tsx
++++ b/src/headContentUtils.tsx
+@@ -11,6 +11,7 @@ import {
+ } from '@tanstack/router-core'
+ import { isServer } from '@tanstack/router-core/isServer'
+ import { useRouter } from './useRouter'
++import { useRouterStateSelector } from './routerStateContext'
+ import type {
+   AnyRouteMatch,
+   AssetCrossOriginConfig,
+@@ -196,21 +197,24 @@ export const useTags = (assetCrossOrigin?: AssetCrossOriginConfig) => {
+   const router = useRouter()
+   const nonce = router.options.ssr?.nonce
+ 
+-  if (isServer ?? router.isServer) {
+-    return buildTagsFromMatches(
+-      router,
+-      nonce,
+-      router.stores.matches.get(),
+-      assetCrossOrigin,
+-    )
+-  }
+-
+-  // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
+   const selectTags = React.useCallback(
+     (matches: Array<AnyRouteMatch>) =>
+       buildTagsFromMatches(router, nonce, matches, assetCrossOrigin),
+     [assetCrossOrigin, nonce, router],
+   )
++  if (router.options.experimental_concurrentRenderFrames) {
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++    return useRouterStateSelector(
++      router,
++      (state) => selectTags(state.matches),
++      deepEqual,
++    )
++  }
++
++  if (isServer ?? router.isServer) {
++    return selectTags(router.stores.matches.get())
++  }
++
+   // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
+   return useStore(router.stores.matches, selectTags, deepEqual)
+ }
+diff --git a/src/link.tsx b/src/link.tsx
+index a0d69689867741d9a6171d23b69f45620186108c..c80a540f800811add38912682ff901ab21a0c5c8 100644
+--- a/src/link.tsx
++++ b/src/link.tsx
+@@ -13,6 +13,7 @@ import {
+ } from '@tanstack/router-core'
+ import { isServer } from '@tanstack/router-core/isServer'
+ import { useRouter } from './useRouter'
++import { useRouterStateSelector } from './routerStateContext'
+ 
+ import { useForwardedRef, useIntersectionObserver } from './utils'
+ 
+@@ -262,7 +263,10 @@ export function useLinkProps<
+       }
+     }
+ 
+-    const next = router.buildLocation({ ...options, from: options.from } as any)
++    const next = router.buildLocation({
++      ...options,
++      from: options.from,
++    } as any)
+ 
+     // Use publicHref - it contains the correct href for display
+     // When a rewrite changes the origin, publicHref is the full URL
+@@ -557,12 +561,16 @@ export function useLinkProps<
+     [stableActiveOptions, disabled, isHydrated, _options, router, to],
+   )
+ 
+-  // eslint-disable-next-line react-hooks/rules-of-hooks
+-  const [href, externalLink, isActive] = useStore(
+-    router.stores.location,
+-    selectLinkState,
+-    compareLinkState,
+-  )
++  const [href, externalLink, isActive] = router.options
++    .experimental_concurrentRenderFrames
++    ? // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++      useRouterStateSelector(
++        router,
++        (state) => selectLinkState(state.location),
++        compareLinkState,
++      )
++    : // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++      useStore(router.stores.location, selectLinkState, compareLinkState)
+ 
+   // Get the active props
+   const resolvedActiveProps: React.HTMLAttributes<HTMLAnchorElement> = isActive
+diff --git a/src/not-found.tsx b/src/not-found.tsx
+index ce3a04c74860a764a39a7469bbc307785b48dfaa..53c9810f3f791b9a370c2dfa02e2a4e2cf9cd700 100644
+--- a/src/not-found.tsx
++++ b/src/not-found.tsx
+@@ -4,6 +4,7 @@ import { isServer } from '@tanstack/router-core/isServer'
+ import { useStore } from '@tanstack/react-store'
+ import { CatchBoundary } from './CatchBoundary'
+ import { useRouter } from './useRouter'
++import { useRouterStateSelector } from './routerStateContext'
+ import type { ErrorInfo } from 'react'
+ import type { NotFoundError } from '@tanstack/router-core'
+ 
+@@ -13,43 +14,25 @@ export function CatchNotFound(props: {
+   children: React.ReactNode
+ }) {
+   const router = useRouter()
+-
+-  if (isServer ?? router.isServer) {
+-    const pathname = router.stores.location.get().pathname
+-    const status = router.stores.status.get()
+-    const resetKey = `not-found-${pathname}-${status}`
+-
+-    return (
+-      <CatchBoundary
+-        getResetKey={() => resetKey}
+-        onCatch={(error, errorInfo) => {
+-          if (isNotFound(error)) {
+-            props.onCatch?.(error, errorInfo)
+-          } else {
+-            throw error
+-          }
+-        }}
+-        errorComponent={({ error }) => {
+-          if (isNotFound(error)) {
+-            return props.fallback?.(error)
+-          } else {
+-            throw error
+-          }
+-        }}
+-      >
+-        {props.children}
+-      </CatchBoundary>
++  let pathname: string
++  let status: 'pending' | 'idle'
++  if (router.options.experimental_concurrentRenderFrames) {
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++    ;[pathname, status] = useRouterStateSelector(
++      router,
++      (state) => [state.location.pathname, state.status] as const,
++      (a, b) => a[0] === b[0] && a[1] === b[1],
+     )
++  } else if (isServer ?? router.isServer) {
++    pathname = router.stores.location.get().pathname
++    status = router.stores.status.get()
++  } else {
++    // TODO: Some way for the user to programmatically reset the not-found boundary?
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
++    pathname = useStore(router.stores.location, (location) => location.pathname)
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
++    status = useStore(router.stores.status, (status) => status)
+   }
+-
+-  // TODO: Some way for the user to programmatically reset the not-found boundary?
+-  // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
+-  const pathname = useStore(
+-    router.stores.location,
+-    (location) => location.pathname,
+-  )
+-  // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
+-  const status = useStore(router.stores.status, (status) => status)
+   const resetKey = `not-found-${pathname}-${status}`
+ 
+   return (
+diff --git a/src/route.tsx b/src/route.tsx
+index 6f6961807b5b6fa4a44a1fdbf6975275ad56e5c7..57dca9ef029b6f5ad4d338d61438c7b498d6b0db 100644
+--- a/src/route.tsx
++++ b/src/route.tsx
+@@ -107,11 +107,7 @@ export class RouteApi<
+   }
+ 
+   useMatch: UseMatchRoute<TId> = (opts) => {
+-    return useMatch({
+-      select: opts?.select,
+-      from: this.id,
+-      structuralSharing: opts?.structuralSharing,
+-    } as any) as any
++    return useMatch({ ...opts, from: this.id } as any) as any
+   }
+ 
+   useRouteContext: UseRouteContextRoute<TId> = (opts) => {
+@@ -119,21 +115,11 @@ export class RouteApi<
+   }
+ 
+   useSearch: UseSearchRoute<TId> = (opts) => {
+-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+-    return useSearch({
+-      select: opts?.select,
+-      structuralSharing: opts?.structuralSharing,
+-      from: this.id,
+-    } as any) as any
++    return useSearch({ ...opts, from: this.id } as any)
+   }
+ 
+   useParams: UseParamsRoute<TId> = (opts) => {
+-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+-    return useParams({
+-      select: opts?.select,
+-      structuralSharing: opts?.structuralSharing,
+-      from: this.id,
+-    } as any) as any
++    return useParams({ ...opts, from: this.id } as any)
+   }
+ 
+   useLoaderDeps: UseLoaderDepsRoute<TId> = (opts) => {
+@@ -261,11 +247,7 @@ export class Route<
+   }
+ 
+   useMatch: UseMatchRoute<TId> = (opts) => {
+-    return useMatch({
+-      select: opts?.select,
+-      from: this.id,
+-      structuralSharing: opts?.structuralSharing,
+-    } as any) as any
++    return useMatch({ ...opts, from: this.id } as any) as any
+   }
+ 
+   useRouteContext: UseRouteContextRoute<TId> = (opts?) => {
+@@ -273,21 +255,11 @@ export class Route<
+   }
+ 
+   useSearch: UseSearchRoute<TId> = (opts) => {
+-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+-    return useSearch({
+-      select: opts?.select,
+-      structuralSharing: opts?.structuralSharing,
+-      from: this.id,
+-    } as any) as any
++    return useSearch({ ...opts, from: this.id } as any)
+   }
+ 
+   useParams: UseParamsRoute<TId> = (opts) => {
+-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+-    return useParams({
+-      select: opts?.select,
+-      structuralSharing: opts?.structuralSharing,
+-      from: this.id,
+-    } as any) as any
++    return useParams({ ...opts, from: this.id } as any)
+   }
+ 
+   useLoaderDeps: UseLoaderDepsRoute<TId> = (opts) => {
+@@ -532,11 +504,7 @@ export class RootRoute<
+   }
+ 
+   useMatch: UseMatchRoute<RootRouteId> = (opts) => {
+-    return useMatch({
+-      select: opts?.select,
+-      from: this.id,
+-      structuralSharing: opts?.structuralSharing,
+-    } as any) as any
++    return useMatch({ ...opts, from: this.id } as any) as any
+   }
+ 
+   useRouteContext: UseRouteContextRoute<RootRouteId> = (opts) => {
+@@ -544,21 +512,11 @@ export class RootRoute<
+   }
+ 
+   useSearch: UseSearchRoute<RootRouteId> = (opts) => {
+-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+-    return useSearch({
+-      select: opts?.select,
+-      structuralSharing: opts?.structuralSharing,
+-      from: this.id,
+-    } as any) as any
++    return useSearch({ ...opts, from: this.id } as any)
+   }
+ 
+   useParams: UseParamsRoute<RootRouteId> = (opts) => {
+-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+-    return useParams({
+-      select: opts?.select,
+-      structuralSharing: opts?.structuralSharing,
+-      from: this.id,
+-    } as any) as any
++    return useParams({ ...opts, from: this.id } as any)
+   }
+ 
+   useLoaderDeps: UseLoaderDepsRoute<RootRouteId> = (opts) => {
+diff --git a/src/router.ts b/src/router.ts
+index 178eace31bd84cef131aa743993beea9ac92b30a..3b1c647dde9d5220c112a7a67828eb694be686d2 100644
+--- a/src/router.ts
++++ b/src/router.ts
+@@ -16,6 +16,14 @@ import type {
+ 
+ declare module '@tanstack/router-core' {
+   export interface RouterOptionsExtensions {
++    /**
++     * Publish one immutable router snapshot through React state per navigation.
++     * This keeps urgent renders on the committed route while a newer route is
++     * pending, at the cost of broad context invalidation.
++     *
++     * @experimental
++     */
++    experimental_concurrentRenderFrames?: boolean
+     /**
+      * The default `component` a route should use if no component is provided.
+      *
+diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..3c0ca999c36877b6979496dff3ad2ce48925aab6
+--- /dev/null
++++ b/src/routerStateContext.tsx
+@@ -0,0 +1,140 @@
++'use client'
++
++import * as React from 'react'
++import { useStore } from '@tanstack/react-store'
++import { isServer } from '@tanstack/router-core/isServer'
++import { useLayoutEffect } from './utils'
++import type { AnyRouter, RouterState } from '@tanstack/router-core'
++
++export type RouterRenderFrame = RouterState<any>
++
++type RouterStateContextValue = {
++  router: AnyRouter
++  frame: RouterRenderFrame
++  begin: () => void
++  stage: (frame: RouterRenderFrame) => RouterRenderFrame
++  cancel: () => void
++  commit: (frame: RouterRenderFrame) => boolean
++}
++
++const defaultCompare = (a: unknown, b: unknown) => a === b
++
++const routerStateContext = React.createContext<
++  RouterStateContextValue | undefined
++>(undefined)
++
++export function RouterStateProvider({
++  router,
++  children,
++}: {
++  router: AnyRouter
++  children: React.ReactNode
++}) {
++  const staging = React.useRef(false)
++  const pendingFrame = React.useRef<RouterRenderFrame | undefined>(undefined)
++  const [frame, setFrame] = React.useState<RouterRenderFrame>(() =>
++    router.stores.__store.get(),
++  )
++
++  const publish = React.useCallback(() => {
++    if (staging.current || pendingFrame.current) {
++      return
++    }
++    const nextFrame = router.stores.__store.get()
++    if (nextFrame.status === 'pending') {
++      return
++    }
++    setFrame((previous) =>
++      previous.frameId === nextFrame.frameId ? previous : nextFrame,
++    )
++  }, [router])
++
++  const begin = React.useCallback(() => {
++    staging.current = true
++  }, [])
++
++  const stage = React.useCallback((nextFrame: RouterRenderFrame) => {
++    staging.current = false
++    pendingFrame.current = nextFrame
++    return nextFrame
++  }, [])
++
++  const cancel = React.useCallback(() => {
++    staging.current = false
++    pendingFrame.current = undefined
++    publish()
++  }, [publish])
++
++  const commit = React.useCallback((nextFrame: RouterRenderFrame) => {
++    if (pendingFrame.current?.frameId !== nextFrame.frameId) {
++      return false
++    }
++    pendingFrame.current = undefined
++    setFrame(nextFrame)
++    return true
++  }, [])
++
++  useLayoutEffect(() => {
++    const subscription = router.stores.__store.subscribe(() => publish())
++    publish()
++    return () => subscription.unsubscribe()
++  }, [publish, router])
++
++  const value = React.useMemo(
++    () => ({ router, frame, begin, stage, cancel, commit }),
++    [router, frame, begin, stage, cancel, commit],
++  )
++
++  return (
++    <routerStateContext.Provider value={value}>
++      {children}
++    </routerStateContext.Provider>
++  )
++}
++
++export function RouterStateFrame({
++  frame,
++  children,
++}: {
++  frame: RouterRenderFrame
++  children: React.ReactNode
++}) {
++  const owner = React.useContext(routerStateContext)!
++  const value = React.useMemo(() => ({ ...owner, frame }), [owner, frame])
++  return (
++    <routerStateContext.Provider value={value}>
++      {children}
++    </routerStateContext.Provider>
++  )
++}
++
++export function useRouterStateOwner() {
++  return React.useContext(routerStateContext)
++}
++
++export function useRouterStateSelector<TSelected>(
++  router: AnyRouter,
++  selector: (state: RouterState<any>) => TSelected,
++  compare: (a: TSelected, b: TSelected) => boolean = defaultCompare,
++): TSelected {
++  const context = React.useContext(routerStateContext)
++  const contextState = context?.router === router ? context.frame : null
++  const selection = React.useRef<{ value: TSelected } | undefined>(undefined)
++
++  if (contextState) {
++    const next = selector(contextState)
++    if (!selection.current || !compare(selection.current.value, next)) {
++      selection.current = { value: next }
++    }
++    return selection.current.value
++  }
++
++  if (isServer ?? router.isServer) {
++    return selector(router.stores.__store.get())
++  }
++
++  // The frame option is fixed when the router is created, so this branch
++  // cannot change hook order during the lifetime of a mounted router.
++  // eslint-disable-next-line react-hooks/rules-of-hooks
++  return useStore(router.stores.__store, selector, compare)
++}
+diff --git a/src/useCanGoBack.ts b/src/useCanGoBack.ts
+index a20f947f438b0c9170284a3f751a98d1feeddb44..6482fdc5ecc050e5b23b3aa3425d1c6ea76e9e38 100644
+--- a/src/useCanGoBack.ts
++++ b/src/useCanGoBack.ts
+@@ -1,10 +1,19 @@
+ import { useStore } from '@tanstack/react-store'
+ import { isServer } from '@tanstack/router-core/isServer'
+ import { useRouter } from './useRouter'
++import { useRouterStateSelector } from './routerStateContext'
+ 
+ export function useCanGoBack() {
+   const router = useRouter()
+ 
++  if (router.options.experimental_concurrentRenderFrames) {
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++    return useRouterStateSelector(
++      router,
++      (state) => state.location.state.__TSR_index !== 0,
++    )
++  }
++
+   if (isServer ?? router.isServer) {
+     return router.stores.location.get().state.__TSR_index !== 0
+   }
+diff --git a/src/useLocation.tsx b/src/useLocation.tsx
+index 5c8c7c8d7e6c17d229ca10f4d6d7022987ec6d07..5ee3072ed98d1b076a3d88b619ea81e91ee16afe 100644
+--- a/src/useLocation.tsx
++++ b/src/useLocation.tsx
+@@ -4,6 +4,7 @@ import { useStore } from '@tanstack/react-store'
+ import { isServer } from '@tanstack/router-core/isServer'
+ import { useRouter } from './useRouter'
+ import { useStructuralSharing } from './useMatch'
++import { useRouterStateSelector } from './routerStateContext'
+ import type {
+   StructuralSharingOption,
+   ValidateSelected,
+@@ -52,6 +53,15 @@ export function useLocation<
+ ): UseLocationResult<TRouter, TSelected> {
+   const router = useRouter<TRouter>()
+ 
++  if (router.options.experimental_concurrentRenderFrames) {
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++    const selectLocation = useStructuralSharing(opts, router)
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++    return useRouterStateSelector(router, (state) =>
++      selectLocation(state.location),
++    ) as UseLocationResult<TRouter, TSelected>
++  }
++
+   if (isServer ?? router.isServer) {
+     const location = router.stores.location.get()
+     return (
+diff --git a/src/useMatch.tsx b/src/useMatch.tsx
+index 35d66739620de667799510ef2f1ce9ee72a865fe..c69bdb08b52b2ececdac42f5ab914aa7628f397b 100644
+--- a/src/useMatch.tsx
++++ b/src/useMatch.tsx
+@@ -6,6 +6,7 @@ import { invariant, replaceEqualDeep } from '@tanstack/router-core'
+ import { isServer } from '@tanstack/router-core/isServer'
+ import { dummyMatchContext, matchContext } from './matchContext'
+ import { useRouter } from './useRouter'
++import { useRouterStateSelector } from './routerStateContext'
+ import type {
+   StructuralSharingOption,
+   ValidateSelected,
+@@ -79,17 +80,18 @@ export type UseMatchRoute<out TFrom> = <
+   TRouter extends AnyRouter = RegisteredRouter,
+   TSelected = unknown,
+   TStructuralSharing extends boolean = boolean,
++  TThrow extends boolean = true,
+ >(
+   opts?: UseMatchBaseOptions<
+     TRouter,
+     TFrom,
+     true,
+-    true,
++    TThrow,
+     TSelected,
+     TStructuralSharing
+   > &
+     StructuralSharingOption<TRouter, TSelected, TStructuralSharing>,
+-) => UseMatchResult<TRouter, TFrom, true, TSelected>
++) => ThrowOrOptional<UseMatchResult<TRouter, TFrom, true, TSelected>, TThrow>
+ 
+ export type UseMatchOptions<
+   TRouter extends AnyRouter,
+@@ -149,36 +151,50 @@ export function useMatch<
+   const routeId = opts.from ?? nearestRouteId
+   const matchStore = router.stores.getMatchStore(routeId!)
+ 
+-  if (isServer ?? router.isServer) {
+-    const match = matchStore.get()
+-    if (!match) {
+-      if (opts.shouldThrow ?? true) {
+-        if (process.env.NODE_ENV !== 'production') {
+-          throw new Error(
+-            `Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : 'a nearest match!'}`,
+-          )
++  if (!router.options.experimental_concurrentRenderFrames) {
++    if (isServer ?? router.isServer) {
++      const match = matchStore.get()
++      if (!match) {
++        if (opts.shouldThrow ?? true) {
++          if (process.env.NODE_ENV !== 'production') {
++            throw new Error(
++              `Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : 'a nearest match!'}`,
++            )
++          }
++
++          invariant()
+         }
+ 
+-        invariant()
++        return undefined as any
+       }
+ 
+-      return undefined as any
++      return (opts.select ? opts.select(match as any) : match) as any
+     }
+ 
+-    return (opts.select ? opts.select(match as any) : match) as any
+-  }
+-
+-  const selector =
+-    // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
+-    useStructuralSharing(opts, router)
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++    const selector = useStructuralSharing(opts, router)
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++    const matchSelection = useStore(matchStore, (match) =>
++      match ? selector(match as any) : dummyMatch,
++    )
+ 
+-  // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
+-  const matchSelection = useStore(matchStore, (match) =>
+-    match ? selector(match as any) : dummyMatch,
+-  )
++    if (matchSelection !== dummyMatch) {
++      return matchSelection as any
++    }
++  } else {
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++    const selector = useStructuralSharing(opts, router)
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++    const matchSelection = useRouterStateSelector(router, (state) => {
++      const match = state.matches.find(
++        (candidate) => candidate.routeId === routeId,
++      )
++      return match ? selector(match as any) : dummyMatch
++    })
+ 
+-  if (matchSelection !== dummyMatch) {
+-    return matchSelection as any
++    if (matchSelection !== dummyMatch) {
++      return matchSelection as any
++    }
+   }
+ 
+   if (opts.shouldThrow ?? true) {
+diff --git a/src/useParams.tsx b/src/useParams.tsx
+index 444eee7a41642864e7a83b8466b4891e2c99fe99..44a6e47f9d3b0a0114acb91018e103229ea3a093 100644
+--- a/src/useParams.tsx
++++ b/src/useParams.tsx
+@@ -49,17 +49,18 @@ export type UseParamsRoute<out TFrom> = <
+   TRouter extends AnyRouter = RegisteredRouter,
+   TSelected = unknown,
+   TStructuralSharing extends boolean = boolean,
++  TThrow extends boolean = true,
+ >(
+   opts?: UseParamsBaseOptions<
+     TRouter,
+     TFrom,
+     /* TStrict */ true,
+-    /* TThrow */ true,
++    TThrow,
+     TSelected,
+     TStructuralSharing
+   > &
+     StructuralSharingOption<TRouter, TSelected, TStructuralSharing>,
+-) => UseParamsResult<TRouter, TFrom, true, TSelected>
++) => ThrowOrOptional<UseParamsResult<TRouter, TFrom, true, TSelected>, TThrow>
+ 
+ /**
+  * Access the current route's path parameters with type-safety.
+diff --git a/src/useRouterState.tsx b/src/useRouterState.tsx
+index f3fbb2ad6e964587bcadd452c12ce639f4d8d92e..621b350b426e22faf5128a59ee5b20dea804f7a1 100644
+--- a/src/useRouterState.tsx
++++ b/src/useRouterState.tsx
+@@ -4,6 +4,7 @@ import { useStore } from '@tanstack/react-store'
+ import { isServer } from '@tanstack/router-core/isServer'
+ import { useRouter } from './useRouter'
+ import { useStructuralSharing } from './useMatch'
++import { useRouterStateSelector } from './routerStateContext'
+ import type {
+   AnyRouter,
+   RegisteredRouter,
+@@ -54,6 +55,15 @@ export function useRouterState<
+   })
+   const router = opts?.router || contextRouter
+ 
++  if (router.options.experimental_concurrentRenderFrames) {
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++    return useRouterStateSelector(
++      router,
++      // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
++      useStructuralSharing(opts, router),
++    ) as UseRouterStateResult<TRouter, TSelected>
++  }
++
+   // During SSR we render exactly once and do not need reactivity.
+   // Avoid subscribing to the store (and any structural sharing work) on the server.
+   // The expression must stay inlined in the `if` so bundlers fold the
+diff --git a/src/useSearch.tsx b/src/useSearch.tsx
+index 09f1a29b6a993c15298939c7372e9f61db09674e..3979967d76e4cde0819775cab4156070e1323533 100644
+--- a/src/useSearch.tsx
++++ b/src/useSearch.tsx
+@@ -49,17 +49,18 @@ export type UseSearchRoute<out TFrom> = <
+   TRouter extends AnyRouter = RegisteredRouter,
+   TSelected = unknown,
+   TStructuralSharing extends boolean = boolean,
++  TThrow extends boolean = true,
+ >(
+   opts?: UseSearchBaseOptions<
+     TRouter,
+     TFrom,
+     /* TStrict */ true,
+-    /* TThrow */ true,
++    TThrow,
+     TSelected,
+     TStructuralSharing
+   > &
+     StructuralSharingOption<TRouter, TSelected, TStructuralSharing>,
+-) => UseSearchResult<TRouter, TFrom, true, TSelected>
++) => ThrowOrOptional<UseSearchResult<TRouter, TFrom, true, TSelected>, TThrow>
+ 
+ /**
+  * Read and select the current route's search parameters with type-safety.

@@ -21,20 +21,19 @@ function NewsList() {
       </header>
 
       <p className="note">
-        <strong>The POC:</strong> every cover image below is wrapped in React's{' '}
+        <strong>Patched:</strong> every cover image below is wrapped in React's{' '}
         <code>&lt;ViewTransition&gt;</code> with a shared <code>name</code>, and
-        so is the hero image on the article page. The first button animates. The
-        second one, and every article link, does not &mdash; even though the
-        navigation is already wrapped in React's <code>startTransition</code>.
-        Router state reaches the tree through <code>useSyncExternalStore</code>{' '}
-        (via <code>@tanstack/store</code>), and React always commits store
-        updates synchronously, so the update loses its transition lane and{' '}
-        <code>&lt;ViewTransition&gt;</code> never fires.
+        so is the hero image on the article page. All three now animate &mdash;
+        including navigation. The router is running with{' '}
+        <code>experimental_concurrentRenderFrames</code>, which publishes router
+        state to React as one immutable frame per navigation instead of through{' '}
+        <code>useSyncExternalStore</code>, so the update keeps its transition
+        lane and <code>&lt;ViewTransition&gt;</code> fires.
       </p>
 
       <div className="controls">
         <button onClick={() => startTransition(() => setExpanded((e) => !e))}>
-          React state + startTransition &mdash; animates
+          React state + startTransition
         </button>
         <button
           onClick={() =>
@@ -43,7 +42,7 @@ function NewsList() {
             })
           }
         >
-          Router navigate + startTransition &mdash; does not animate
+          Router navigate + startTransition
         </button>
       </div>
 

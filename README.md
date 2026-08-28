@@ -1,8 +1,14 @@
 # router-transitions-poc
 
-Minimal reproduction: React's `<ViewTransition>` never fires across a TanStack
-Router navigation, because router state reaches the tree through
-`useSyncExternalStore`.
+Minimal reproduction of a TanStack Router bug — **with the fix applied**.
+
+React's `<ViewTransition>` never fires across a TanStack Router navigation,
+because router state reaches the tree through `useSyncExternalStore`. This
+branch patches `@tanstack/react-router` and `@tanstack/router-core` with the
+render-frame change proposed in
+[mixcloud/router#1](https://github.com/mixcloud/router/pull/1), and turns it on.
+The `main` branch of this repo is the same app *without* the patch, and is where
+the failure is documented.
 
 Two routes — a hard-coded list of five news articles, and a detail page. The
 cover image in the list and the hero image on the detail page are wrapped in
@@ -10,8 +16,9 @@ the same `<ViewTransition name="article-image-{id}">`, which should give a
 shared-element morph between them.
 
 **Expected:** the cover image morphs into the hero image.
-**Actual:** no view transition runs at all; the route swaps in one synchronous
-commit and the image jumps.
+**On `main` (unpatched):** no view transition runs at all; the route swaps in
+one synchronous commit and the image jumps.
+**Here (patched):** it morphs.
 
 ## Versions
 
@@ -43,16 +50,25 @@ View Transition API.
 The badge in the bottom-right counts real calls to
 `document.startViewTransition`. Three interactions on the list page:
 
-| Interaction | View transitions fired |
-| --- | --- |
-| React state + `startTransition` (layout toggle) | **1** — animates |
-| `router.navigate()` inside `startTransition` | **0** |
-| `<Link>` navigation (any article card) | **0** |
+| Interaction | `main` (unpatched) | here (patched) |
+| --- | --- | --- |
+| React state + `startTransition` (layout toggle) | 1 | **1** |
+| `router.navigate()` inside `startTransition` | 0 | **1** |
+| `<Link>` navigation (any article card) | 0 | **1** |
 
-The first row is the control, and it is the important one: the same
-`<ViewTransition>` elements, the same names, the same browser, the same React
-build. Only the trigger differs. So this is not a browser support problem, a
-missing `name`, or a mis-paired old/new element.
+The first row is the control: the same `<ViewTransition>` elements, the same
+names, the same browser, the same React build, on both branches. Only the
+trigger differs — which is what isolated the failure to router navigation
+rather than browser support, a missing `name`, or a mis-paired old/new element.
+
+It is a genuine shared-element morph, not merely a transition firing. The
+pseudo-elements animating mid-navigation are:
+
+```
+::view-transition-group(article-image-2)
+::view-transition-old(article-image-2)
+::view-transition-new(article-image-2)
+```
 
 `scripts/verify-transitions.mjs` measures the same three numbers headlessly:
 
@@ -96,13 +112,56 @@ does this deliberately: an external store cannot produce a previous snapshot
 on demand, so the old and new UI cannot be rendered concurrently without
 tearing.
 
-The consequence for this POC: the update carrying the new route is never on a
-transition lane, and `<ViewTransition>` only fires for transition updates. So
-it never runs.
-
-This is structural. Any router that publishes its state through
+The consequence: the update carrying the new route is never on a transition
+lane, and `<ViewTransition>` only fires for transition updates. So it never
+runs. This is structural — any router that publishes its state through
 `useSyncExternalStore` is unable to drive React's `<ViewTransition>`,
 regardless of how the navigation is triggered.
+
+## How the patch fixes it
+
+The patch adds an opt-in router option, `experimental_concurrentRenderFrames`,
+which changes *how* router state reaches the tree rather than how navigation is
+triggered:
+
+- every aggregate router state carries a monotonic `frameId`;
+- transition callbacks return the assembled state, so partial publication is a
+  type error;
+- a `RouterStateProvider` owns the committed frame in ordinary React state,
+  stages a successor inside `startTransition`, and commits it on
+  acknowledgement;
+- `Matches` acknowledges the exact rendered `frameId`, so a superseded
+  navigation cannot settle a newer one;
+- every reactive read selects from that frame instead of subscribing to an atom.
+
+Because the frame is plain React state set inside `startTransition`, the update
+keeps its transition lane, and `<ViewTransition>` fires.
+
+It is enabled in `src/router.tsx`. Set it to `false` and the app reverts to the
+`main` behaviour without reinstalling — the patch is inert unless opted in.
+
+## The patches
+
+`patches/` holds two pnpm patches, wired up through `pnpm-workspace.yaml`, so a
+plain `pnpm install` reproduces everything:
+
+| Patch | Package |
+| --- | --- |
+| `@tanstack__react-router@1.170.32.patch` | `@tanstack/react-router` |
+| `@tanstack__router-core@1.171.27.patch` | `@tanstack/router-core` |
+
+They replace `dist/` and `src/` with a build of
+[`mixcloud/router@concurrent-router-render-frames`](https://github.com/mixcloud/router/tree/concurrent-router-render-frames).
+Two caveats worth knowing:
+
+- That branch is TanStack Router `main` at `0caf6b9`, which is **ahead of the
+  published `1.170.32`** by unreleased upstream commits. So the patches also
+  carry those — currently
+  [#8169](https://github.com/TanStack/router/pull/8169), a fix to route-scoped
+  hooks. They are not part of the render-frame change.
+- Source maps are left untouched, so stepping through the patched packages in
+  devtools will show stale mappings. The shipped code is correct; only the maps
+  are.
 
 ## What this POC is *not* about
 
@@ -113,8 +172,8 @@ go through React's `<ViewTransition>`, so it does not compose with transition
 types, nested transition scoping, or React's own old/new pairing. This
 reproduction is specifically about React's `<ViewTransition>`.
 
-A fix is out of scope here — this repo exists to demonstrate the failure and
-to have something to measure a fix against.
+The patch here is about React's `<ViewTransition>` specifically; it does not
+change `viewTransition: true`, which keeps working as before.
 
 ## Layout
 
@@ -124,5 +183,7 @@ src/routes/index.tsx         news list, both control buttons
 src/routes/article.$id.tsx   detail page, big hero image
 src/ViewTransition.tsx       typed re-export of the canary API
 src/data/articles.ts         the five hard-coded articles
+src/router.tsx               where experimental_concurrentRenderFrames is set
+patches/                     the two pnpm patches
 scripts/verify-transitions.mjs  headless measurement of the table above
 ```
