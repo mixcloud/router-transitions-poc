@@ -1,0 +1,33 @@
+{
+  "name": "router-transitions-poc",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "start": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mixcloud/router-transitions-poc.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mixcloud/router-transitions-poc/issues"
+  },
+  "homepage": "https://github.com/mixcloud/router-transitions-poc#readme",
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  },
+  "dependencies": {
+    "@tanstack/react-router": "^1.170.32",
+    "@tanstack/react-start": "^1.168.49",
+    "react": "19.3.0-canary-29d9d318-20260826",
+    "react-dom": "19.3.0-canary-29d9d318-20260826"
+  },
+  "private": true,
+  "type": "module"
+}
