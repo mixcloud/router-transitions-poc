@@ -2,9 +2,9 @@
  * Objective version of the demo: counts calls to document.startViewTransition
  * for a React state update vs. a TanStack Router navigation.
  *
- *   npm run dev
- *   npm install --no-save playwright && npx playwright install chromium
- *   node scripts/verify-transitions.mjs
+ *   pnpm dev
+ *   pnpm exec playwright install chromium   # once
+ *   pnpm verify
  */
 import { chromium } from 'playwright'
 

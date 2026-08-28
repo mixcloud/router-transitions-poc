@@ -5,7 +5,8 @@
     "dev": "vite dev",
     "build": "vite build",
     "start": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify": "node scripts/verify-transitions.mjs"
   },
   "repository": {
     "type": "git",
@@ -19,6 +20,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@vitejs/plugin-react": "^6.1.1",
+    "playwright": "^1.62.1",
     "typescript": "^7.0.2",
     "vite": "^8.2.2"
   },
@@ -29,5 +31,6 @@
     "react-dom": "19.3.0-canary-29d9d318-20260826"
   },
   "private": true,
-  "type": "module"
+  "type": "module",
+  "packageManager": "pnpm@10.33.0"
 }

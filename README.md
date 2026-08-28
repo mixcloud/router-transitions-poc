@@ -25,14 +25,16 @@ commit and the image jumps.
 | `vite` | `8.2.2` |
 
 React is pinned to a canary because that is where `<ViewTransition>` lives.
-`.npmrc` sets `legacy-peer-deps=true` — TanStack's peer range
-(`>=18.0.0 || >=19.0.0`) rejects prerelease versions.
+Note that pnpm is required, not incidental: TanStack's peer range
+(`>=18.0.0 || >=19.0.0`) does not match a prerelease under npm's semver rules,
+so `npm install` fails on it without `--legacy-peer-deps`. pnpm resolves it
+cleanly, even with `--strict-peer-dependencies`.
 
 ## Reproducing
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Chromium-based browser required; `<ViewTransition>` is built on the native
@@ -55,10 +57,9 @@ missing `name`, or a mis-paired old/new element.
 `scripts/verify-transitions.mjs` measures the same three numbers headlessly:
 
 ```bash
-npm run dev                      # in one terminal
-npm install --no-save playwright
-npx playwright install chromium  # once
-node scripts/verify-transitions.mjs   # BASE=... to override port
+pnpm dev                               # in one terminal
+pnpm exec playwright install chromium  # once
+pnpm verify                            # BASE=... to override the port
 ```
 
 ## Why it fails
