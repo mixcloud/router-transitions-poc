@@ -1,5 +1,5 @@
 diff --git a/dist/cjs/Match.cjs b/dist/cjs/Match.cjs
-index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..dc8ba27619636baaae94ee26e5d5ac1db6b8b31d 100644
+index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..a51e984b0d8b48c9eaa4bed24031dc45adda257b 100644
 --- a/dist/cjs/Match.cjs
 +++ b/dist/cjs/Match.cjs
 @@ -5,6 +5,7 @@ const require_CatchBoundary = require("./CatchBoundary.cjs");
@@ -25,18 +25,16 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..dc8ba27619636baaae94ee26e5d5ac1d
  	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MatchView, {
  		router,
  		match: router.stores.byRoute.get(routeId).get()
-@@ -42,7 +48,9 @@ function MatchView({ router, match }) {
+@@ -42,7 +48,7 @@ function MatchView({ router, match }) {
  	const routeOnCatch = route.options.onCatch ?? router.options.defaultOnCatch;
  	const routeNotFoundComponent = route.isRoot ? route.options.notFoundComponent ?? router.options.notFoundRoute?.options.component : route.options.notFoundComponent;
  	const resolvedNoSsr = match.ssr === false || match.ssr === "data-only";
 -	const ResolvedSuspenseBoundary = canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? react.Suspense : require_SafeFragment.SafeFragment;
-+	const _isServer = _tanstack_router_core_isServer.isServer ?? router.isServer;
-+	const isHydrating = Boolean(router.ssr) && !require_ClientOnly.useHydrated();
-+	const ResolvedSuspenseBoundary = !(router.options.experimental_concurrentRenderFrames && !_isServer && !isHydrating) && canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? react.Suspense : require_SafeFragment.SafeFragment;
++	const ResolvedSuspenseBoundary = !require_routerStateContext.useFrameRootBoundary(router, _tanstack_router_core_isServer.isServer ?? router.isServer) && canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? react.Suspense : require_SafeFragment.SafeFragment;
  	const ResolvedCatchBoundary = routeErrorComponent ? require_CatchBoundary.CatchBoundary : require_SafeFragment.SafeFragment;
  	const ResolvedNotFoundBoundary = routeNotFoundComponent ? require_not_found.CatchNotFound : require_SafeFragment.SafeFragment;
  	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(route.isRoot ? route.options.shellComponent ?? require_SafeFragment.SafeFragment : require_SafeFragment.SafeFragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_matchContext.matchContext.Provider, {
-@@ -139,7 +147,17 @@ var Outlet = react.memo(function OutletImpl() {
+@@ -139,7 +145,17 @@ var Outlet = react.memo(function OutletImpl() {
  	let parentGlobalNotFound;
  	let parentNotFoundError;
  	let childRouteId;
@@ -55,7 +53,7 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..dc8ba27619636baaae94ee26e5d5ac1d
  		const matches = router.stores.matches.get();
  		const parentIndex = matches.findIndex((match) => match.routeId === routeId);
  		const parentMatch = matches[parentIndex];
-@@ -156,7 +174,7 @@ var Outlet = react.memo(function OutletImpl() {
+@@ -156,7 +172,7 @@ var Outlet = react.memo(function OutletImpl() {
  	if (parentGlobalNotFound) return require_renderRouteNotFound.renderRouteNotFound(router, router.routesById[routeId], parentNotFoundError);
  	if (!childRouteId) return null;
  	const nextMatch = /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Match, { routeId: childRouteId });
@@ -65,21 +63,18 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..dc8ba27619636baaae94ee26e5d5ac1d
  		children: nextMatch
  	});
 diff --git a/dist/cjs/Matches.cjs b/dist/cjs/Matches.cjs
-index 0678b4dd2961608b74f486fe9bb68663ecdfc1da..6e2ba23734279194cd8a3df6f0290c895a82e004 100644
+index 0678b4dd2961608b74f486fe9bb68663ecdfc1da..d1aeb7802579eec397cc53df37d4da3bb5de9601 100644
 --- a/dist/cjs/Matches.cjs
 +++ b/dist/cjs/Matches.cjs
-@@ -2,8 +2,10 @@
- const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
- const require_utils = require("./utils.cjs");
+@@ -4,6 +4,7 @@ const require_utils = require("./utils.cjs");
  const require_CatchBoundary = require("./CatchBoundary.cjs");
-+const require_ClientOnly = require("./ClientOnly.cjs");
  const require_matchContext = require("./matchContext.cjs");
  const require_useRouter = require("./useRouter.cjs");
 +const require_routerStateContext = require("./routerStateContext.cjs");
  const require_useMatch = require("./useMatch.cjs");
  const require_Transitioner = require("./Transitioner.cjs");
  const require_SafeFragment = require("./SafeFragment.cjs");
-@@ -21,24 +23,54 @@ let _tanstack_react_store = require("@tanstack/react-store");
+@@ -21,24 +22,54 @@ let _tanstack_react_store = require("@tanstack/react-store");
  */
  function Matches() {
  	const router = require_useRouter.useRouter();
@@ -91,9 +86,8 @@ index 0678b4dd2961608b74f486fe9bb68663ecdfc1da..6e2ba23734279194cd8a3df6f0290c89
 -	const ResolvedSuspense = (_tanstack_router_core_isServer.isServer ?? router.isServer) || router.ssr ? require_SafeFragment.SafeFragment : react.Suspense;
 -	const inner = /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [!(_tanstack_router_core_isServer.isServer ?? router.isServer) && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_Transitioner.Transitioner, { t: react.useState()[1] }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ResolvedSuspense, {
 +	const _isServer = _tanstack_router_core_isServer.isServer ?? router.isServer;
-+	const isHydrating = Boolean(router.ssr) && !require_ClientOnly.useHydrated();
-+	const useFrameRootBoundary = router.options.experimental_concurrentRenderFrames && !_isServer && !isHydrating;
-+	const ResolvedSuspense = _isServer || router.ssr && !useFrameRootBoundary ? require_SafeFragment.SafeFragment : react.Suspense;
++	const frameRootBoundary = require_routerStateContext.useFrameRootBoundary(router, _isServer);
++	const ResolvedSuspense = _isServer || router.ssr && !frameRootBoundary ? require_SafeFragment.SafeFragment : react.Suspense;
 +	const inner = /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [!(_tanstack_router_core_isServer.isServer ?? router.isServer) && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_Transitioner.Transitioner, {
 +		t: react.useState()[1],
 +		setRenderFrame
@@ -135,13 +129,14 @@ index 0678b4dd2961608b74f486fe9bb68663ecdfc1da..6e2ba23734279194cd8a3df6f0290c89
 +		activeFrame,
 +		matches,
 +		renderFrame,
++		router.options.experimental_concurrentRenderFrames,
 +		routerStateOwner,
 +		setRenderFrame
 +	]);
  	const matchComponent = routeId ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_Match.Match, { routeId }) : null;
  	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_matchContext.matchContext.Provider, {
  		value: routeId,
-@@ -79,6 +111,19 @@ function useMatchRoute() {
+@@ -79,6 +110,19 @@ function useMatchRoute() {
  			includeSearch
  		});
  	};
@@ -161,7 +156,7 @@ index 0678b4dd2961608b74f486fe9bb68663ecdfc1da..6e2ba23734279194cd8a3df6f0290c89
  	return react.useCallback((opts) => {
  		const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
  		return router.matchRoute(rest, {
-@@ -108,6 +153,10 @@ function MatchRoute(props) {
+@@ -108,6 +152,10 @@ function MatchRoute(props) {
  }
  function useMatches(opts) {
  	const router = require_useRouter.useRouter();
@@ -224,7 +219,7 @@ index 59dc6365b09bf8688ad59d4ed2aeb4231e6b536d..f0e0f55f4cd4c85291a4b89d3f4460c1
  function renderScripts(router, scripts) {
  	if ((_tanstack_router_core_isServer.isServer ?? router.isServer) && router.serverSsr) {
 diff --git a/dist/cjs/Transitioner.cjs b/dist/cjs/Transitioner.cjs
-index 43ace5eb908d6e4629e887a4c4baec475e6cbb49..bdb30f4d0483c7d6b783ad30b4bc5b93bc6b5f42 100644
+index 43ace5eb908d6e4629e887a4c4baec475e6cbb49..c1be05ece4684b9ad1494ebaa3d997da54653424 100644
 --- a/dist/cjs/Transitioner.cjs
 +++ b/dist/cjs/Transitioner.cjs
 @@ -2,6 +2,7 @@
@@ -253,8 +248,8 @@ index 43ace5eb908d6e4629e887a4c4baec475e6cbb49..bdb30f4d0483c7d6b783ad30b4bc5b93
 +		react.startTransition(() => {
 +			routerStateOwner?.begin();
 +			try {
-+				const headFrame = fn();
-+				const frame = routerStateOwner?.stage(headFrame);
++				fn();
++				const frame = routerStateOwner?.stage(router.stores.__store.get());
 +				if (frame) {
 +					acknowledgement[0] = frame.frameId;
 +					setRenderFrame(frame);
@@ -532,13 +527,14 @@ index f71f69ac907e209179b3c41be9db4dc6f6d38524..ef02b697228b62577302c1000e48357f
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..15add79c89bf46af116a362c590a5547bae1d612
+index 0000000000000000000000000000000000000000..7cd45dfc0f7ae8b9ac11aff8949147cbcc007a71
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,134 @@
+@@ -0,0 +1,150 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
++const require_ClientOnly = require("./ClientOnly.cjs");
 +let react = require("react");
 +react = require_runtime.__toESM(react, 1);
 +let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
@@ -662,9 +658,24 @@ index 0000000000000000000000000000000000000000..15add79c89bf46af116a362c590a5547
 +	}, [owner]);
 +	return selection.current;
 +}
++/**
++* Whether this render should consolidate route suspension at the frame root.
++*
++* Only the frame path asks, so `useHydrated` is never subscribed to on the
++* default path. Within the frame branch the hook is unconditional, and the
++* branch itself depends only on the option, which is fixed when the router is
++* created.
++*/
++function useFrameRootBoundary(router, isServerRender) {
++	if (!router.options.experimental_concurrentRenderFrames) return false;
++	const hydrated = require_ClientOnly.useHydrated();
++	const isHydrating = Boolean(router.ssr) && !hydrated;
++	return !isServerRender && !isHydrating;
++}
 +//#endregion
 +exports.RouterStateFrame = RouterStateFrame;
 +exports.RouterStateProvider = RouterStateProvider;
++exports.useFrameRootBoundary = useFrameRootBoundary;
 +exports.useRouterFrame = useRouterFrame;
 +exports.useRouterStateOwner = useRouterStateOwner;
 +exports.useRouterStateSelector = useRouterStateSelector;
@@ -673,10 +684,10 @@ index 0000000000000000000000000000000000000000..15add79c89bf46af116a362c590a5547
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..992c3868c2ad1b87a97ac6c755a1a98c6b60aa37
+index 0000000000000000000000000000000000000000..ab8dd2af6c471f187c609d519233d7f2ff386b38
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,45 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import * as React from 'react';
 +export type RouterRenderFrame = RouterState<any>;
@@ -712,6 +723,15 @@ index 0000000000000000000000000000000000000000..992c3868c2ad1b87a97ac6c755a1a98c
 +/** The committed frame, for route presentation that must track every frame. */
 +export declare function useRouterFrame(): RouterRenderFrame | undefined;
 +export declare function useRouterStateSelector<TSelected>(router: AnyRouter, selector: (state: RouterState<any>) => TSelected, compare?: (a: TSelected, b: TSelected) => boolean): TSelected;
++/**
++ * Whether this render should consolidate route suspension at the frame root.
++ *
++ * Only the frame path asks, so `useHydrated` is never subscribed to on the
++ * default path. Within the frame branch the hook is unconditional, and the
++ * branch itself depends only on the option, which is fixed when the router is
++ * created.
++ */
++export declare function useFrameRootBoundary(router: AnyRouter, isServerRender: boolean): boolean;
 +export {};
 diff --git a/dist/cjs/useCanGoBack.cjs b/dist/cjs/useCanGoBack.cjs
 index 42e5fb8bce9c3101b83534bcd089e669e31bf99a..03c6d44450c4fe9ad7e63c477c51331374f3a380 100644
@@ -863,18 +883,14 @@ index ab4c65ea990e7d6dbbd1d9b6e1e92aa55167d115..d04d90fcad7a0249db5eec449af1474b
   * Read and select the current route's search parameters with type-safety.
   *
 diff --git a/dist/esm/Match.js b/dist/esm/Match.js
-index 7dffc446e563ea4f5826c5714ef011a391114635..1458142eec1bb3ec4145db5fc464e96179f7d346 100644
+index 7dffc446e563ea4f5826c5714ef011a391114635..1e2e39621576b0ef9379e6664a711499d5c5fcbd 100644
 --- a/dist/esm/Match.js
 +++ b/dist/esm/Match.js
-@@ -1,9 +1,10 @@
- "use client";
- import { nonRouteComponentContext, wrapInNonRouteComponentContext } from "./nonRouteComponentContext.js";
- import { CatchBoundary, ErrorComponent } from "./CatchBoundary.js";
--import { ClientOnly } from "./ClientOnly.js";
-+import { ClientOnly, useHydrated } from "./ClientOnly.js";
+@@ -4,6 +4,7 @@ import { CatchBoundary, ErrorComponent } from "./CatchBoundary.js";
+ import { ClientOnly } from "./ClientOnly.js";
  import { matchContext } from "./matchContext.js";
  import { useRouter } from "./useRouter.js";
-+import { useRouterStateSelector } from "./routerStateContext.js";
++import { useFrameRootBoundary, useRouterStateSelector } from "./routerStateContext.js";
  import { CatchNotFound } from "./not-found.js";
  import { SafeFragment } from "./SafeFragment.js";
  import { renderRouteNotFound } from "./renderRouteNotFound.js";
@@ -893,18 +909,16 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..1458142eec1bb3ec4145db5fc464e961
  	if (isServer ?? router.isServer) return /* @__PURE__ */ jsx(MatchView, {
  		router,
  		match: router.stores.byRoute.get(routeId).get()
-@@ -40,7 +46,9 @@ function MatchView({ router, match }) {
+@@ -40,7 +46,7 @@ function MatchView({ router, match }) {
  	const routeOnCatch = route.options.onCatch ?? router.options.defaultOnCatch;
  	const routeNotFoundComponent = route.isRoot ? route.options.notFoundComponent ?? router.options.notFoundRoute?.options.component : route.options.notFoundComponent;
  	const resolvedNoSsr = match.ssr === false || match.ssr === "data-only";
 -	const ResolvedSuspenseBoundary = canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? React$1.Suspense : SafeFragment;
-+	const _isServer = isServer ?? router.isServer;
-+	const isHydrating = Boolean(router.ssr) && !useHydrated();
-+	const ResolvedSuspenseBoundary = !(router.options.experimental_concurrentRenderFrames && !_isServer && !isHydrating) && canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? React$1.Suspense : SafeFragment;
++	const ResolvedSuspenseBoundary = !useFrameRootBoundary(router, isServer ?? router.isServer) && canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? React$1.Suspense : SafeFragment;
  	const ResolvedCatchBoundary = routeErrorComponent ? CatchBoundary : SafeFragment;
  	const ResolvedNotFoundBoundary = routeNotFoundComponent ? CatchNotFound : SafeFragment;
  	return /* @__PURE__ */ jsxs(route.isRoot ? route.options.shellComponent ?? SafeFragment : SafeFragment, { children: [/* @__PURE__ */ jsx(matchContext.Provider, {
-@@ -137,7 +145,17 @@ var Outlet = React$1.memo(function OutletImpl() {
+@@ -137,7 +143,17 @@ var Outlet = React$1.memo(function OutletImpl() {
  	let parentGlobalNotFound;
  	let parentNotFoundError;
  	let childRouteId;
@@ -923,7 +937,7 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..1458142eec1bb3ec4145db5fc464e961
  		const matches = router.stores.matches.get();
  		const parentIndex = matches.findIndex((match) => match.routeId === routeId);
  		const parentMatch = matches[parentIndex];
-@@ -154,7 +172,7 @@ var Outlet = React$1.memo(function OutletImpl() {
+@@ -154,7 +170,7 @@ var Outlet = React$1.memo(function OutletImpl() {
  	if (parentGlobalNotFound) return renderRouteNotFound(router, router.routesById[routeId], parentNotFoundError);
  	if (!childRouteId) return null;
  	const nextMatch = /* @__PURE__ */ jsx(Match, { routeId: childRouteId });
@@ -933,21 +947,18 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..1458142eec1bb3ec4145db5fc464e961
  		children: nextMatch
  	});
 diff --git a/dist/esm/Matches.js b/dist/esm/Matches.js
-index 68657a0e5a4b11962e415bc86e28cccc25f000d3..c20d244a1657f3ef4400bd889dead5a665eb56c3 100644
+index 68657a0e5a4b11962e415bc86e28cccc25f000d3..0bda5b94f99f470655fcb60e9cc29227f4fd3968 100644
 --- a/dist/esm/Matches.js
 +++ b/dist/esm/Matches.js
-@@ -1,8 +1,10 @@
- "use client";
- import { useLayoutEffect } from "./utils.js";
+@@ -3,6 +3,7 @@ import { useLayoutEffect } from "./utils.js";
  import { CatchBoundary } from "./CatchBoundary.js";
-+import { useHydrated } from "./ClientOnly.js";
  import { matchContext } from "./matchContext.js";
  import { useRouter } from "./useRouter.js";
-+import { RouterStateFrame, useRouterFrame, useRouterStateOwner, useRouterStateSelector } from "./routerStateContext.js";
++import { RouterStateFrame, useFrameRootBoundary, useRouterFrame, useRouterStateOwner, useRouterStateSelector } from "./routerStateContext.js";
  import { useStructuralSharing } from "./useMatch.js";
  import { Transitioner, settleOwner } from "./Transitioner.js";
  import { SafeFragment } from "./SafeFragment.js";
-@@ -19,24 +21,54 @@ import { useStore } from "@tanstack/react-store";
+@@ -19,24 +20,54 @@ import { useStore } from "@tanstack/react-store";
  */
  function Matches() {
  	const router = useRouter();
@@ -959,9 +970,8 @@ index 68657a0e5a4b11962e415bc86e28cccc25f000d3..c20d244a1657f3ef4400bd889dead5a6
 -	const ResolvedSuspense = (isServer ?? router.isServer) || router.ssr ? SafeFragment : React$1.Suspense;
 -	const inner = /* @__PURE__ */ jsxs(Fragment, { children: [!(isServer ?? router.isServer) && /* @__PURE__ */ jsx(Transitioner, { t: React$1.useState()[1] }), /* @__PURE__ */ jsx(ResolvedSuspense, {
 +	const _isServer = isServer ?? router.isServer;
-+	const isHydrating = Boolean(router.ssr) && !useHydrated();
-+	const useFrameRootBoundary = router.options.experimental_concurrentRenderFrames && !_isServer && !isHydrating;
-+	const ResolvedSuspense = _isServer || router.ssr && !useFrameRootBoundary ? SafeFragment : React$1.Suspense;
++	const frameRootBoundary = useFrameRootBoundary(router, _isServer);
++	const ResolvedSuspense = _isServer || router.ssr && !frameRootBoundary ? SafeFragment : React$1.Suspense;
 +	const inner = /* @__PURE__ */ jsxs(Fragment, { children: [!(isServer ?? router.isServer) && /* @__PURE__ */ jsx(Transitioner, {
 +		t: React$1.useState()[1],
 +		setRenderFrame
@@ -1003,13 +1013,14 @@ index 68657a0e5a4b11962e415bc86e28cccc25f000d3..c20d244a1657f3ef4400bd889dead5a6
 +		activeFrame,
 +		matches,
 +		renderFrame,
++		router.options.experimental_concurrentRenderFrames,
 +		routerStateOwner,
 +		setRenderFrame
 +	]);
  	const matchComponent = routeId ? /* @__PURE__ */ jsx(Match, { routeId }) : null;
  	return /* @__PURE__ */ jsx(matchContext.Provider, {
  		value: routeId,
-@@ -77,6 +109,19 @@ function useMatchRoute() {
+@@ -77,6 +108,19 @@ function useMatchRoute() {
  			includeSearch
  		});
  	};
@@ -1029,7 +1040,7 @@ index 68657a0e5a4b11962e415bc86e28cccc25f000d3..c20d244a1657f3ef4400bd889dead5a6
  	return React$1.useCallback((opts) => {
  		const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
  		return router.matchRoute(rest, {
-@@ -106,6 +151,10 @@ function MatchRoute(props) {
+@@ -106,6 +150,10 @@ function MatchRoute(props) {
  }
  function useMatches(opts) {
  	const router = useRouter();
@@ -1105,7 +1116,7 @@ index 0e0c6ec7c0e0053e08422a83ab63100243a9752b..0d80aa89739162c8304775cdcbfc723c
 +    setRenderFrame: React.Dispatch<React.SetStateAction<RouterRenderFrame | undefined>>;
  }): null;
 diff --git a/dist/esm/Transitioner.js b/dist/esm/Transitioner.js
-index 51d7e69e3b1ad5a656d4c4e6f3ef690520effbf5..e5aa02cf2b9fffd0107fffb95f2097bcd44489ee 100644
+index 51d7e69e3b1ad5a656d4c4e6f3ef690520effbf5..589f69809ebbf2d42a7df38477c535534891b224 100644
 --- a/dist/esm/Transitioner.js
 +++ b/dist/esm/Transitioner.js
 @@ -1,6 +1,7 @@
@@ -1134,8 +1145,8 @@ index 51d7e69e3b1ad5a656d4c4e6f3ef690520effbf5..e5aa02cf2b9fffd0107fffb95f2097bc
 +		React$1.startTransition(() => {
 +			routerStateOwner?.begin();
 +			try {
-+				const headFrame = fn();
-+				const frame = routerStateOwner?.stage(headFrame);
++				fn();
++				const frame = routerStateOwner?.stage(router.stores.__store.get());
 +				if (frame) {
 +					acknowledgement[0] = frame.frameId;
 +					setRenderFrame(frame);
@@ -1397,10 +1408,10 @@ index 311e1bf0375a336e2bd7abe41203fe383d199af6..3d69a2e5f5f26f693906819bd9335a08
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..992c3868c2ad1b87a97ac6c755a1a98c6b60aa37
+index 0000000000000000000000000000000000000000..ab8dd2af6c471f187c609d519233d7f2ff386b38
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,45 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import * as React from 'react';
 +export type RouterRenderFrame = RouterState<any>;
@@ -1436,15 +1447,25 @@ index 0000000000000000000000000000000000000000..992c3868c2ad1b87a97ac6c755a1a98c
 +/** The committed frame, for route presentation that must track every frame. */
 +export declare function useRouterFrame(): RouterRenderFrame | undefined;
 +export declare function useRouterStateSelector<TSelected>(router: AnyRouter, selector: (state: RouterState<any>) => TSelected, compare?: (a: TSelected, b: TSelected) => boolean): TSelected;
++/**
++ * Whether this render should consolidate route suspension at the frame root.
++ *
++ * Only the frame path asks, so `useHydrated` is never subscribed to on the
++ * default path. Within the frame branch the hook is unconditional, and the
++ * branch itself depends only on the option, which is fixed when the router is
++ * created.
++ */
++export declare function useFrameRootBoundary(router: AnyRouter, isServerRender: boolean): boolean;
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..b90fa31110b7bcd7d828e54a601a73421dd8a701
+index 0000000000000000000000000000000000000000..4767d98312f489f947fc317126f342b27beeb115
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,128 @@
+@@ -0,0 +1,143 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
++import { useHydrated } from "./ClientOnly.js";
 +import * as React$1 from "react";
 +import { isServer } from "@tanstack/router-core/isServer";
 +import { jsx } from "react/jsx-runtime";
@@ -1567,8 +1588,22 @@ index 0000000000000000000000000000000000000000..b90fa31110b7bcd7d828e54a601a7342
 +	}, [owner]);
 +	return selection.current;
 +}
++/**
++* Whether this render should consolidate route suspension at the frame root.
++*
++* Only the frame path asks, so `useHydrated` is never subscribed to on the
++* default path. Within the frame branch the hook is unconditional, and the
++* branch itself depends only on the option, which is fixed when the router is
++* created.
++*/
++function useFrameRootBoundary(router, isServerRender) {
++	if (!router.options.experimental_concurrentRenderFrames) return false;
++	const hydrated = useHydrated();
++	const isHydrating = Boolean(router.ssr) && !hydrated;
++	return !isServerRender && !isHydrating;
++}
 +//#endregion
-+export { RouterStateFrame, RouterStateProvider, useRouterFrame, useRouterStateOwner, useRouterStateSelector };
++export { RouterStateFrame, RouterStateProvider, useFrameRootBoundary, useRouterFrame, useRouterStateOwner, useRouterStateSelector };
 +
 +//# sourceMappingURL=routerStateContext.js.map
 \ No newline at end of file
@@ -1722,20 +1757,21 @@ index 186053ecfdc6a204dc1e5b64cb5590d7bb90eccd..9a4b1044308655aa2b3d214b31223479
   * Read and select the current route's search parameters with type-safety.
   *
 diff --git a/src/Match.tsx b/src/Match.tsx
-index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..a3309d489286e2e6c34571260cfa50cb1f8a52be 100644
+index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..4657714116eea49444b5d16473c945fae8914f86 100644
 --- a/src/Match.tsx
 +++ b/src/Match.tsx
-@@ -11,7 +11,8 @@ import { matchContext } from './matchContext'
- import { SafeFragment } from './SafeFragment'
+@@ -12,6 +12,10 @@ import { SafeFragment } from './SafeFragment'
  import { renderRouteNotFound } from './renderRouteNotFound'
  import { ScrollRestoration } from './scroll-restoration'
--import { ClientOnly } from './ClientOnly'
-+import { ClientOnly, useHydrated } from './ClientOnly'
-+import { useRouterStateSelector } from './routerStateContext'
+ import { ClientOnly } from './ClientOnly'
++import {
++  useFrameRootBoundary,
++  useRouterStateSelector,
++} from './routerStateContext'
  import {
    nonRouteComponentContext,
    wrapInNonRouteComponentContext,
-@@ -43,11 +44,22 @@ type OutletMatchSelection = [
+@@ -43,11 +47,22 @@ type OutletMatchSelection = [
    parentNotFoundError: unknown,
  ]
  
@@ -1758,7 +1794,7 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..a3309d489286e2e6c34571260cfa50cb
  const canWrapInSuspense = (
    router: ReturnType<typeof useRouter>,
    route: AnyRoute,
-@@ -66,6 +78,15 @@ export const Match = React.memo(function MatchImpl({
+@@ -66,6 +81,15 @@ export const Match = React.memo(function MatchImpl({
    routeId: string
  }) {
    const router = useRouter()
@@ -1774,27 +1810,23 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..a3309d489286e2e6c34571260cfa50cb
  
    if (isServer ?? router.isServer) {
      const match = router.stores.byRoute.get(routeId)!.get()!
-@@ -101,9 +122,19 @@ function MatchView({
+@@ -101,9 +125,15 @@ function MatchView({
      : route.options.notFoundComponent
  
    const resolvedNoSsr = match.ssr === false || match.ssr === 'data-only'
 +  const _isServer = isServer ?? router.isServer
-+  const isHydrating = Boolean(router.ssr) && !useHydrated()
 +  // Once hydrated, a concurrent frame must suspend and acknowledge as one
 +  // unit. During SSR and hydration, retain the route boundaries so the server
 +  // can stream its shell and the client hydrates the same boundary tree.
-+  const useFrameRootBoundary =
-+    router.options.experimental_concurrentRenderFrames &&
-+    !_isServer &&
-+    !isHydrating
++  const frameRootBoundary = useFrameRootBoundary(router, _isServer)
    // A root component may render the document itself. Only place its Suspense
    // boundary in pure CSR, inside an explicit shell, or when explicitly opted in.
    const ResolvedSuspenseBoundary =
-+    !useFrameRootBoundary &&
++    !frameRootBoundary &&
      canWrapInSuspense(router, route, match.ssr) &&
      (route.options.wrapInSuspense ??
        pendingElement ??
-@@ -277,7 +308,28 @@ export const Outlet = React.memo(function OutletImpl() {
+@@ -277,7 +307,28 @@ export const Outlet = React.memo(function OutletImpl() {
    let parentNotFoundError: unknown
    let childRouteId: string | undefined
  
@@ -1802,8 +1834,8 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..a3309d489286e2e6c34571260cfa50cb
 +  if (router.options.experimental_concurrentRenderFrames) {
 +    // The option is fixed for the mounted router, so this branch cannot change
 +    // hook order during the component's lifetime.
-+    // eslint-disable-next-line react-hooks/rules-of-hooks
 +    ;[parentGlobalNotFound, parentNotFoundError, childRouteId] =
++      // eslint-disable-next-line react-hooks/rules-of-hooks
 +      useRouterStateSelector(
 +        router,
 +        (state): ConcurrentOutletMatchSelection => {
@@ -1824,7 +1856,7 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..a3309d489286e2e6c34571260cfa50cb
      const matches = router.stores.matches.get()
      const parentIndex = matches.findIndex((match) => match.routeId === routeId)
      const parentMatch = matches[parentIndex]!
-@@ -314,7 +366,11 @@ export const Outlet = React.memo(function OutletImpl() {
+@@ -314,7 +365,11 @@ export const Outlet = React.memo(function OutletImpl() {
  
    const nextMatch = <Match routeId={childRouteId} />
  
@@ -1838,16 +1870,16 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..a3309d489286e2e6c34571260cfa50cb
        <React.Suspense fallback={renderPending(router)}>
          {nextMatch}
 diff --git a/src/Matches.tsx b/src/Matches.tsx
-index cada2373ff9a6ea8e971763712798e23bef10d34..a71248746f3b6a664ea4eabd35f0273e879096e0 100644
+index cada2373ff9a6ea8e971763712798e23bef10d34..028c009b170a6772e7dfe8cb99dac0b5e6042b12 100644
 --- a/src/Matches.tsx
 +++ b/src/Matches.tsx
 @@ -12,12 +12,21 @@ import { Transitioner, settleOwner } from './Transitioner'
  import { matchContext } from './matchContext'
  import { Match, renderPending } from './Match'
  import { SafeFragment } from './SafeFragment'
-+import { useHydrated } from './ClientOnly'
 +import {
 +  RouterStateFrame,
++  useFrameRootBoundary,
 +  useRouterFrame,
 +  useRouterStateOwner,
 +  useRouterStateSelector,
@@ -1863,7 +1895,7 @@ index cada2373ff9a6ea8e971763712798e23bef10d34..a71248746f3b6a664ea4eabd35f0273e
    AnyRouter,
    DeepPartial,
    Expand,
-@@ -47,13 +56,26 @@ declare module '@tanstack/router-core' {
+@@ -47,13 +56,22 @@ declare module '@tanstack/router-core' {
   */
  export function Matches() {
    const router = useRouter()
@@ -1876,23 +1908,19 @@ index cada2373ff9a6ea8e971763712798e23bef10d34..a71248746f3b6a664ea4eabd35f0273e
  
 -  // Do not render a root Suspense during SSR or hydrating from SSR
 +  const _isServer = isServer ?? router.isServer
-+  const isHydrating = Boolean(router.ssr) && !useHydrated()
 +  // SSR and hydration keep upstream's route-level boundaries for streaming
 +  // and an identical hydration tree. Afterwards, the frame path consolidates
 +  // suspension at this root so one complete frame is acknowledged atomically.
-+  const useFrameRootBoundary =
-+    router.options.experimental_concurrentRenderFrames &&
-+    !_isServer &&
-+    !isHydrating
++  const frameRootBoundary = useFrameRootBoundary(router, _isServer)
    const ResolvedSuspense =
 -    (isServer ?? router.isServer) || router.ssr ? SafeFragment : React.Suspense
-+    _isServer || (router.ssr && !useFrameRootBoundary)
++    _isServer || (router.ssr && !frameRootBoundary)
 +      ? SafeFragment
 +      : React.Suspense
  
    const inner = (
      <>
-@@ -65,10 +87,21 @@ export function Matches() {
+@@ -65,10 +83,21 @@ export function Matches() {
            // router object, so React skips the update.
            // eslint-disable-next-line react-hooks/rules-of-hooks -- server only, condition is static
            t={React.useState<AnyRouter>()[1]}
@@ -1915,7 +1943,7 @@ index cada2373ff9a6ea8e971763712798e23bef10d34..a71248746f3b6a664ea4eabd35f0273e
        </ResolvedSuspense>
      </>
    )
-@@ -80,25 +113,57 @@ export function Matches() {
+@@ -80,25 +109,58 @@ export function Matches() {
    )
  }
  
@@ -1978,13 +2006,14 @@ index cada2373ff9a6ea8e971763712798e23bef10d34..a71248746f3b6a664ea4eabd35f0273e
 +    activeFrame,
 +    matches,
 +    renderFrame,
++    router.options.experimental_concurrentRenderFrames,
 +    routerStateOwner,
 +    setRenderFrame,
 +  ])
  
    const matchComponent = routeId ? <Match routeId={routeId} /> : null
  
-@@ -177,6 +242,33 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
+@@ -177,6 +239,33 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
      }
    }
  
@@ -2018,7 +2047,7 @@ index cada2373ff9a6ea8e971763712798e23bef10d34..a71248746f3b6a664ea4eabd35f0273e
    // eslint-disable-next-line react-hooks/rules-of-hooks
    return React.useCallback(
      (opts) => {
-@@ -267,6 +359,17 @@ export function useMatches<
+@@ -267,6 +356,17 @@ export function useMatches<
  ): UseMatchesResult<TRouter, TSelected> {
    const router = useRouter<TRouter>()
  
@@ -2108,7 +2137,7 @@ index a1b189d4c6a4dceacebf1330b5d39cfc02637437..d422cbfd80441bd12c3aa7fb4a56a805
  }
  
 diff --git a/src/Transitioner.tsx b/src/Transitioner.tsx
-index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..ed03f04b0e87bacc30b3b0f1d07de4778acc9913 100644
+index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..1d23929bb5c3c7e017d3e8757e4f49e508ae86ec 100644
 --- a/src/Transitioner.tsx
 +++ b/src/Transitioner.tsx
 @@ -4,7 +4,9 @@ import * as React from 'react'
@@ -2137,7 +2166,7 @@ index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..ed03f04b0e87bacc30b3b0f1d07de477
    const acknowledgement = (router._rendered ??= [])
    const mounted =
      process.env.NODE_ENV !== 'production'
-@@ -33,7 +40,21 @@ export function Transitioner({
+@@ -33,7 +40,23 @@ export function Transitioner({
        settleOwner(acknowledgement, false)
        acknowledgement.push(expected, resolve)
        t(router)
@@ -2145,8 +2174,10 @@ index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..ed03f04b0e87bacc30b3b0f1d07de477
 +      React.startTransition(() => {
 +        routerStateOwner?.begin()
 +        try {
-+          const headFrame = fn()
-+          const frame = routerStateOwner?.stage(headFrame)
++          fn()
++          // Read the aggregate state after the batched writes, so the staged
++          // frame is exactly what this publication assembled.
++          const frame = routerStateOwner?.stage(router.stores.__store.get())
 +          if (frame) {
 +            acknowledgement[0 /* offered */] = frame.frameId
 +            setRenderFrame(frame)
@@ -2160,7 +2191,7 @@ index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..ed03f04b0e87bacc30b3b0f1d07de477
      })
  
    // Subscribe before canonicalizing so the initial URL has exactly one load.
-@@ -78,14 +99,17 @@ export function Transitioner({
+@@ -78,14 +101,17 @@ export function Transitioner({
        resolvedLocation?.href === location.href &&
        resolvedLocation.state.__TSR_key === location.state.__TSR_key
      ) {
@@ -2530,16 +2561,17 @@ index 178eace31bd84cef131aa743993beea9ac92b30a..3b1c647dde9d5220c112a7a67828eb69
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..a4d2b12bf8ce2579e06f0f42a6340b07a8165480
+index 0000000000000000000000000000000000000000..dad25f9c58565d02f9c8a9e2579721315bbe3951
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,232 @@
 +'use client'
 +
 +import * as React from 'react'
 +import { useStore } from '@tanstack/react-store'
 +import { isServer } from '@tanstack/router-core/isServer'
 +import { useLayoutEffect } from './utils'
++import { useHydrated } from './ClientOnly'
 +import type { AnyRouter, RouterState } from '@tanstack/router-core'
 +
 +export type RouterRenderFrame = RouterState<any>
@@ -2743,6 +2775,27 @@ index 0000000000000000000000000000000000000000..a4d2b12bf8ce2579e06f0f42a6340b07
 +  }, [owner])
 +
 +  return selection.current
++}
++
++/**
++ * Whether this render should consolidate route suspension at the frame root.
++ *
++ * Only the frame path asks, so `useHydrated` is never subscribed to on the
++ * default path. Within the frame branch the hook is unconditional, and the
++ * branch itself depends only on the option, which is fixed when the router is
++ * created.
++ */
++export function useFrameRootBoundary(
++  router: AnyRouter,
++  isServerRender: boolean,
++): boolean {
++  if (!router.options.experimental_concurrentRenderFrames) {
++    return false
++  }
++  // eslint-disable-next-line react-hooks/rules-of-hooks
++  const hydrated = useHydrated()
++  const isHydrating = Boolean(router.ssr) && !hydrated
++  return !isServerRender && !isHydrating
 +}
 diff --git a/src/useCanGoBack.ts b/src/useCanGoBack.ts
 index a20f947f438b0c9170284a3f751a98d1feeddb44..6482fdc5ecc050e5b23b3aa3425d1c6ea76e9e38 100644
