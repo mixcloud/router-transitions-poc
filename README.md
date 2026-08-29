@@ -125,15 +125,16 @@ which changes *how* router state reaches the tree rather than how navigation is
 triggered:
 
 - every aggregate router state carries a monotonic `frameId`;
-- transition callbacks return the assembled state, so partial publication is a
-  type error;
-- a `RouterStateProvider` owns the committed frame in ordinary React state,
-  stages a successor inside `startTransition`, and commits it on
-  acknowledgement;
+- a `RouterStateProvider` owns the committed frame, stages a successor inside
+  `startTransition`, and commits it on acknowledgement;
 - `Matches` acknowledges the exact rendered `frameId`, so a superseded
   navigation cannot settle a newer one;
-- selector hooks read a *stable* owner context and subscribe to it, and the
-  owner notifies subscribers from inside that same `startTransition`.
+- selector hooks read a *stable* context and subscribe to it, and the owner
+  notifies subscribers from inside that same `startTransition`;
+- a staged frame is offered, never imposed: each consumer records in React
+  state which frame its own render is presenting, so a work-in-progress render
+  can accept the staged frame while the tree still on screen keeps reading the
+  committed one.
 
 Because the update reaching each consumer is plain React state set inside
 `startTransition`, it keeps its transition lane and `<ViewTransition>` fires.

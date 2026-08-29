@@ -524,10 +524,10 @@ index f71f69ac907e209179b3c41be9db4dc6f6d38524..ef02b697228b62577302c1000e48357f
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f8d1d2153b2ef431feb43d1496815575370e5828
+index 0000000000000000000000000000000000000000..33c9453db1e4ae97669bddde671f0b672391f68a
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,225 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -539,11 +539,37 @@ index 0000000000000000000000000000000000000000..f8d1d2153b2ef431feb43d1496815575
 +let _tanstack_react_store = require("@tanstack/react-store");
 +//#region src/routerStateContext.tsx
 +var defaultCompare = (a, b) => a === b;
++/** The publication a fresh reader at this position should start from. */
++function offeredFrame(scope) {
++	return scope.staged ?? scope.committed;
++}
++/**
++* The publication a render presenting `frameId` should read.
++*
++* A render that was offered the staged publication keeps reading it until it
++* commits or is discarded. Every other render — including one the staged
++* publication was never offered to, because its own selection did not change —
++* reads the committed publication.
++*/
++function resolveFrame(scope, frameId) {
++	const staged = scope.staged;
++	return staged && staged.frameId === frameId ? staged : scope.committed;
++}
++/** Overlay navigation progress onto a publication without changing its content. */
++function withProgress(frame, head) {
++	if (frame.status === head.status && frame.isLoading === head.isLoading) return frame;
++	return {
++		...frame,
++		status: head.status,
++		isLoading: head.isLoading
++	};
++}
 +function createScope(router, frame) {
 +	const subscribers = /* @__PURE__ */ new Set();
 +	const scope = {
 +		router,
-+		frame,
++		committed: frame,
++		staged: void 0,
 +		subscribe: (subscriber) => {
 +			subscribers.add(subscriber);
 +			return () => {
@@ -551,7 +577,8 @@ index 0000000000000000000000000000000000000000..f8d1d2153b2ef431feb43d1496815575
 +			};
 +		},
 +		notify: () => {
-+			for (const subscriber of Array.from(subscribers)) subscriber(scope.frame);
++			const frameToPresent = offeredFrame(scope);
++			for (const subscriber of Array.from(subscribers)) subscriber(frameToPresent);
 +		}
 +	};
 +	return scope;
@@ -567,20 +594,32 @@ index 0000000000000000000000000000000000000000..f8d1d2153b2ef431feb43d1496815575
 +		let staging = false;
 +		let pending;
 +		const syncProgress = (head) => {
-+			if (root.frame.status === head.status && root.frame.isLoading === head.isLoading) return;
-+			root.frame = {
-+				...root.frame,
-+				status: head.status,
-+				isLoading: head.isLoading
-+			};
-+			root.notify();
++			let changed = false;
++			for (const scope of [root, route]) {
++				const nextCommitted = withProgress(scope.committed, head);
++				if (nextCommitted !== scope.committed) {
++					scope.committed = nextCommitted;
++					changed = true;
++				}
++				if (scope.staged) {
++					const nextStaged = withProgress(scope.staged, head);
++					if (nextStaged !== scope.staged) {
++						scope.staged = nextStaged;
++						changed = true;
++					}
++				}
++			}
++			if (changed) {
++				root.notify();
++				route.notify();
++			}
 +		};
 +		const owner = {
 +			router,
 +			root,
 +			route,
 +			get frame() {
-+				return root.frame;
++				return root.committed;
 +			},
 +			begin: () => {
 +				staging = true;
@@ -588,22 +627,25 @@ index 0000000000000000000000000000000000000000..f8d1d2153b2ef431feb43d1496815575
 +			stage: (nextFrame) => {
 +				staging = false;
 +				pending = nextFrame;
-+				route.frame = nextFrame;
++				route.staged = nextFrame;
 +				route.notify();
 +				return nextFrame;
 +			},
 +			cancel: () => {
 +				staging = false;
 +				pending = void 0;
-+				route.frame = root.frame;
++				route.staged = void 0;
 +				route.notify();
 +				owner.publish();
 +			},
 +			commit: (nextFrame) => {
 +				if (pending?.frameId !== nextFrame.frameId) return false;
 +				pending = void 0;
-+				root.frame = nextFrame;
++				root.committed = nextFrame;
++				route.committed = nextFrame;
++				route.staged = void 0;
 +				root.notify();
++				route.notify();
 +				return true;
 +			},
 +			publish: () => {
@@ -617,9 +659,10 @@ index 0000000000000000000000000000000000000000..f8d1d2153b2ef431feb43d1496815575
 +					syncProgress(head);
 +					return;
 +				}
-+				if (nextFrame.frameId === root.frame.frameId) return;
-+				root.frame = nextFrame;
-+				route.frame = nextFrame;
++				if (nextFrame.frameId === root.committed.frameId) return;
++				root.committed = nextFrame;
++				route.committed = nextFrame;
++				route.staged = void 0;
 +				root.notify();
 +				route.notify();
 +			}
@@ -657,10 +700,13 @@ index 0000000000000000000000000000000000000000..f8d1d2153b2ef431feb43d1496815575
 +		if (_tanstack_router_core_isServer.isServer ?? router.isServer) return selector(router.stores.__store.get());
 +		return (0, _tanstack_react_store.useStore)(router.stores.__store, selector, compare);
 +	}
-+	const [, forceRender] = react.useReducer((count) => count + 1, 0);
++	const [presenting, setPresenting] = react.useState(() => ({
++		frameId: offeredFrame(scope).frameId,
++		revision: 0
++	}));
 +	const rendered = react.useRef(void 0);
 +	const committed = react.useRef(void 0);
-+	rendered.current = selector(scope.frame);
++	rendered.current = selector(resolveFrame(scope, presenting.frameId));
 +	require_utils.useLayoutEffect(() => {
 +		committed.current = {
 +			value: rendered.current,
@@ -670,13 +716,17 @@ index 0000000000000000000000000000000000000000..f8d1d2153b2ef431feb43d1496815575
 +	});
 +	react.useEffect(() => {
 +		return scope.subscribe((frame) => {
++			const accept = () => setPresenting((previous) => ({
++				frameId: frame.frameId,
++				revision: previous.revision + 1
++			}));
 +			const onScreen = committed.current;
 +			if (!onScreen) {
-+				forceRender();
++				accept();
 +				return;
 +			}
 +			const next = onScreen.selector(frame);
-+			if (!onScreen.compare(onScreen.value, next)) forceRender();
++			if (!onScreen.compare(onScreen.value, next)) accept();
 +		});
 +	}, [scope]);
 +	return rendered.current;
@@ -706,32 +756,38 @@ index 0000000000000000000000000000000000000000..f8d1d2153b2ef431feb43d1496815575
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..05bbcb1578f7511b006cf7815c2bbffab4e6f81e
+index 0000000000000000000000000000000000000000..12ad4ec7c349b35492f34aa1859d3a008ba27870
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,65 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import * as React from 'react';
 +export type RouterRenderFrame = RouterState<any>;
 +type FrameSubscriber = (frame: RouterRenderFrame) => void;
 +/**
-+ * A position in the tree, with the frame that position should render.
++ * A position in the tree, and the publications that position can present.
 + *
 + * Identity is stable for the router's lifetime, so putting a scope in Context
 + * never invalidates its consumers; they subscribe for updates instead. Which
 + * scope a consumer reads is decided by where it sits:
 + *
-+ * - outside the route tree it reads the committed frame, and only advances
-+ *   when a navigation commits;
-+ * - inside the route tree it reads the frame that subtree is rendering, which
-+ *   is a staged successor while a navigation is in flight.
++ * - outside the route tree it reads the committed publication, and only
++ *   advances when a navigation commits;
++ * - inside the route tree it can also present a staged successor, while a
++ *   navigation is in flight.
 + *
-+ * That is what keeps a reader mounted by an unrelated urgent update on the
-+ * route the user can actually see.
++ * A scope holds both publications in separate slots rather than one mutable
++ * field. A consumer records, in React state, *which* publication its own
++ * render is presenting, and React versions that state per tree. So a
++ * work-in-progress render that has been offered the staged publication cannot
++ * drag it into the tree the user is still looking at.
 + */
 +type RouterStateScope = {
 +    router: AnyRouter;
-+    frame: RouterRenderFrame;
++    /** The publication this position has committed. */
++    committed: RouterRenderFrame;
++    /** A publication offered to the render presenting it, not yet committed. */
++    staged: RouterRenderFrame | undefined;
 +    subscribe: (subscriber: FrameSubscriber) => () => void;
 +    notify: () => void;
 +};
@@ -1441,32 +1497,38 @@ index 311e1bf0375a336e2bd7abe41203fe383d199af6..3d69a2e5f5f26f693906819bd9335a08
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..05bbcb1578f7511b006cf7815c2bbffab4e6f81e
+index 0000000000000000000000000000000000000000..12ad4ec7c349b35492f34aa1859d3a008ba27870
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,65 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import * as React from 'react';
 +export type RouterRenderFrame = RouterState<any>;
 +type FrameSubscriber = (frame: RouterRenderFrame) => void;
 +/**
-+ * A position in the tree, with the frame that position should render.
++ * A position in the tree, and the publications that position can present.
 + *
 + * Identity is stable for the router's lifetime, so putting a scope in Context
 + * never invalidates its consumers; they subscribe for updates instead. Which
 + * scope a consumer reads is decided by where it sits:
 + *
-+ * - outside the route tree it reads the committed frame, and only advances
-+ *   when a navigation commits;
-+ * - inside the route tree it reads the frame that subtree is rendering, which
-+ *   is a staged successor while a navigation is in flight.
++ * - outside the route tree it reads the committed publication, and only
++ *   advances when a navigation commits;
++ * - inside the route tree it can also present a staged successor, while a
++ *   navigation is in flight.
 + *
-+ * That is what keeps a reader mounted by an unrelated urgent update on the
-+ * route the user can actually see.
++ * A scope holds both publications in separate slots rather than one mutable
++ * field. A consumer records, in React state, *which* publication its own
++ * render is presenting, and React versions that state per tree. So a
++ * work-in-progress render that has been offered the staged publication cannot
++ * drag it into the tree the user is still looking at.
 + */
 +type RouterStateScope = {
 +    router: AnyRouter;
-+    frame: RouterRenderFrame;
++    /** The publication this position has committed. */
++    committed: RouterRenderFrame;
++    /** A publication offered to the render presenting it, not yet committed. */
++    staged: RouterRenderFrame | undefined;
 +    subscribe: (subscriber: FrameSubscriber) => () => void;
 +    notify: () => void;
 +};
@@ -1506,10 +1568,10 @@ index 0000000000000000000000000000000000000000..05bbcb1578f7511b006cf7815c2bbffa
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..b862f189fe7bc5a4479fb366d96c97761346bb4e
+index 0000000000000000000000000000000000000000..51b2d36ab13778c12a9506004775909808f881ea
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,219 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import { useHydrated } from "./ClientOnly.js";
@@ -1519,11 +1581,37 @@ index 0000000000000000000000000000000000000000..b862f189fe7bc5a4479fb366d96c9776
 +import { useStore } from "@tanstack/react-store";
 +//#region src/routerStateContext.tsx
 +var defaultCompare = (a, b) => a === b;
++/** The publication a fresh reader at this position should start from. */
++function offeredFrame(scope) {
++	return scope.staged ?? scope.committed;
++}
++/**
++* The publication a render presenting `frameId` should read.
++*
++* A render that was offered the staged publication keeps reading it until it
++* commits or is discarded. Every other render — including one the staged
++* publication was never offered to, because its own selection did not change —
++* reads the committed publication.
++*/
++function resolveFrame(scope, frameId) {
++	const staged = scope.staged;
++	return staged && staged.frameId === frameId ? staged : scope.committed;
++}
++/** Overlay navigation progress onto a publication without changing its content. */
++function withProgress(frame, head) {
++	if (frame.status === head.status && frame.isLoading === head.isLoading) return frame;
++	return {
++		...frame,
++		status: head.status,
++		isLoading: head.isLoading
++	};
++}
 +function createScope(router, frame) {
 +	const subscribers = /* @__PURE__ */ new Set();
 +	const scope = {
 +		router,
-+		frame,
++		committed: frame,
++		staged: void 0,
 +		subscribe: (subscriber) => {
 +			subscribers.add(subscriber);
 +			return () => {
@@ -1531,7 +1619,8 @@ index 0000000000000000000000000000000000000000..b862f189fe7bc5a4479fb366d96c9776
 +			};
 +		},
 +		notify: () => {
-+			for (const subscriber of Array.from(subscribers)) subscriber(scope.frame);
++			const frameToPresent = offeredFrame(scope);
++			for (const subscriber of Array.from(subscribers)) subscriber(frameToPresent);
 +		}
 +	};
 +	return scope;
@@ -1547,20 +1636,32 @@ index 0000000000000000000000000000000000000000..b862f189fe7bc5a4479fb366d96c9776
 +		let staging = false;
 +		let pending;
 +		const syncProgress = (head) => {
-+			if (root.frame.status === head.status && root.frame.isLoading === head.isLoading) return;
-+			root.frame = {
-+				...root.frame,
-+				status: head.status,
-+				isLoading: head.isLoading
-+			};
-+			root.notify();
++			let changed = false;
++			for (const scope of [root, route]) {
++				const nextCommitted = withProgress(scope.committed, head);
++				if (nextCommitted !== scope.committed) {
++					scope.committed = nextCommitted;
++					changed = true;
++				}
++				if (scope.staged) {
++					const nextStaged = withProgress(scope.staged, head);
++					if (nextStaged !== scope.staged) {
++						scope.staged = nextStaged;
++						changed = true;
++					}
++				}
++			}
++			if (changed) {
++				root.notify();
++				route.notify();
++			}
 +		};
 +		const owner = {
 +			router,
 +			root,
 +			route,
 +			get frame() {
-+				return root.frame;
++				return root.committed;
 +			},
 +			begin: () => {
 +				staging = true;
@@ -1568,22 +1669,25 @@ index 0000000000000000000000000000000000000000..b862f189fe7bc5a4479fb366d96c9776
 +			stage: (nextFrame) => {
 +				staging = false;
 +				pending = nextFrame;
-+				route.frame = nextFrame;
++				route.staged = nextFrame;
 +				route.notify();
 +				return nextFrame;
 +			},
 +			cancel: () => {
 +				staging = false;
 +				pending = void 0;
-+				route.frame = root.frame;
++				route.staged = void 0;
 +				route.notify();
 +				owner.publish();
 +			},
 +			commit: (nextFrame) => {
 +				if (pending?.frameId !== nextFrame.frameId) return false;
 +				pending = void 0;
-+				root.frame = nextFrame;
++				root.committed = nextFrame;
++				route.committed = nextFrame;
++				route.staged = void 0;
 +				root.notify();
++				route.notify();
 +				return true;
 +			},
 +			publish: () => {
@@ -1597,9 +1701,10 @@ index 0000000000000000000000000000000000000000..b862f189fe7bc5a4479fb366d96c9776
 +					syncProgress(head);
 +					return;
 +				}
-+				if (nextFrame.frameId === root.frame.frameId) return;
-+				root.frame = nextFrame;
-+				route.frame = nextFrame;
++				if (nextFrame.frameId === root.committed.frameId) return;
++				root.committed = nextFrame;
++				route.committed = nextFrame;
++				route.staged = void 0;
 +				root.notify();
 +				route.notify();
 +			}
@@ -1637,10 +1742,13 @@ index 0000000000000000000000000000000000000000..b862f189fe7bc5a4479fb366d96c9776
 +		if (isServer ?? router.isServer) return selector(router.stores.__store.get());
 +		return useStore(router.stores.__store, selector, compare);
 +	}
-+	const [, forceRender] = React$1.useReducer((count) => count + 1, 0);
++	const [presenting, setPresenting] = React$1.useState(() => ({
++		frameId: offeredFrame(scope).frameId,
++		revision: 0
++	}));
 +	const rendered = React$1.useRef(void 0);
 +	const committed = React$1.useRef(void 0);
-+	rendered.current = selector(scope.frame);
++	rendered.current = selector(resolveFrame(scope, presenting.frameId));
 +	useLayoutEffect(() => {
 +		committed.current = {
 +			value: rendered.current,
@@ -1650,13 +1758,17 @@ index 0000000000000000000000000000000000000000..b862f189fe7bc5a4479fb366d96c9776
 +	});
 +	React$1.useEffect(() => {
 +		return scope.subscribe((frame) => {
++			const accept = () => setPresenting((previous) => ({
++				frameId: frame.frameId,
++				revision: previous.revision + 1
++			}));
 +			const onScreen = committed.current;
 +			if (!onScreen) {
-+				forceRender();
++				accept();
 +				return;
 +			}
 +			const next = onScreen.selector(frame);
-+			if (!onScreen.compare(onScreen.value, next)) forceRender();
++			if (!onScreen.compare(onScreen.value, next)) accept();
 +		});
 +	}, [scope]);
 +	return rendered.current;
@@ -2633,10 +2745,10 @@ index 178eace31bd84cef131aa743993beea9ac92b30a..3b1c647dde9d5220c112a7a67828eb69
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20b8f5ddfc
+index 0000000000000000000000000000000000000000..eaa737b41a2039bc2cd7bdd417c22f45517d7793
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,299 @@
+@@ -0,0 +1,370 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -2651,23 +2763,29 @@ index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20
 +type FrameSubscriber = (frame: RouterRenderFrame) => void
 +
 +/**
-+ * A position in the tree, with the frame that position should render.
++ * A position in the tree, and the publications that position can present.
 + *
 + * Identity is stable for the router's lifetime, so putting a scope in Context
 + * never invalidates its consumers; they subscribe for updates instead. Which
 + * scope a consumer reads is decided by where it sits:
 + *
-+ * - outside the route tree it reads the committed frame, and only advances
-+ *   when a navigation commits;
-+ * - inside the route tree it reads the frame that subtree is rendering, which
-+ *   is a staged successor while a navigation is in flight.
++ * - outside the route tree it reads the committed publication, and only
++ *   advances when a navigation commits;
++ * - inside the route tree it can also present a staged successor, while a
++ *   navigation is in flight.
 + *
-+ * That is what keeps a reader mounted by an unrelated urgent update on the
-+ * route the user can actually see.
++ * A scope holds both publications in separate slots rather than one mutable
++ * field. A consumer records, in React state, *which* publication its own
++ * render is presenting, and React versions that state per tree. So a
++ * work-in-progress render that has been offered the staged publication cannot
++ * drag it into the tree the user is still looking at.
 + */
 +type RouterStateScope = {
 +  router: AnyRouter
-+  frame: RouterRenderFrame
++  /** The publication this position has committed. */
++  committed: RouterRenderFrame
++  /** A publication offered to the render presenting it, not yet committed. */
++  staged: RouterRenderFrame | undefined
 +  subscribe: (subscriber: FrameSubscriber) => () => void
 +  notify: () => void
 +}
@@ -2689,6 +2807,38 @@ index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20
 +
 +const defaultCompare = (a: unknown, b: unknown) => a === b
 +
++/** The publication a fresh reader at this position should start from. */
++function offeredFrame(scope: RouterStateScope): RouterRenderFrame {
++  return scope.staged ?? scope.committed
++}
++
++/**
++ * The publication a render presenting `frameId` should read.
++ *
++ * A render that was offered the staged publication keeps reading it until it
++ * commits or is discarded. Every other render — including one the staged
++ * publication was never offered to, because its own selection did not change —
++ * reads the committed publication.
++ */
++function resolveFrame(
++  scope: RouterStateScope,
++  frameId: number,
++): RouterRenderFrame {
++  const staged = scope.staged
++  return staged && staged.frameId === frameId ? staged : scope.committed
++}
++
++/** Overlay navigation progress onto a publication without changing its content. */
++function withProgress(
++  frame: RouterRenderFrame,
++  head: RouterRenderFrame,
++): RouterRenderFrame {
++  if (frame.status === head.status && frame.isLoading === head.isLoading) {
++    return frame
++  }
++  return { ...frame, status: head.status, isLoading: head.isLoading }
++}
++
 +function createScope(
 +  router: AnyRouter,
 +  frame: RouterRenderFrame,
@@ -2696,7 +2846,8 @@ index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20
 +  const subscribers = new Set<FrameSubscriber>()
 +  const scope: RouterStateScope = {
 +    router,
-+    frame,
++    committed: frame,
++    staged: undefined,
 +    subscribe: (subscriber) => {
 +      subscribers.add(subscriber)
 +      return () => {
@@ -2704,9 +2855,10 @@ index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20
 +      }
 +    },
 +    notify: () => {
++      const frameToPresent = offeredFrame(scope)
 +      // Copy first: a subscriber may unsubscribe while we iterate.
 +      for (const subscriber of Array.from(subscribers)) {
-+        subscriber(scope.frame)
++        subscriber(frameToPresent)
 +      }
 +    },
 +  }
@@ -2736,24 +2888,32 @@ index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20
 +    let staging = false
 +    let pending: RouterRenderFrame | undefined
 +
-+    // Navigation progress is not route content. The committed scope stays on
-+    // the route that is visible, but its status tracks the head, so progress
-+    // UI outside the route tree — a global loading bar, say — still sees a
-+    // navigation start and finish. Location and matches are untouched, so this
-+    // cannot surface a route the user cannot see.
++    // Navigation progress is not route content. Both scopes stay on the route
++    // they are presenting, but their status tracks the head, so progress UI —
++    // a global loading bar outside the route tree, or a spinner rendered by the
++    // route the user is leaving — sees a navigation start and finish. Location
++    // and matches are untouched, so this cannot surface a route the user
++    // cannot see.
 +    const syncProgress = (head: RouterRenderFrame) => {
-+      if (
-+        root.frame.status === head.status &&
-+        root.frame.isLoading === head.isLoading
-+      ) {
-+        return
++      let changed = false
++      for (const scope of [root, route]) {
++        const nextCommitted = withProgress(scope.committed, head)
++        if (nextCommitted !== scope.committed) {
++          scope.committed = nextCommitted
++          changed = true
++        }
++        if (scope.staged) {
++          const nextStaged = withProgress(scope.staged, head)
++          if (nextStaged !== scope.staged) {
++            scope.staged = nextStaged
++            changed = true
++          }
++        }
 +      }
-+      root.frame = {
-+        ...root.frame,
-+        status: head.status,
-+        isLoading: head.isLoading,
++      if (changed) {
++        root.notify()
++        route.notify()
 +      }
-+      root.notify()
 +    }
 +
 +    const owner: RouterStateOwner = {
@@ -2761,7 +2921,7 @@ index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20
 +      root,
 +      route,
 +      get frame() {
-+        return root.frame
++        return root.committed
 +      },
 +      begin: () => {
 +        staging = true
@@ -2769,16 +2929,18 @@ index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20
 +      stage: (nextFrame) => {
 +        staging = false
 +        pending = nextFrame
-+        // Only the route subtree presents a staged frame. Readers outside it
-+        // stay on the committed one until this navigation commits.
-+        route.frame = nextFrame
++        // Only the route subtree is offered a staged publication, and only the
++        // render that accepts it presents it. Readers outside that subtree, and
++        // readers whose own selection did not change, stay on the committed
++        // publication until this navigation commits.
++        route.staged = nextFrame
 +        route.notify()
 +        return nextFrame
 +      },
 +      cancel: () => {
 +        staging = false
 +        pending = undefined
-+        route.frame = root.frame
++        route.staged = undefined
 +        route.notify()
 +        owner.publish()
 +      },
@@ -2787,8 +2949,13 @@ index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20
 +          return false
 +        }
 +        pending = undefined
-+        root.frame = nextFrame
++        // The staged publication is now what everyone has committed, so the
++        // staged slot empties and both scopes resolve to it.
++        root.committed = nextFrame
++        route.committed = nextFrame
++        route.staged = undefined
 +        root.notify()
++        route.notify()
 +        return true
 +      },
 +      publish: () => {
@@ -2802,11 +2969,12 @@ index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20
 +          syncProgress(head)
 +          return
 +        }
-+        if (nextFrame.frameId === root.frame.frameId) {
++        if (nextFrame.frameId === root.committed.frameId) {
 +          return
 +        }
-+        root.frame = nextFrame
-+        route.frame = nextFrame
++        root.committed = nextFrame
++        route.committed = nextFrame
++        route.staged = undefined
 +        root.notify()
 +        route.notify()
 +      },
@@ -2862,8 +3030,16 @@ index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20
 +    return useStore(router.stores.__store, selector, compare)
 +  }
 +
++  // Which publication this consumer is presenting. It lives in React state, so
++  // React versions it per tree: a work-in-progress render can accept the staged
++  // publication without the still-visible tree following it there. `revision`
++  // makes every accepted update a distinct state value, so a progress-only
++  // change — same frame, new status — still re-renders.
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
-+  const [, forceRender] = React.useReducer((count: number) => count + 1, 0)
++  const [presenting, setPresenting] = React.useState(() => ({
++    frameId: offeredFrame(scope).frameId,
++    revision: 0,
++  }))
 +  // The selection for the render currently executing. A render can be
 +  // discarded — suspended, interrupted, or superseded — so this is
 +  // work in progress, not necessarily what anyone can see.
@@ -2883,7 +3059,7 @@ index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20
 +    | undefined
 +  >(undefined)
 +
-+  rendered.current = selector(scope.frame)
++  rendered.current = selector(resolveFrame(scope, presenting.frameId))
 +
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
 +  useLayoutEffect(() => {
@@ -2892,23 +3068,30 @@ index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20
 +
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
 +  React.useEffect(() => {
-+    // Re-render only when this subscriber's own selection changed, which is
-+    // what keeps selector-level render counts identical to the store path.
++    // Accept a publication only when this subscriber's own selection changed,
++    // which is what keeps selector-level render counts identical to the store
++    // path. A consumer that declines stays on the committed publication, where
++    // its selection is by definition the same.
 +    //
-+    // Everything here comes from the committed render, never the one in
-+    // progress: a discarded render leaves behind a selection, and a selector,
-+    // that were never presented. Comparing against either would skip the
-+    // re-render that should have shown the frame, leaving this consumer stuck
-+    // on what is on screen.
++    // Everything compared here comes from the committed render, never the one
++    // in progress: a discarded render leaves behind a selection, and a
++    // selector, that were never presented. Comparing against either would skip
++    // the re-render that should have shown the frame, leaving this consumer
++    // stuck on what is on screen.
 +    return scope.subscribe((frame) => {
++      const accept = () =>
++        setPresenting((previous) => ({
++          frameId: frame.frameId,
++          revision: previous.revision + 1,
++        }))
 +      const onScreen = committed.current
 +      if (!onScreen) {
-+        forceRender()
++        accept()
 +        return
 +      }
 +      const next = onScreen.selector(frame)
 +      if (!onScreen.compare(onScreen.value, next)) {
-+        forceRender()
++        accept()
 +      }
 +    })
 +  }, [scope])
