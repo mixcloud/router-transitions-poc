@@ -524,10 +524,10 @@ index f71f69ac907e209179b3c41be9db4dc6f6d38524..ef02b697228b62577302c1000e48357f
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..33c9453db1e4ae97669bddde671f0b672391f68a
+index 0000000000000000000000000000000000000000..1636eff3aaa5bef0a202957912284f89a3de4ab8
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,234 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -714,8 +714,8 @@ index 0000000000000000000000000000000000000000..33c9453db1e4ae97669bddde671f0b67
 +			compare
 +		};
 +	});
-+	react.useEffect(() => {
-+		return scope.subscribe((frame) => {
++	require_utils.useLayoutEffect(() => {
++		const unsubscribe = scope.subscribe((frame) => {
 +			const accept = () => setPresenting((previous) => ({
 +				frameId: frame.frameId,
 +				revision: previous.revision + 1
@@ -728,6 +728,15 @@ index 0000000000000000000000000000000000000000..33c9453db1e4ae97669bddde671f0b67
 +			const next = onScreen.selector(frame);
 +			if (!onScreen.compare(onScreen.value, next)) accept();
 +		});
++		const onScreen = committed.current;
++		if (onScreen) setPresenting((previous) => {
++			const next = onScreen.selector(resolveFrame(scope, previous.frameId));
++			return onScreen.compare(onScreen.value, next) ? previous : {
++				...previous,
++				revision: previous.revision + 1
++			};
++		});
++		return unsubscribe;
 +	}, [scope]);
 +	return rendered.current;
 +}
@@ -1568,10 +1577,10 @@ index 0000000000000000000000000000000000000000..12ad4ec7c349b35492f34aa1859d3a00
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..51b2d36ab13778c12a9506004775909808f881ea
+index 0000000000000000000000000000000000000000..c8d32d2aa73110b6ddb73e7e5e06f1b7f7f38438
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,219 @@
+@@ -0,0 +1,228 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import { useHydrated } from "./ClientOnly.js";
@@ -1756,8 +1765,8 @@ index 0000000000000000000000000000000000000000..51b2d36ab13778c12a95060047759098
 +			compare
 +		};
 +	});
-+	React$1.useEffect(() => {
-+		return scope.subscribe((frame) => {
++	useLayoutEffect(() => {
++		const unsubscribe = scope.subscribe((frame) => {
 +			const accept = () => setPresenting((previous) => ({
 +				frameId: frame.frameId,
 +				revision: previous.revision + 1
@@ -1770,6 +1779,15 @@ index 0000000000000000000000000000000000000000..51b2d36ab13778c12a95060047759098
 +			const next = onScreen.selector(frame);
 +			if (!onScreen.compare(onScreen.value, next)) accept();
 +		});
++		const onScreen = committed.current;
++		if (onScreen) setPresenting((previous) => {
++			const next = onScreen.selector(resolveFrame(scope, previous.frameId));
++			return onScreen.compare(onScreen.value, next) ? previous : {
++				...previous,
++				revision: previous.revision + 1
++			};
++		});
++		return unsubscribe;
 +	}, [scope]);
 +	return rendered.current;
 +}
@@ -2745,10 +2763,10 @@ index 178eace31bd84cef131aa743993beea9ac92b30a..3b1c647dde9d5220c112a7a67828eb69
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..eaa737b41a2039bc2cd7bdd417c22f45517d7793
+index 0000000000000000000000000000000000000000..8a637d65ee6ec595685c1828be0b468d09170d67
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,370 @@
+@@ -0,0 +1,391 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3067,7 +3085,7 @@ index 0000000000000000000000000000000000000000..eaa737b41a2039bc2cd7bdd417c22f45
 +  })
 +
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
-+  React.useEffect(() => {
++  useLayoutEffect(() => {
 +    // Accept a publication only when this subscriber's own selection changed,
 +    // which is what keeps selector-level render counts identical to the store
 +    // path. A consumer that declines stays on the committed publication, where
@@ -3078,7 +3096,7 @@ index 0000000000000000000000000000000000000000..eaa737b41a2039bc2cd7bdd417c22f45
 +    // selector, that were never presented. Comparing against either would skip
 +    // the re-render that should have shown the frame, leaving this consumer
 +    // stuck on what is on screen.
-+    return scope.subscribe((frame) => {
++    const unsubscribe = scope.subscribe((frame) => {
 +      const accept = () =>
 +        setPresenting((previous) => ({
 +          frameId: frame.frameId,
@@ -3094,6 +3112,27 @@ index 0000000000000000000000000000000000000000..eaa737b41a2039bc2cd7bdd417c22f45
 +        accept()
 +      }
 +    })
++
++    // A publication can land between this consumer's render and this effect —
++    // `MatchesInner` commits a frame from a layout effect of its own — and a
++    // notification sent then reaches nobody who is not yet listening. So
++    // re-read on subscribing, the way `useSyncExternalStore` does.
++    //
++    // This re-reads *this consumer's own* publication rather than whatever is
++    // newest: it keeps `frameId` and only forces the render, so a committed
++    // tree still resolves to the committed slot and a staged frame stays with
++    // the render presenting it.
++    const onScreen = committed.current
++    if (onScreen) {
++      setPresenting((previous) => {
++        const next = onScreen.selector(resolveFrame(scope, previous.frameId))
++        return onScreen.compare(onScreen.value, next)
++          ? previous
++          : { ...previous, revision: previous.revision + 1 }
++      })
++    }
++
++    return unsubscribe
 +  }, [scope])
 +
 +  return rendered.current
