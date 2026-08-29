@@ -524,10 +524,10 @@ index f71f69ac907e209179b3c41be9db4dc6f6d38524..ef02b697228b62577302c1000e48357f
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1ae9e4004951e2558109bb461152fa4c4962e083
+index 0000000000000000000000000000000000000000..f8d1d2153b2ef431feb43d1496815575370e5828
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,175 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -566,6 +566,15 @@ index 0000000000000000000000000000000000000000..1ae9e4004951e2558109bb461152fa4c
 +		const route = createScope(router, initial);
 +		let staging = false;
 +		let pending;
++		const syncProgress = (head) => {
++			if (root.frame.status === head.status && root.frame.isLoading === head.isLoading) return;
++			root.frame = {
++				...root.frame,
++				status: head.status,
++				isLoading: head.isLoading
++			};
++			root.notify();
++		};
 +		const owner = {
 +			router,
 +			root,
@@ -598,9 +607,16 @@ index 0000000000000000000000000000000000000000..1ae9e4004951e2558109bb461152fa4c
 +				return true;
 +			},
 +			publish: () => {
-+				if (staging || pending) return;
-+				const nextFrame = router.stores.__store.get();
-+				if (nextFrame.status === "pending") return;
++				const head = router.stores.__store.get();
++				if (staging || pending) {
++					syncProgress(head);
++					return;
++				}
++				const nextFrame = head;
++				if (nextFrame.status === "pending") {
++					syncProgress(head);
++					return;
++				}
 +				if (nextFrame.frameId === root.frame.frameId) return;
 +				root.frame = nextFrame;
 +				route.frame = nextFrame;
@@ -644,23 +660,23 @@ index 0000000000000000000000000000000000000000..1ae9e4004951e2558109bb461152fa4c
 +	const [, forceRender] = react.useReducer((count) => count + 1, 0);
 +	const rendered = react.useRef(void 0);
 +	const committed = react.useRef(void 0);
-+	const latest = react.useRef({
-+		selector,
-+		compare
-+	});
-+	latest.current = {
-+		selector,
-+		compare
-+	};
 +	rendered.current = selector(scope.frame);
 +	require_utils.useLayoutEffect(() => {
-+		committed.current = { value: rendered.current };
++		committed.current = {
++			value: rendered.current,
++			selector,
++			compare
++		};
 +	});
 +	react.useEffect(() => {
 +		return scope.subscribe((frame) => {
-+			const next = latest.current.selector(frame);
 +			const onScreen = committed.current;
-+			if (!onScreen || !latest.current.compare(onScreen.value, next)) forceRender();
++			if (!onScreen) {
++				forceRender();
++				return;
++			}
++			const next = onScreen.selector(frame);
++			if (!onScreen.compare(onScreen.value, next)) forceRender();
 +		});
 +	}, [scope]);
 +	return rendered.current;
@@ -1490,10 +1506,10 @@ index 0000000000000000000000000000000000000000..05bbcb1578f7511b006cf7815c2bbffa
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..73db82d093d01277dc75a1f74faac83a463b101e
+index 0000000000000000000000000000000000000000..b862f189fe7bc5a4479fb366d96c97761346bb4e
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,169 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import { useHydrated } from "./ClientOnly.js";
@@ -1530,6 +1546,15 @@ index 0000000000000000000000000000000000000000..73db82d093d01277dc75a1f74faac83a
 +		const route = createScope(router, initial);
 +		let staging = false;
 +		let pending;
++		const syncProgress = (head) => {
++			if (root.frame.status === head.status && root.frame.isLoading === head.isLoading) return;
++			root.frame = {
++				...root.frame,
++				status: head.status,
++				isLoading: head.isLoading
++			};
++			root.notify();
++		};
 +		const owner = {
 +			router,
 +			root,
@@ -1562,9 +1587,16 @@ index 0000000000000000000000000000000000000000..73db82d093d01277dc75a1f74faac83a
 +				return true;
 +			},
 +			publish: () => {
-+				if (staging || pending) return;
-+				const nextFrame = router.stores.__store.get();
-+				if (nextFrame.status === "pending") return;
++				const head = router.stores.__store.get();
++				if (staging || pending) {
++					syncProgress(head);
++					return;
++				}
++				const nextFrame = head;
++				if (nextFrame.status === "pending") {
++					syncProgress(head);
++					return;
++				}
 +				if (nextFrame.frameId === root.frame.frameId) return;
 +				root.frame = nextFrame;
 +				route.frame = nextFrame;
@@ -1608,23 +1640,23 @@ index 0000000000000000000000000000000000000000..73db82d093d01277dc75a1f74faac83a
 +	const [, forceRender] = React$1.useReducer((count) => count + 1, 0);
 +	const rendered = React$1.useRef(void 0);
 +	const committed = React$1.useRef(void 0);
-+	const latest = React$1.useRef({
-+		selector,
-+		compare
-+	});
-+	latest.current = {
-+		selector,
-+		compare
-+	};
 +	rendered.current = selector(scope.frame);
 +	useLayoutEffect(() => {
-+		committed.current = { value: rendered.current };
++		committed.current = {
++			value: rendered.current,
++			selector,
++			compare
++		};
 +	});
 +	React$1.useEffect(() => {
 +		return scope.subscribe((frame) => {
-+			const next = latest.current.selector(frame);
 +			const onScreen = committed.current;
-+			if (!onScreen || !latest.current.compare(onScreen.value, next)) forceRender();
++			if (!onScreen) {
++				forceRender();
++				return;
++			}
++			const next = onScreen.selector(frame);
++			if (!onScreen.compare(onScreen.value, next)) forceRender();
 +		});
 +	}, [scope]);
 +	return rendered.current;
@@ -2601,10 +2633,10 @@ index 178eace31bd84cef131aa743993beea9ac92b30a..3b1c647dde9d5220c112a7a67828eb69
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..04b92e30f73ef4cc3170db0cc2009b111758ad88
+index 0000000000000000000000000000000000000000..2da1fde3f846c38ad5e9f3ace6057d20b8f5ddfc
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,265 @@
+@@ -0,0 +1,299 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -2704,6 +2736,26 @@ index 0000000000000000000000000000000000000000..04b92e30f73ef4cc3170db0cc2009b11
 +    let staging = false
 +    let pending: RouterRenderFrame | undefined
 +
++    // Navigation progress is not route content. The committed scope stays on
++    // the route that is visible, but its status tracks the head, so progress
++    // UI outside the route tree — a global loading bar, say — still sees a
++    // navigation start and finish. Location and matches are untouched, so this
++    // cannot surface a route the user cannot see.
++    const syncProgress = (head: RouterRenderFrame) => {
++      if (
++        root.frame.status === head.status &&
++        root.frame.isLoading === head.isLoading
++      ) {
++        return
++      }
++      root.frame = {
++        ...root.frame,
++        status: head.status,
++        isLoading: head.isLoading,
++      }
++      root.notify()
++    }
++
 +    const owner: RouterStateOwner = {
 +      router,
 +      root,
@@ -2740,11 +2792,14 @@ index 0000000000000000000000000000000000000000..04b92e30f73ef4cc3170db0cc2009b11
 +        return true
 +      },
 +      publish: () => {
++        const head = router.stores.__store.get()
 +        if (staging || pending) {
++          syncProgress(head)
 +          return
 +        }
-+        const nextFrame = router.stores.__store.get()
++        const nextFrame = head
 +        if (nextFrame.status === 'pending') {
++          syncProgress(head)
 +          return
 +        }
 +        if (nextFrame.frameId === root.frame.frameId) {
@@ -2814,19 +2869,25 @@ index 0000000000000000000000000000000000000000..04b92e30f73ef4cc3170db0cc2009b11
 +  // work in progress, not necessarily what anyone can see.
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
 +  const rendered = React.useRef<TSelected>(undefined as TSelected)
-+  // The selection that actually reached the screen. Boxed so that a committed
-+  // `undefined` is distinguishable from having committed nothing yet.
++  // What actually reached the screen: the selection, and the selector and
++  // comparator that produced it. Kept together, because comparing a value from
++  // one selector against a value from another is meaningless. Boxed so that a
++  // committed `undefined` is distinguishable from having committed nothing yet.
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
-+  const committed = React.useRef<{ value: TSelected } | undefined>(undefined)
-+  // eslint-disable-next-line react-hooks/rules-of-hooks
-+  const latest = React.useRef({ selector, compare })
-+  latest.current = { selector, compare }
++  const committed = React.useRef<
++    | {
++        value: TSelected
++        selector: (state: RouterState<any>) => TSelected
++        compare: (a: TSelected, b: TSelected) => boolean
++      }
++    | undefined
++  >(undefined)
 +
 +  rendered.current = selector(scope.frame)
 +
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
 +  useLayoutEffect(() => {
-+    committed.current = { value: rendered.current }
++    committed.current = { value: rendered.current, selector, compare }
 +  })
 +
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -2834,14 +2895,19 @@ index 0000000000000000000000000000000000000000..04b92e30f73ef4cc3170db0cc2009b11
 +    // Re-render only when this subscriber's own selection changed, which is
 +    // what keeps selector-level render counts identical to the store path.
 +    //
-+    // Compare against the committed selection, never the in-progress one: a
-+    // discarded render leaves a value here that was never presented, and
-+    // comparing against it would skip the re-render that should have shown
-+    // the frame, leaving this consumer stuck on what is on screen.
++    // Everything here comes from the committed render, never the one in
++    // progress: a discarded render leaves behind a selection, and a selector,
++    // that were never presented. Comparing against either would skip the
++    // re-render that should have shown the frame, leaving this consumer stuck
++    // on what is on screen.
 +    return scope.subscribe((frame) => {
-+      const next = latest.current.selector(frame)
 +      const onScreen = committed.current
-+      if (!onScreen || !latest.current.compare(onScreen.value, next)) {
++      if (!onScreen) {
++        forceRender()
++        return
++      }
++      const next = onScreen.selector(frame)
++      if (!onScreen.compare(onScreen.value, next)) {
 +        forceRender()
 +      }
 +    })
