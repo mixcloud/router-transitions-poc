@@ -64,7 +64,7 @@ rather than browser support, a missing `name`, or a mis-paired old/new element.
 It is a genuine shared-element morph, not merely a transition firing. The
 pseudo-elements animating mid-navigation are:
 
-```
+```text
 ::view-transition-group(article-image-2)
 ::view-transition-old(article-image-2)
 ::view-transition-new(article-image-2)
@@ -181,7 +181,7 @@ change `viewTransition: true`, which keeps working as before.
 
 ## Layout
 
-```
+```text
 src/routes/__root.tsx        shell + the view-transition counter badge
 src/routes/index.tsx         news list, both control buttons
 src/routes/article.$id.tsx   detail page, big hero image
