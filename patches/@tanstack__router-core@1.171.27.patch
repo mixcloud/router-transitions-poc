@@ -1,5 +1,5 @@
 diff --git a/dist/cjs/router.cjs b/dist/cjs/router.cjs
-index 5b3ec09862d4063bb0cac301864ff22796a90523..8a3db30cbc29aaf645648723c40e46f44b5a3bd9 100644
+index 5b3ec09862d4063bb0cac301864ff22796a90523..8f2f1430bfb8216eb179d21a9198a798a5491518 100644
 --- a/dist/cjs/router.cjs
 +++ b/dist/cjs/router.cjs
 @@ -603,9 +603,11 @@ var RouterCore = class {
@@ -8,11 +8,11 @@ index 5b3ec09862d4063bb0cac301864ff22796a90523..8a3db30cbc29aaf645648723c40e46f4
  			const next = this.buildLocation(matchLocation);
 -			const isPending = this.stores.status.get() === "pending";
 +			const presentedState = opts?._state;
-+			const isPending = (presentedState?.status ?? this.stores.status.get()) === "pending";
++			const isPending = (opts?.pending ? this.stores.status.get() : presentedState?.status ?? this.stores.status.get()) === "pending";
  			if (opts?.pending && !isPending) return false;
 -			const baseLocation = opts?.pending ?? !isPending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
 +			const pending = opts?.pending ?? !isPending;
-+			const baseLocation = presentedState ? pending ? presentedState.location : presentedState.resolvedLocation || presentedState.location : pending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
++			const baseLocation = presentedState && !opts?.pending ? pending ? presentedState.location : presentedState.resolvedLocation || presentedState.location : pending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
  			const match = require_new_process_route_tree.findSingleMatch(next.pathname, opts?.caseSensitive ?? false, opts?.fuzzy ?? false, baseLocation.pathname, this.processedTree);
  			if (!match) return false;
  			if (location.params) {
@@ -89,7 +89,7 @@ index 5097626c2748b662c002a62690125ec8f8a92648..f5d26127892245e479fd59ab0312ac44
      ];
      /** Development-only HMR reload for a route and its descendants. */
 diff --git a/dist/esm/router.js b/dist/esm/router.js
-index 8977cec9374c33ee6046924fff0cff1bf4d87fc9..ae3ab8bafc3307b36ca7cb1ef30521f429130ea7 100644
+index 8977cec9374c33ee6046924fff0cff1bf4d87fc9..a3f90e49dc48885cf3f1931cf58decc1cb52d4be 100644
 --- a/dist/esm/router.js
 +++ b/dist/esm/router.js
 @@ -603,9 +603,11 @@ var RouterCore = class {
@@ -98,11 +98,11 @@ index 8977cec9374c33ee6046924fff0cff1bf4d87fc9..ae3ab8bafc3307b36ca7cb1ef30521f4
  			const next = this.buildLocation(matchLocation);
 -			const isPending = this.stores.status.get() === "pending";
 +			const presentedState = opts?._state;
-+			const isPending = (presentedState?.status ?? this.stores.status.get()) === "pending";
++			const isPending = (opts?.pending ? this.stores.status.get() : presentedState?.status ?? this.stores.status.get()) === "pending";
  			if (opts?.pending && !isPending) return false;
 -			const baseLocation = opts?.pending ?? !isPending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
 +			const pending = opts?.pending ?? !isPending;
-+			const baseLocation = presentedState ? pending ? presentedState.location : presentedState.resolvedLocation || presentedState.location : pending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
++			const baseLocation = presentedState && !opts?.pending ? pending ? presentedState.location : presentedState.resolvedLocation || presentedState.location : pending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
  			const match = findSingleMatch(next.pathname, opts?.caseSensitive ?? false, opts?.fuzzy ?? false, baseLocation.pathname, this.processedTree);
  			if (!match) return false;
  			if (location.params) {
@@ -135,7 +135,7 @@ index 803b74b59ff23fbf3247b5130c26d17e14ca766f..1ee162103309c3dc6e00566d1c6ce9e2
  		isLoading: status.get() === "pending",
  		matches: matches.get(),
 diff --git a/src/router.ts b/src/router.ts
-index 900609098e6689f3c488fc0e40293b470b35dee4..2f9a63dc7c61d11c1acc5f2199c76078d6dc13a0 100644
+index 900609098e6689f3c488fc0e40293b470b35dee4..79d77f54660afb086315e6bcfad11a239e57b62f 100644
 --- a/src/router.ts
 +++ b/src/router.ts
 @@ -550,6 +550,8 @@ export interface RouterState<
@@ -156,7 +156,7 @@ index 900609098e6689f3c488fc0e40293b470b35dee4..2f9a63dc7c61d11c1acc5f2199c76078
      settle?: (rendered: boolean) => void,
    ]
    /** Development-only HMR reload for a route and its descendants. */
-@@ -2606,16 +2608,24 @@ export class RouterCore<
+@@ -2606,16 +2608,33 @@ export class RouterCore<
      }
      const next = this.buildLocation(matchLocation as any)
  
@@ -164,8 +164,16 @@ index 900609098e6689f3c488fc0e40293b470b35dee4..2f9a63dc7c61d11c1acc5f2199c76078
 +    const presentedState = (
 +      opts as MatchRouteOptions & { _state?: RouterState }
 +    )?._state
-+    const isPending =
-+      (presentedState?.status ?? this.stores.status.get()) === 'pending'
++    // An explicit `pending: true` query asks about the navigation in flight —
++    // "is this the link we are going to?" — which is a question about the head,
++    // not about what this render is showing. It is answered from the head
++    // whether or not a frame is presented, exactly as it always has been.
++    // Everything else resolves against the frame being presented.
++    const isPending = (
++      opts?.pending
++        ? this.stores.status.get()
++        : (presentedState?.status ?? this.stores.status.get())
++    ) === 'pending'
      if (opts?.pending && !isPending) {
        return false
      }
@@ -175,17 +183,18 @@ index 900609098e6689f3c488fc0e40293b470b35dee4..2f9a63dc7c61d11c1acc5f2199c76078
 -    const baseLocation = pending
 -      ? this.latestLocation
 -      : this.stores.resolvedLocation.get() || this.stores.location.get()
-+    const baseLocation = presentedState
-+      ? pending
-+        ? presentedState.location
-+        : presentedState.resolvedLocation || presentedState.location
-+      : pending
-+        ? this.latestLocation
-+        : this.stores.resolvedLocation.get() || this.stores.location.get()
++    const baseLocation =
++      presentedState && !opts?.pending
++        ? pending
++          ? presentedState.location
++          : presentedState.resolvedLocation || presentedState.location
++        : pending
++          ? this.latestLocation
++          : this.stores.resolvedLocation.get() || this.stores.location.get()
  
      const match = findSingleMatch(
        next.pathname,
-@@ -2700,6 +2710,7 @@ export function getInitialRouterState(
+@@ -2700,6 +2719,7 @@ export function getInitialRouterState(
    location: ParsedLocation,
  ): RouterState<any> {
    return {
