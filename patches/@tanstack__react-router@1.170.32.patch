@@ -524,10 +524,10 @@ index f71f69ac907e209179b3c41be9db4dc6f6d38524..ef02b697228b62577302c1000e48357f
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1636eff3aaa5bef0a202957912284f89a3de4ab8
+index 0000000000000000000000000000000000000000..dc3664de265db6bcb15002c57bed27ca9f87a9d7
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,234 @@
+@@ -0,0 +1,242 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -566,7 +566,7 @@ index 0000000000000000000000000000000000000000..1636eff3aaa5bef0a202957912284f89
 +}
 +function createScope(router, frame) {
 +	const subscribers = /* @__PURE__ */ new Set();
-+	const scope = {
++	return {
 +		router,
 +		committed: frame,
 +		staged: void 0,
@@ -576,12 +576,10 @@ index 0000000000000000000000000000000000000000..1636eff3aaa5bef0a202957912284f89
 +				subscribers.delete(subscriber);
 +			};
 +		},
-+		notify: () => {
-+			const frameToPresent = offeredFrame(scope);
-+			for (const subscriber of Array.from(subscribers)) subscriber(frameToPresent);
++		notify: (offered) => {
++			for (const subscriber of Array.from(subscribers)) subscriber(offered);
 +		}
 +	};
-+	return scope;
 +}
 +var routerStateScopeContext = react.createContext(void 0);
 +var routerStateOwnerContext = react.createContext(void 0);
@@ -628,7 +626,7 @@ index 0000000000000000000000000000000000000000..1636eff3aaa5bef0a202957912284f89
 +				staging = false;
 +				pending = nextFrame;
 +				route.staged = nextFrame;
-+				route.notify();
++				route.notify(nextFrame);
 +				return nextFrame;
 +			},
 +			cancel: () => {
@@ -715,27 +713,37 @@ index 0000000000000000000000000000000000000000..1636eff3aaa5bef0a202957912284f89
 +		};
 +	});
 +	require_utils.useLayoutEffect(() => {
-+		const unsubscribe = scope.subscribe((frame) => {
-+			const accept = () => setPresenting((previous) => ({
-+				frameId: frame.frameId,
-+				revision: previous.revision + 1
-+			}));
++		const refresh = () => {
 +			const onScreen = committed.current;
-+			if (!onScreen) {
-+				accept();
++			if (!onScreen) return;
++			setPresenting((previous) => {
++				const next = onScreen.selector(resolveFrame(scope, previous.frameId));
++				return onScreen.compare(onScreen.value, next) ? previous : {
++					...previous,
++					revision: previous.revision + 1
++				};
++			});
++		};
++		const unsubscribe = scope.subscribe((offered) => {
++			if (!offered) {
++				refresh();
 +				return;
 +			}
-+			const next = onScreen.selector(frame);
-+			if (!onScreen.compare(onScreen.value, next)) accept();
-+		});
-+		const onScreen = committed.current;
-+		if (onScreen) setPresenting((previous) => {
-+			const next = onScreen.selector(resolveFrame(scope, previous.frameId));
-+			return onScreen.compare(onScreen.value, next) ? previous : {
-+				...previous,
++			const onScreen = committed.current;
++			if (!onScreen) {
++				setPresenting((previous) => ({
++					frameId: offered.frameId,
++					revision: previous.revision + 1
++				}));
++				return;
++			}
++			const next = onScreen.selector(offered);
++			if (!onScreen.compare(onScreen.value, next)) setPresenting((previous) => ({
++				frameId: offered.frameId,
 +				revision: previous.revision + 1
-+			};
++			}));
 +		});
++		refresh();
 +		return unsubscribe;
 +	}, [scope]);
 +	return rendered.current;
@@ -765,14 +773,21 @@ index 0000000000000000000000000000000000000000..1636eff3aaa5bef0a202957912284f89
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..12ad4ec7c349b35492f34aa1859d3a008ba27870
+index 0000000000000000000000000000000000000000..26a58056225453c5a26a1c620c138a4a80f4946a
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,72 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import * as React from 'react';
 +export type RouterRenderFrame = RouterState<any>;
-+type FrameSubscriber = (frame: RouterRenderFrame) => void;
++/**
++ * Notified either with a staged publication being *offered* — which only ever
++ * happens from inside the Router's `startTransition` — or with nothing, meaning
++ * "re-read whatever you are already presenting". A subscriber may move onto a
++ * staged publication only in the first case, so no notification sent outside a
++ * transition can move a consumer off the route it is showing.
++ */
++type FrameSubscriber = (offered: RouterRenderFrame | undefined) => void;
 +/**
 + * A position in the tree, and the publications that position can present.
 + *
@@ -798,7 +813,7 @@ index 0000000000000000000000000000000000000000..12ad4ec7c349b35492f34aa1859d3a00
 +    /** A publication offered to the render presenting it, not yet committed. */
 +    staged: RouterRenderFrame | undefined;
 +    subscribe: (subscriber: FrameSubscriber) => () => void;
-+    notify: () => void;
++    notify: (offered?: RouterRenderFrame) => void;
 +};
 +type RouterStateOwner = {
 +    router: AnyRouter;
@@ -1506,14 +1521,21 @@ index 311e1bf0375a336e2bd7abe41203fe383d199af6..3d69a2e5f5f26f693906819bd9335a08
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..12ad4ec7c349b35492f34aa1859d3a008ba27870
+index 0000000000000000000000000000000000000000..26a58056225453c5a26a1c620c138a4a80f4946a
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,72 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import * as React from 'react';
 +export type RouterRenderFrame = RouterState<any>;
-+type FrameSubscriber = (frame: RouterRenderFrame) => void;
++/**
++ * Notified either with a staged publication being *offered* — which only ever
++ * happens from inside the Router's `startTransition` — or with nothing, meaning
++ * "re-read whatever you are already presenting". A subscriber may move onto a
++ * staged publication only in the first case, so no notification sent outside a
++ * transition can move a consumer off the route it is showing.
++ */
++type FrameSubscriber = (offered: RouterRenderFrame | undefined) => void;
 +/**
 + * A position in the tree, and the publications that position can present.
 + *
@@ -1539,7 +1561,7 @@ index 0000000000000000000000000000000000000000..12ad4ec7c349b35492f34aa1859d3a00
 +    /** A publication offered to the render presenting it, not yet committed. */
 +    staged: RouterRenderFrame | undefined;
 +    subscribe: (subscriber: FrameSubscriber) => () => void;
-+    notify: () => void;
++    notify: (offered?: RouterRenderFrame) => void;
 +};
 +type RouterStateOwner = {
 +    router: AnyRouter;
@@ -1577,10 +1599,10 @@ index 0000000000000000000000000000000000000000..12ad4ec7c349b35492f34aa1859d3a00
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..c8d32d2aa73110b6ddb73e7e5e06f1b7f7f38438
+index 0000000000000000000000000000000000000000..4a412f7f5d1181c125679bc84b97e0940b9514ff
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,236 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import { useHydrated } from "./ClientOnly.js";
@@ -1617,7 +1639,7 @@ index 0000000000000000000000000000000000000000..c8d32d2aa73110b6ddb73e7e5e06f1b7
 +}
 +function createScope(router, frame) {
 +	const subscribers = /* @__PURE__ */ new Set();
-+	const scope = {
++	return {
 +		router,
 +		committed: frame,
 +		staged: void 0,
@@ -1627,12 +1649,10 @@ index 0000000000000000000000000000000000000000..c8d32d2aa73110b6ddb73e7e5e06f1b7
 +				subscribers.delete(subscriber);
 +			};
 +		},
-+		notify: () => {
-+			const frameToPresent = offeredFrame(scope);
-+			for (const subscriber of Array.from(subscribers)) subscriber(frameToPresent);
++		notify: (offered) => {
++			for (const subscriber of Array.from(subscribers)) subscriber(offered);
 +		}
 +	};
-+	return scope;
 +}
 +var routerStateScopeContext = React$1.createContext(void 0);
 +var routerStateOwnerContext = React$1.createContext(void 0);
@@ -1679,7 +1699,7 @@ index 0000000000000000000000000000000000000000..c8d32d2aa73110b6ddb73e7e5e06f1b7
 +				staging = false;
 +				pending = nextFrame;
 +				route.staged = nextFrame;
-+				route.notify();
++				route.notify(nextFrame);
 +				return nextFrame;
 +			},
 +			cancel: () => {
@@ -1766,27 +1786,37 @@ index 0000000000000000000000000000000000000000..c8d32d2aa73110b6ddb73e7e5e06f1b7
 +		};
 +	});
 +	useLayoutEffect(() => {
-+		const unsubscribe = scope.subscribe((frame) => {
-+			const accept = () => setPresenting((previous) => ({
-+				frameId: frame.frameId,
-+				revision: previous.revision + 1
-+			}));
++		const refresh = () => {
 +			const onScreen = committed.current;
-+			if (!onScreen) {
-+				accept();
++			if (!onScreen) return;
++			setPresenting((previous) => {
++				const next = onScreen.selector(resolveFrame(scope, previous.frameId));
++				return onScreen.compare(onScreen.value, next) ? previous : {
++					...previous,
++					revision: previous.revision + 1
++				};
++			});
++		};
++		const unsubscribe = scope.subscribe((offered) => {
++			if (!offered) {
++				refresh();
 +				return;
 +			}
-+			const next = onScreen.selector(frame);
-+			if (!onScreen.compare(onScreen.value, next)) accept();
-+		});
-+		const onScreen = committed.current;
-+		if (onScreen) setPresenting((previous) => {
-+			const next = onScreen.selector(resolveFrame(scope, previous.frameId));
-+			return onScreen.compare(onScreen.value, next) ? previous : {
-+				...previous,
++			const onScreen = committed.current;
++			if (!onScreen) {
++				setPresenting((previous) => ({
++					frameId: offered.frameId,
++					revision: previous.revision + 1
++				}));
++				return;
++			}
++			const next = onScreen.selector(offered);
++			if (!onScreen.compare(onScreen.value, next)) setPresenting((previous) => ({
++				frameId: offered.frameId,
 +				revision: previous.revision + 1
-+			};
++			}));
 +		});
++		refresh();
 +		return unsubscribe;
 +	}, [scope]);
 +	return rendered.current;
@@ -2763,10 +2793,10 @@ index 178eace31bd84cef131aa743993beea9ac92b30a..3b1c647dde9d5220c112a7a67828eb69
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..8a637d65ee6ec595685c1828be0b468d09170d67
+index 0000000000000000000000000000000000000000..61ec728cef86941ef7abef5699f9c56f1847180c
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,391 @@
+@@ -0,0 +1,411 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -2778,7 +2808,14 @@ index 0000000000000000000000000000000000000000..8a637d65ee6ec595685c1828be0b468d
 +
 +export type RouterRenderFrame = RouterState<any>
 +
-+type FrameSubscriber = (frame: RouterRenderFrame) => void
++/**
++ * Notified either with a staged publication being *offered* — which only ever
++ * happens from inside the Router's `startTransition` — or with nothing, meaning
++ * "re-read whatever you are already presenting". A subscriber may move onto a
++ * staged publication only in the first case, so no notification sent outside a
++ * transition can move a consumer off the route it is showing.
++ */
++type FrameSubscriber = (offered: RouterRenderFrame | undefined) => void
 +
 +/**
 + * A position in the tree, and the publications that position can present.
@@ -2805,7 +2842,7 @@ index 0000000000000000000000000000000000000000..8a637d65ee6ec595685c1828be0b468d
 +  /** A publication offered to the render presenting it, not yet committed. */
 +  staged: RouterRenderFrame | undefined
 +  subscribe: (subscriber: FrameSubscriber) => () => void
-+  notify: () => void
++  notify: (offered?: RouterRenderFrame) => void
 +}
 +
 +type RouterStateOwner = {
@@ -2872,11 +2909,10 @@ index 0000000000000000000000000000000000000000..8a637d65ee6ec595685c1828be0b468d
 +        subscribers.delete(subscriber)
 +      }
 +    },
-+    notify: () => {
-+      const frameToPresent = offeredFrame(scope)
++    notify: (offered) => {
 +      // Copy first: a subscriber may unsubscribe while we iterate.
 +      for (const subscriber of Array.from(subscribers)) {
-+        subscriber(frameToPresent)
++        subscriber(offered)
 +      }
 +    },
 +  }
@@ -2929,6 +2965,11 @@ index 0000000000000000000000000000000000000000..8a637d65ee6ec595685c1828be0b468d
 +        }
 +      }
 +      if (changed) {
++        // A refresh, never an offer. This runs from the store's subscription,
++        // outside any transition: offering the staged publication here would
++        // let an urgent update move the visible tree onto a route that has not
++        // committed. Consumers re-read the slot they are already presenting,
++        // which is where the overlaid progress now is.
 +        root.notify()
 +        route.notify()
 +      }
@@ -2952,7 +2993,8 @@ index 0000000000000000000000000000000000000000..8a637d65ee6ec595685c1828be0b468d
 +        // readers whose own selection did not change, stay on the committed
 +        // publication until this navigation commits.
 +        route.staged = nextFrame
-+        route.notify()
++        // The one and only offer, and it is inside `startTransition`.
++        route.notify(nextFrame)
 +        return nextFrame
 +      },
 +      cancel: () => {
@@ -3096,34 +3138,14 @@ index 0000000000000000000000000000000000000000..8a637d65ee6ec595685c1828be0b468d
 +    // selector, that were never presented. Comparing against either would skip
 +    // the re-render that should have shown the frame, leaving this consumer
 +    // stuck on what is on screen.
-+    const unsubscribe = scope.subscribe((frame) => {
-+      const accept = () =>
-+        setPresenting((previous) => ({
-+          frameId: frame.frameId,
-+          revision: previous.revision + 1,
-+        }))
++    // Re-read the publication this consumer is already presenting, without
++    // moving it onto another one. Used for every notification that is not an
++    // offer, and when the subscription is installed.
++    const refresh = () => {
 +      const onScreen = committed.current
 +      if (!onScreen) {
-+        accept()
 +        return
 +      }
-+      const next = onScreen.selector(frame)
-+      if (!onScreen.compare(onScreen.value, next)) {
-+        accept()
-+      }
-+    })
-+
-+    // A publication can land between this consumer's render and this effect —
-+    // `MatchesInner` commits a frame from a layout effect of its own — and a
-+    // notification sent then reaches nobody who is not yet listening. So
-+    // re-read on subscribing, the way `useSyncExternalStore` does.
-+    //
-+    // This re-reads *this consumer's own* publication rather than whatever is
-+    // newest: it keeps `frameId` and only forces the render, so a committed
-+    // tree still resolves to the committed slot and a staged frame stays with
-+    // the render presenting it.
-+    const onScreen = committed.current
-+    if (onScreen) {
 +      setPresenting((previous) => {
 +        const next = onScreen.selector(resolveFrame(scope, previous.frameId))
 +        return onScreen.compare(onScreen.value, next)
@@ -3131,6 +3153,34 @@ index 0000000000000000000000000000000000000000..8a637d65ee6ec595685c1828be0b468d
 +          : { ...previous, revision: previous.revision + 1 }
 +      })
 +    }
++
++    const unsubscribe = scope.subscribe((offered) => {
++      if (!offered) {
++        refresh()
++        return
++      }
++      const onScreen = committed.current
++      if (!onScreen) {
++        setPresenting((previous) => ({
++          frameId: offered.frameId,
++          revision: previous.revision + 1,
++        }))
++        return
++      }
++      const next = onScreen.selector(offered)
++      if (!onScreen.compare(onScreen.value, next)) {
++        setPresenting((previous) => ({
++          frameId: offered.frameId,
++          revision: previous.revision + 1,
++        }))
++      }
++    })
++
++    // A publication can land between this consumer's render and this effect —
++    // `MatchesInner` commits a frame from a layout effect of its own — and a
++    // notification sent then reaches nobody who is not yet listening. So
++    // re-read on subscribing, the way `useSyncExternalStore` does.
++    refresh()
 +
 +    return unsubscribe
 +  }, [scope])
