@@ -524,10 +524,10 @@ index f71f69ac907e209179b3c41be9db4dc6f6d38524..ef02b697228b62577302c1000e48357f
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..dc3664de265db6bcb15002c57bed27ca9f87a9d7
+index 0000000000000000000000000000000000000000..bc4eb0428e59999a055d1a238381e75fae94f2ec
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,242 @@
+@@ -0,0 +1,250 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -583,90 +583,98 @@ index 0000000000000000000000000000000000000000..dc3664de265db6bcb15002c57bed27ca
 +}
 +var routerStateScopeContext = react.createContext(void 0);
 +var routerStateOwnerContext = react.createContext(void 0);
-+function RouterStateProvider({ router, children }) {
-+	const ownerRef = react.useRef(void 0);
-+	if (!ownerRef.current) {
-+		const initial = router.stores.__store.get();
-+		const root = createScope(router, initial);
-+		const route = createScope(router, initial);
-+		let staging = false;
-+		let pending;
-+		const syncProgress = (head) => {
-+			let changed = false;
-+			for (const scope of [root, route]) {
-+				const nextCommitted = withProgress(scope.committed, head);
-+				if (nextCommitted !== scope.committed) {
-+					scope.committed = nextCommitted;
++/**
++* Everything a router's publications need, closed over that one router.
++*
++* Built outside the component because it belongs to the router, not to a
++* mount: a provider handed a different router has to build a new one rather
++* than keep publishing through the old router's scopes.
++*/
++function createOwner(router) {
++	const initial = router.stores.__store.get();
++	const root = createScope(router, initial);
++	const route = createScope(router, initial);
++	let staging = false;
++	let pending;
++	const syncProgress = (head) => {
++		let changed = false;
++		for (const scope of [root, route]) {
++			const nextCommitted = withProgress(scope.committed, head);
++			if (nextCommitted !== scope.committed) {
++				scope.committed = nextCommitted;
++				changed = true;
++			}
++			if (scope.staged) {
++				const nextStaged = withProgress(scope.staged, head);
++				if (nextStaged !== scope.staged) {
++					scope.staged = nextStaged;
 +					changed = true;
 +				}
-+				if (scope.staged) {
-+					const nextStaged = withProgress(scope.staged, head);
-+					if (nextStaged !== scope.staged) {
-+						scope.staged = nextStaged;
-+						changed = true;
-+					}
-+				}
 +			}
-+			if (changed) {
-+				root.notify();
-+				route.notify();
++		}
++		if (changed) {
++			root.notify();
++			route.notify();
++		}
++	};
++	const owner = {
++		router,
++		root,
++		route,
++		get frame() {
++			return root.committed;
++		},
++		begin: () => {
++			staging = true;
++		},
++		stage: (nextFrame) => {
++			staging = false;
++			pending = nextFrame;
++			route.staged = nextFrame;
++			route.notify(nextFrame);
++			return nextFrame;
++		},
++		cancel: () => {
++			staging = false;
++			pending = void 0;
++			route.staged = void 0;
++			route.notify();
++			owner.publish();
++		},
++		commit: (nextFrame) => {
++			if (pending?.frameId !== nextFrame.frameId) return false;
++			pending = void 0;
++			root.committed = nextFrame;
++			route.committed = nextFrame;
++			route.staged = void 0;
++			root.notify();
++			route.notify();
++			return true;
++		},
++		publish: () => {
++			const head = router.stores.__store.get();
++			if (staging || pending) {
++				syncProgress(head);
++				return;
 +			}
-+		};
-+		const owner = {
-+			router,
-+			root,
-+			route,
-+			get frame() {
-+				return root.committed;
-+			},
-+			begin: () => {
-+				staging = true;
-+			},
-+			stage: (nextFrame) => {
-+				staging = false;
-+				pending = nextFrame;
-+				route.staged = nextFrame;
-+				route.notify(nextFrame);
-+				return nextFrame;
-+			},
-+			cancel: () => {
-+				staging = false;
-+				pending = void 0;
-+				route.staged = void 0;
-+				route.notify();
-+				owner.publish();
-+			},
-+			commit: (nextFrame) => {
-+				if (pending?.frameId !== nextFrame.frameId) return false;
-+				pending = void 0;
-+				root.committed = nextFrame;
-+				route.committed = nextFrame;
-+				route.staged = void 0;
-+				root.notify();
-+				route.notify();
-+				return true;
-+			},
-+			publish: () => {
-+				const head = router.stores.__store.get();
-+				if (staging || pending) {
-+					syncProgress(head);
-+					return;
-+				}
-+				const nextFrame = head;
-+				if (nextFrame.status === "pending") {
-+					syncProgress(head);
-+					return;
-+				}
-+				if (nextFrame.frameId === root.committed.frameId) return;
-+				root.committed = nextFrame;
-+				route.committed = nextFrame;
-+				route.staged = void 0;
-+				root.notify();
-+				route.notify();
++			const nextFrame = head;
++			if (nextFrame.status === "pending") {
++				syncProgress(head);
++				return;
 +			}
-+		};
-+		ownerRef.current = owner;
-+	}
++			if (nextFrame.frameId === root.committed.frameId) return;
++			root.committed = nextFrame;
++			route.committed = nextFrame;
++			route.staged = void 0;
++			root.notify();
++			route.notify();
++		}
++	};
++	return owner;
++}
++function RouterStateProvider({ router, children }) {
++	const ownerRef = react.useRef(void 0);
++	if (!ownerRef.current || ownerRef.current.router !== router) ownerRef.current = createOwner(router);
 +	const owner = ownerRef.current;
 +	require_utils.useLayoutEffect(() => {
 +		const subscription = router.stores.__store.subscribe(() => owner.publish());
@@ -1599,10 +1607,10 @@ index 0000000000000000000000000000000000000000..26a58056225453c5a26a1c620c138a4a
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..4a412f7f5d1181c125679bc84b97e0940b9514ff
+index 0000000000000000000000000000000000000000..bb27075407fab87c37833d48bba5ab332c1efc64
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,244 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import { useHydrated } from "./ClientOnly.js";
@@ -1656,90 +1664,98 @@ index 0000000000000000000000000000000000000000..4a412f7f5d1181c125679bc84b97e094
 +}
 +var routerStateScopeContext = React$1.createContext(void 0);
 +var routerStateOwnerContext = React$1.createContext(void 0);
-+function RouterStateProvider({ router, children }) {
-+	const ownerRef = React$1.useRef(void 0);
-+	if (!ownerRef.current) {
-+		const initial = router.stores.__store.get();
-+		const root = createScope(router, initial);
-+		const route = createScope(router, initial);
-+		let staging = false;
-+		let pending;
-+		const syncProgress = (head) => {
-+			let changed = false;
-+			for (const scope of [root, route]) {
-+				const nextCommitted = withProgress(scope.committed, head);
-+				if (nextCommitted !== scope.committed) {
-+					scope.committed = nextCommitted;
++/**
++* Everything a router's publications need, closed over that one router.
++*
++* Built outside the component because it belongs to the router, not to a
++* mount: a provider handed a different router has to build a new one rather
++* than keep publishing through the old router's scopes.
++*/
++function createOwner(router) {
++	const initial = router.stores.__store.get();
++	const root = createScope(router, initial);
++	const route = createScope(router, initial);
++	let staging = false;
++	let pending;
++	const syncProgress = (head) => {
++		let changed = false;
++		for (const scope of [root, route]) {
++			const nextCommitted = withProgress(scope.committed, head);
++			if (nextCommitted !== scope.committed) {
++				scope.committed = nextCommitted;
++				changed = true;
++			}
++			if (scope.staged) {
++				const nextStaged = withProgress(scope.staged, head);
++				if (nextStaged !== scope.staged) {
++					scope.staged = nextStaged;
 +					changed = true;
 +				}
-+				if (scope.staged) {
-+					const nextStaged = withProgress(scope.staged, head);
-+					if (nextStaged !== scope.staged) {
-+						scope.staged = nextStaged;
-+						changed = true;
-+					}
-+				}
 +			}
-+			if (changed) {
-+				root.notify();
-+				route.notify();
++		}
++		if (changed) {
++			root.notify();
++			route.notify();
++		}
++	};
++	const owner = {
++		router,
++		root,
++		route,
++		get frame() {
++			return root.committed;
++		},
++		begin: () => {
++			staging = true;
++		},
++		stage: (nextFrame) => {
++			staging = false;
++			pending = nextFrame;
++			route.staged = nextFrame;
++			route.notify(nextFrame);
++			return nextFrame;
++		},
++		cancel: () => {
++			staging = false;
++			pending = void 0;
++			route.staged = void 0;
++			route.notify();
++			owner.publish();
++		},
++		commit: (nextFrame) => {
++			if (pending?.frameId !== nextFrame.frameId) return false;
++			pending = void 0;
++			root.committed = nextFrame;
++			route.committed = nextFrame;
++			route.staged = void 0;
++			root.notify();
++			route.notify();
++			return true;
++		},
++		publish: () => {
++			const head = router.stores.__store.get();
++			if (staging || pending) {
++				syncProgress(head);
++				return;
 +			}
-+		};
-+		const owner = {
-+			router,
-+			root,
-+			route,
-+			get frame() {
-+				return root.committed;
-+			},
-+			begin: () => {
-+				staging = true;
-+			},
-+			stage: (nextFrame) => {
-+				staging = false;
-+				pending = nextFrame;
-+				route.staged = nextFrame;
-+				route.notify(nextFrame);
-+				return nextFrame;
-+			},
-+			cancel: () => {
-+				staging = false;
-+				pending = void 0;
-+				route.staged = void 0;
-+				route.notify();
-+				owner.publish();
-+			},
-+			commit: (nextFrame) => {
-+				if (pending?.frameId !== nextFrame.frameId) return false;
-+				pending = void 0;
-+				root.committed = nextFrame;
-+				route.committed = nextFrame;
-+				route.staged = void 0;
-+				root.notify();
-+				route.notify();
-+				return true;
-+			},
-+			publish: () => {
-+				const head = router.stores.__store.get();
-+				if (staging || pending) {
-+					syncProgress(head);
-+					return;
-+				}
-+				const nextFrame = head;
-+				if (nextFrame.status === "pending") {
-+					syncProgress(head);
-+					return;
-+				}
-+				if (nextFrame.frameId === root.committed.frameId) return;
-+				root.committed = nextFrame;
-+				route.committed = nextFrame;
-+				route.staged = void 0;
-+				root.notify();
-+				route.notify();
++			const nextFrame = head;
++			if (nextFrame.status === "pending") {
++				syncProgress(head);
++				return;
 +			}
-+		};
-+		ownerRef.current = owner;
-+	}
++			if (nextFrame.frameId === root.committed.frameId) return;
++			root.committed = nextFrame;
++			route.committed = nextFrame;
++			route.staged = void 0;
++			root.notify();
++			route.notify();
++		}
++	};
++	return owner;
++}
++function RouterStateProvider({ router, children }) {
++	const ownerRef = React$1.useRef(void 0);
++	if (!ownerRef.current || ownerRef.current.router !== router) ownerRef.current = createOwner(router);
 +	const owner = ownerRef.current;
 +	useLayoutEffect(() => {
 +		const subscription = router.stores.__store.subscribe(() => owner.publish());
@@ -2793,10 +2809,10 @@ index 178eace31bd84cef131aa743993beea9ac92b30a..3b1c647dde9d5220c112a7a67828eb69
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..61ec728cef86941ef7abef5699f9c56f1847180c
+index 0000000000000000000000000000000000000000..549fc720fde98b06b67345afb5dfd63376c723a7
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,411 @@
+@@ -0,0 +1,425 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -2927,6 +2943,120 @@ index 0000000000000000000000000000000000000000..61ec728cef86941ef7abef5699f9c56f
 +  RouterStateOwner | undefined
 +>(undefined)
 +
++/**
++ * Everything a router's publications need, closed over that one router.
++ *
++ * Built outside the component because it belongs to the router, not to a
++ * mount: a provider handed a different router has to build a new one rather
++ * than keep publishing through the old router's scopes.
++ */
++function createOwner(router: AnyRouter): RouterStateOwner {
++  const initial = router.stores.__store.get()
++  const root = createScope(router, initial)
++  const route = createScope(router, initial)
++  let staging = false
++  let pending: RouterRenderFrame | undefined
++
++  // Navigation progress is not route content. Both scopes stay on the route
++  // they are presenting, but their status tracks the head, so progress UI —
++  // a global loading bar outside the route tree, or a spinner rendered by the
++  // route the user is leaving — sees a navigation start and finish. Location
++  // and matches are untouched, so this cannot surface a route the user
++  // cannot see.
++  const syncProgress = (head: RouterRenderFrame) => {
++    let changed = false
++    for (const scope of [root, route]) {
++      const nextCommitted = withProgress(scope.committed, head)
++      if (nextCommitted !== scope.committed) {
++        scope.committed = nextCommitted
++        changed = true
++      }
++      if (scope.staged) {
++        const nextStaged = withProgress(scope.staged, head)
++        if (nextStaged !== scope.staged) {
++          scope.staged = nextStaged
++          changed = true
++        }
++      }
++    }
++    if (changed) {
++      // A refresh, never an offer. This runs from the store's subscription,
++      // outside any transition: offering the staged publication here would
++      // let an urgent update move the visible tree onto a route that has not
++      // committed. Consumers re-read the slot they are already presenting,
++      // which is where the overlaid progress now is.
++      root.notify()
++      route.notify()
++    }
++  }
++
++  const owner: RouterStateOwner = {
++    router,
++    root,
++    route,
++    get frame() {
++      return root.committed
++    },
++    begin: () => {
++      staging = true
++    },
++    stage: (nextFrame) => {
++      staging = false
++      pending = nextFrame
++      // Only the route subtree is offered a staged publication, and only the
++      // render that accepts it presents it. Readers outside that subtree, and
++      // readers whose own selection did not change, stay on the committed
++      // publication until this navigation commits.
++      route.staged = nextFrame
++      // The one and only offer, and it is inside `startTransition`.
++      route.notify(nextFrame)
++      return nextFrame
++    },
++    cancel: () => {
++      staging = false
++      pending = undefined
++      route.staged = undefined
++      route.notify()
++      owner.publish()
++    },
++    commit: (nextFrame) => {
++      if (pending?.frameId !== nextFrame.frameId) {
++        return false
++      }
++      pending = undefined
++      // The staged publication is now what everyone has committed, so the
++      // staged slot empties and both scopes resolve to it.
++      root.committed = nextFrame
++      route.committed = nextFrame
++      route.staged = undefined
++      root.notify()
++      route.notify()
++      return true
++    },
++    publish: () => {
++      const head = router.stores.__store.get()
++      if (staging || pending) {
++        syncProgress(head)
++        return
++      }
++      const nextFrame = head
++      if (nextFrame.status === 'pending') {
++        syncProgress(head)
++        return
++      }
++      if (nextFrame.frameId === root.committed.frameId) {
++        return
++      }
++      root.committed = nextFrame
++      route.committed = nextFrame
++      route.staged = undefined
++      root.notify()
++      route.notify()
++    },
++  }
++  return owner
++}
++
 +export function RouterStateProvider({
 +  router,
 +  children,
@@ -2934,112 +3064,12 @@ index 0000000000000000000000000000000000000000..61ec728cef86941ef7abef5699f9c56f
 +  router: AnyRouter
 +  children: React.ReactNode
 +}) {
++  // Keyed by router identity. A mounted provider can be handed a different
++  // router — a test rerender, HMR, switching tenant — and an owner built for
++  // the previous one would keep reading and staging that router's state.
 +  const ownerRef = React.useRef<RouterStateOwner | undefined>(undefined)
-+  if (!ownerRef.current) {
-+    const initial = router.stores.__store.get()
-+    const root = createScope(router, initial)
-+    const route = createScope(router, initial)
-+    let staging = false
-+    let pending: RouterRenderFrame | undefined
-+
-+    // Navigation progress is not route content. Both scopes stay on the route
-+    // they are presenting, but their status tracks the head, so progress UI —
-+    // a global loading bar outside the route tree, or a spinner rendered by the
-+    // route the user is leaving — sees a navigation start and finish. Location
-+    // and matches are untouched, so this cannot surface a route the user
-+    // cannot see.
-+    const syncProgress = (head: RouterRenderFrame) => {
-+      let changed = false
-+      for (const scope of [root, route]) {
-+        const nextCommitted = withProgress(scope.committed, head)
-+        if (nextCommitted !== scope.committed) {
-+          scope.committed = nextCommitted
-+          changed = true
-+        }
-+        if (scope.staged) {
-+          const nextStaged = withProgress(scope.staged, head)
-+          if (nextStaged !== scope.staged) {
-+            scope.staged = nextStaged
-+            changed = true
-+          }
-+        }
-+      }
-+      if (changed) {
-+        // A refresh, never an offer. This runs from the store's subscription,
-+        // outside any transition: offering the staged publication here would
-+        // let an urgent update move the visible tree onto a route that has not
-+        // committed. Consumers re-read the slot they are already presenting,
-+        // which is where the overlaid progress now is.
-+        root.notify()
-+        route.notify()
-+      }
-+    }
-+
-+    const owner: RouterStateOwner = {
-+      router,
-+      root,
-+      route,
-+      get frame() {
-+        return root.committed
-+      },
-+      begin: () => {
-+        staging = true
-+      },
-+      stage: (nextFrame) => {
-+        staging = false
-+        pending = nextFrame
-+        // Only the route subtree is offered a staged publication, and only the
-+        // render that accepts it presents it. Readers outside that subtree, and
-+        // readers whose own selection did not change, stay on the committed
-+        // publication until this navigation commits.
-+        route.staged = nextFrame
-+        // The one and only offer, and it is inside `startTransition`.
-+        route.notify(nextFrame)
-+        return nextFrame
-+      },
-+      cancel: () => {
-+        staging = false
-+        pending = undefined
-+        route.staged = undefined
-+        route.notify()
-+        owner.publish()
-+      },
-+      commit: (nextFrame) => {
-+        if (pending?.frameId !== nextFrame.frameId) {
-+          return false
-+        }
-+        pending = undefined
-+        // The staged publication is now what everyone has committed, so the
-+        // staged slot empties and both scopes resolve to it.
-+        root.committed = nextFrame
-+        route.committed = nextFrame
-+        route.staged = undefined
-+        root.notify()
-+        route.notify()
-+        return true
-+      },
-+      publish: () => {
-+        const head = router.stores.__store.get()
-+        if (staging || pending) {
-+          syncProgress(head)
-+          return
-+        }
-+        const nextFrame = head
-+        if (nextFrame.status === 'pending') {
-+          syncProgress(head)
-+          return
-+        }
-+        if (nextFrame.frameId === root.committed.frameId) {
-+          return
-+        }
-+        root.committed = nextFrame
-+        route.committed = nextFrame
-+        route.staged = undefined
-+        root.notify()
-+        route.notify()
-+      },
-+    }
-+    ownerRef.current = owner
++  if (!ownerRef.current || ownerRef.current.router !== router) {
++    ownerRef.current = createOwner(router)
 +  }
 +
 +  const owner = ownerRef.current
