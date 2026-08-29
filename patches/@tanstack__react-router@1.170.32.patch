@@ -524,10 +524,10 @@ index f71f69ac907e209179b3c41be9db4dc6f6d38524..ef02b697228b62577302c1000e48357f
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a3c2492132c230ac11b361c1121f5e2e52c9355d
+index 0000000000000000000000000000000000000000..1ae9e4004951e2558109bb461152fa4c4962e083
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,159 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -642,7 +642,8 @@ index 0000000000000000000000000000000000000000..a3c2492132c230ac11b361c1121f5e2e
 +		return (0, _tanstack_react_store.useStore)(router.stores.__store, selector, compare);
 +	}
 +	const [, forceRender] = react.useReducer((count) => count + 1, 0);
-+	const selection = react.useRef(void 0);
++	const rendered = react.useRef(void 0);
++	const committed = react.useRef(void 0);
 +	const latest = react.useRef({
 +		selector,
 +		compare
@@ -651,14 +652,18 @@ index 0000000000000000000000000000000000000000..a3c2492132c230ac11b361c1121f5e2e
 +		selector,
 +		compare
 +	};
-+	selection.current = selector(scope.frame);
++	rendered.current = selector(scope.frame);
++	require_utils.useLayoutEffect(() => {
++		committed.current = { value: rendered.current };
++	});
 +	react.useEffect(() => {
 +		return scope.subscribe((frame) => {
 +			const next = latest.current.selector(frame);
-+			if (!latest.current.compare(selection.current, next)) forceRender();
++			const onScreen = committed.current;
++			if (!onScreen || !latest.current.compare(onScreen.value, next)) forceRender();
 +		});
 +	}, [scope]);
-+	return selection.current;
++	return rendered.current;
 +}
 +/**
 +* Whether this render should consolidate route suspension at the frame root.
@@ -1485,10 +1490,10 @@ index 0000000000000000000000000000000000000000..05bbcb1578f7511b006cf7815c2bbffa
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..e0b66875621617f3d0c0899bac58aa9c5595804d
+index 0000000000000000000000000000000000000000..73db82d093d01277dc75a1f74faac83a463b101e
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,153 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import { useHydrated } from "./ClientOnly.js";
@@ -1601,7 +1606,8 @@ index 0000000000000000000000000000000000000000..e0b66875621617f3d0c0899bac58aa9c
 +		return useStore(router.stores.__store, selector, compare);
 +	}
 +	const [, forceRender] = React$1.useReducer((count) => count + 1, 0);
-+	const selection = React$1.useRef(void 0);
++	const rendered = React$1.useRef(void 0);
++	const committed = React$1.useRef(void 0);
 +	const latest = React$1.useRef({
 +		selector,
 +		compare
@@ -1610,14 +1616,18 @@ index 0000000000000000000000000000000000000000..e0b66875621617f3d0c0899bac58aa9c
 +		selector,
 +		compare
 +	};
-+	selection.current = selector(scope.frame);
++	rendered.current = selector(scope.frame);
++	useLayoutEffect(() => {
++		committed.current = { value: rendered.current };
++	});
 +	React$1.useEffect(() => {
 +		return scope.subscribe((frame) => {
 +			const next = latest.current.selector(frame);
-+			if (!latest.current.compare(selection.current, next)) forceRender();
++			const onScreen = committed.current;
++			if (!onScreen || !latest.current.compare(onScreen.value, next)) forceRender();
 +		});
 +	}, [scope]);
-+	return selection.current;
++	return rendered.current;
 +}
 +/**
 +* Whether this render should consolidate route suspension at the frame root.
@@ -2591,10 +2601,10 @@ index 178eace31bd84cef131aa743993beea9ac92b30a..3b1c647dde9d5220c112a7a67828eb69
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..242156004e8b7f297b99a5592cd54372b91fed3f
+index 0000000000000000000000000000000000000000..04b92e30f73ef4cc3170db0cc2009b111758ad88
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,247 @@
+@@ -0,0 +1,265 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -2799,27 +2809,45 @@ index 0000000000000000000000000000000000000000..242156004e8b7f297b99a5592cd54372
 +
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
 +  const [, forceRender] = React.useReducer((count: number) => count + 1, 0)
++  // The selection for the render currently executing. A render can be
++  // discarded — suspended, interrupted, or superseded — so this is
++  // work in progress, not necessarily what anyone can see.
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
-+  const selection = React.useRef<TSelected>(undefined as TSelected)
++  const rendered = React.useRef<TSelected>(undefined as TSelected)
++  // The selection that actually reached the screen. Boxed so that a committed
++  // `undefined` is distinguishable from having committed nothing yet.
++  // eslint-disable-next-line react-hooks/rules-of-hooks
++  const committed = React.useRef<{ value: TSelected } | undefined>(undefined)
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
 +  const latest = React.useRef({ selector, compare })
 +  latest.current = { selector, compare }
 +
-+  selection.current = selector(scope.frame)
++  rendered.current = selector(scope.frame)
++
++  // eslint-disable-next-line react-hooks/rules-of-hooks
++  useLayoutEffect(() => {
++    committed.current = { value: rendered.current }
++  })
 +
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
 +  React.useEffect(() => {
 +    // Re-render only when this subscriber's own selection changed, which is
 +    // what keeps selector-level render counts identical to the store path.
++    //
++    // Compare against the committed selection, never the in-progress one: a
++    // discarded render leaves a value here that was never presented, and
++    // comparing against it would skip the re-render that should have shown
++    // the frame, leaving this consumer stuck on what is on screen.
 +    return scope.subscribe((frame) => {
 +      const next = latest.current.selector(frame)
-+      if (!latest.current.compare(selection.current, next)) {
++      const onScreen = committed.current
++      if (!onScreen || !latest.current.compare(onScreen.value, next)) {
 +        forceRender()
 +      }
 +    })
 +  }, [scope])
 +
-+  return selection.current
++  return rendered.current
 +}
 +
 +/**
