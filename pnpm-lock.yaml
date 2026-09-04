@@ -4,13 +4,21 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@tanstack/react-router@1.170.32':
+    hash: 9ee1f9785b817ca6b6d0bc2f09264112f120b32b9aa00ca7d612b563ac77c674
+    path: patches/@tanstack__react-router@1.170.32.patch
+  '@tanstack/router-core@1.171.27':
+    hash: 72875977fc35d07b5a45e137fea6feb64f773318d6907e8e5455d56f83674765
+    path: patches/@tanstack__router-core@1.171.27.patch
+
 importers:
 
   .:
     dependencies:
       '@tanstack/react-router':
         specifier: ^1.170.32
-        version: 1.170.32(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
+        version: 1.170.32(patch_hash=9ee1f9785b817ca6b6d0bc2f09264112f120b32b9aa00ca7d612b563ac77c674)(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
       '@tanstack/react-start':
         specifier: ^1.168.49
         version: 1.168.49(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))
@@ -1135,31 +1143,31 @@ snapshots:
 
   '@tanstack/history@1.162.1': {}
 
-  '@tanstack/react-router@1.170.32(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)':
+  '@tanstack/react-router@1.170.32(patch_hash=9ee1f9785b817ca6b6d0bc2f09264112f120b32b9aa00ca7d612b563ac77c674)(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)':
     dependencies:
       '@tanstack/history': 1.162.1
       '@tanstack/react-store': 0.9.3(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
-      '@tanstack/router-core': 1.171.27
+      '@tanstack/router-core': 1.171.27(patch_hash=72875977fc35d07b5a45e137fea6feb64f773318d6907e8e5455d56f83674765)
       isbot: 5.2.2
       react: 19.3.0-canary-29d9d318-20260826
       react-dom: 19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826)
 
   '@tanstack/react-start-client@1.168.30(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)':
     dependencies:
-      '@tanstack/react-router': 1.170.32(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
-      '@tanstack/router-core': 1.171.27
+      '@tanstack/react-router': 1.170.32(patch_hash=9ee1f9785b817ca6b6d0bc2f09264112f120b32b9aa00ca7d612b563ac77c674)(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
+      '@tanstack/router-core': 1.171.27(patch_hash=72875977fc35d07b5a45e137fea6feb64f773318d6907e8e5455d56f83674765)
       '@tanstack/start-client-core': 1.170.27
       react: 19.3.0-canary-29d9d318-20260826
       react-dom: 19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826)
 
   '@tanstack/react-start-rsc@0.1.48(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))':
     dependencies:
-      '@tanstack/react-router': 1.170.32(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
-      '@tanstack/router-core': 1.171.27
+      '@tanstack/react-router': 1.170.32(patch_hash=9ee1f9785b817ca6b6d0bc2f09264112f120b32b9aa00ca7d612b563ac77c674)(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
+      '@tanstack/router-core': 1.171.27(patch_hash=72875977fc35d07b5a45e137fea6feb64f773318d6907e8e5455d56f83674765)
       '@tanstack/router-utils': 1.162.2
       '@tanstack/start-client-core': 1.170.27
       '@tanstack/start-fn-stubs': 1.162.0
-      '@tanstack/start-plugin-core': 1.171.39(@tanstack/react-router@1.170.32(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826))(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))
+      '@tanstack/start-plugin-core': 1.171.39(@tanstack/react-router@1.170.32(patch_hash=9ee1f9785b817ca6b6d0bc2f09264112f120b32b9aa00ca7d612b563ac77c674)(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826))(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))
       '@tanstack/start-storage-context': 1.167.29
       pathe: 2.0.3
       react: 19.3.0-canary-29d9d318-20260826
@@ -1180,8 +1188,8 @@ snapshots:
 
   '@tanstack/react-start-server@1.167.37(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)':
     dependencies:
-      '@tanstack/react-router': 1.170.32(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
-      '@tanstack/router-core': 1.171.27
+      '@tanstack/react-router': 1.170.32(patch_hash=9ee1f9785b817ca6b6d0bc2f09264112f120b32b9aa00ca7d612b563ac77c674)(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
+      '@tanstack/router-core': 1.171.27(patch_hash=72875977fc35d07b5a45e137fea6feb64f773318d6907e8e5455d56f83674765)
       '@tanstack/start-server-core': 1.169.31
       react: 19.3.0-canary-29d9d318-20260826
       react-dom: 19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826)
@@ -1190,13 +1198,13 @@ snapshots:
 
   '@tanstack/react-start@1.168.49(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))':
     dependencies:
-      '@tanstack/react-router': 1.170.32(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
+      '@tanstack/react-router': 1.170.32(patch_hash=9ee1f9785b817ca6b6d0bc2f09264112f120b32b9aa00ca7d612b563ac77c674)(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
       '@tanstack/react-start-client': 1.168.30(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
       '@tanstack/react-start-rsc': 0.1.48(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))
       '@tanstack/react-start-server': 1.167.37(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
       '@tanstack/router-utils': 1.162.2
       '@tanstack/start-client-core': 1.170.27
-      '@tanstack/start-plugin-core': 1.171.39(@tanstack/react-router@1.170.32(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826))(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))
+      '@tanstack/start-plugin-core': 1.171.39(@tanstack/react-router@1.170.32(patch_hash=9ee1f9785b817ca6b6d0bc2f09264112f120b32b9aa00ca7d612b563ac77c674)(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826))(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))
       '@tanstack/start-server-core': 1.169.31
       pathe: 2.0.3
       react: 19.3.0-canary-29d9d318-20260826
@@ -1224,7 +1232,7 @@ snapshots:
       react-dom: 19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826)
       use-sync-external-store: 1.6.0(react@19.3.0-canary-29d9d318-20260826)
 
-  '@tanstack/router-core@1.171.27':
+  '@tanstack/router-core@1.171.27(patch_hash=72875977fc35d07b5a45e137fea6feb64f773318d6907e8e5455d56f83674765)':
     dependencies:
       '@tanstack/history': 1.162.1
       cookie-es: 3.1.1
@@ -1234,7 +1242,7 @@ snapshots:
   '@tanstack/router-generator@1.167.33':
     dependencies:
       '@babel/types': 7.29.8
-      '@tanstack/router-core': 1.171.27
+      '@tanstack/router-core': 1.171.27(patch_hash=72875977fc35d07b5a45e137fea6feb64f773318d6907e8e5455d56f83674765)
       '@tanstack/router-utils': 1.162.2
       '@tanstack/virtual-file-routes': 1.162.0
       jiti: 2.7.0
@@ -1244,19 +1252,19 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-plugin@1.168.35(@tanstack/react-router@1.170.32(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826))(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))':
+  '@tanstack/router-plugin@1.168.35(@tanstack/react-router@1.170.32(patch_hash=9ee1f9785b817ca6b6d0bc2f09264112f120b32b9aa00ca7d612b563ac77c674)(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826))(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/template': 7.29.7
       '@babel/types': 7.29.8
-      '@tanstack/router-core': 1.171.27
+      '@tanstack/router-core': 1.171.27(patch_hash=72875977fc35d07b5a45e137fea6feb64f773318d6907e8e5455d56f83674765)
       '@tanstack/router-generator': 1.167.33
       '@tanstack/router-utils': 1.162.2
       chokidar: 5.0.0
       unplugin: 3.3.0(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))
       zod: 4.4.3
     optionalDependencies:
-      '@tanstack/react-router': 1.170.32(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
+      '@tanstack/react-router': 1.170.32(patch_hash=9ee1f9785b817ca6b6d0bc2f09264112f120b32b9aa00ca7d612b563ac77c674)(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826)
       vite: 8.2.2(jiti@2.7.0)
     transitivePeerDependencies:
       - '@farmfe/core'
@@ -1283,21 +1291,21 @@ snapshots:
 
   '@tanstack/start-client-core@1.170.27':
     dependencies:
-      '@tanstack/router-core': 1.171.27
+      '@tanstack/router-core': 1.171.27(patch_hash=72875977fc35d07b5a45e137fea6feb64f773318d6907e8e5455d56f83674765)
       '@tanstack/start-fn-stubs': 1.162.0
       '@tanstack/start-storage-context': 1.167.29
       seroval: 1.6.4
 
   '@tanstack/start-fn-stubs@1.162.0': {}
 
-  '@tanstack/start-plugin-core@1.171.39(@tanstack/react-router@1.170.32(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826))(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))':
+  '@tanstack/start-plugin-core@1.171.39(@tanstack/react-router@1.170.32(patch_hash=9ee1f9785b817ca6b6d0bc2f09264112f120b32b9aa00ca7d612b563ac77c674)(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826))(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))':
     dependencies:
       '@babel/code-frame': 7.27.1
       '@babel/core': 7.29.7
       '@babel/types': 7.29.8
-      '@tanstack/router-core': 1.171.27
+      '@tanstack/router-core': 1.171.27(patch_hash=72875977fc35d07b5a45e137fea6feb64f773318d6907e8e5455d56f83674765)
       '@tanstack/router-generator': 1.167.33
-      '@tanstack/router-plugin': 1.168.35(@tanstack/react-router@1.170.32(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826))(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))
+      '@tanstack/router-plugin': 1.168.35(@tanstack/react-router@1.170.32(patch_hash=9ee1f9785b817ca6b6d0bc2f09264112f120b32b9aa00ca7d612b563ac77c674)(react-dom@19.3.0-canary-29d9d318-20260826(react@19.3.0-canary-29d9d318-20260826))(react@19.3.0-canary-29d9d318-20260826))(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))
       '@tanstack/router-utils': 1.162.2
       '@tanstack/start-server-core': 1.169.31
       exsolve: 1.1.1
@@ -1331,7 +1339,7 @@ snapshots:
   '@tanstack/start-server-core@1.169.31':
     dependencies:
       '@tanstack/history': 1.162.1
-      '@tanstack/router-core': 1.171.27
+      '@tanstack/router-core': 1.171.27(patch_hash=72875977fc35d07b5a45e137fea6feb64f773318d6907e8e5455d56f83674765)
       '@tanstack/start-client-core': 1.170.27
       '@tanstack/start-storage-context': 1.167.29
       fetchdts: 0.1.7
@@ -1342,7 +1350,7 @@ snapshots:
 
   '@tanstack/start-storage-context@1.167.29':
     dependencies:
-      '@tanstack/router-core': 1.171.27
+      '@tanstack/router-core': 1.171.27(patch_hash=72875977fc35d07b5a45e137fea6feb64f773318d6907e8e5455d56f83674765)
 
   '@tanstack/store@0.9.3': {}
 

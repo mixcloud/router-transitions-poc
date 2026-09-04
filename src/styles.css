@@ -139,3 +139,31 @@ a.back:hover { text-decoration: underline; }
 }
 
 .vt-counter strong { color: var(--fg); }
+
+/* Synthetic benchmark load — see src/SyntheticRows.tsx */
+.synthetic {
+  margin-top: 2rem;
+  border-top: 1px solid #ddd;
+}
+.synthetic-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 1px 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.synthetic-index {
+  min-width: 4ch;
+  color: #999;
+  text-align: right;
+}
+.synthetic-label {
+  min-width: 22ch;
+  color: #666;
+}
+.synthetic-bar {
+  height: 6px;
+  background: #c8d4e0;
+  border-radius: 3px;
+}

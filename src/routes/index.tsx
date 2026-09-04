@@ -2,13 +2,16 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { startTransition, useState } from 'react'
 import { ViewTransition } from '../ViewTransition'
 import { articles } from '../data/articles'
+import { validateRows } from '../rows'
 
 export const Route = createFileRoute('/')({
+  validateSearch: validateRows,
   component: NewsList,
 })
 
 function NewsList() {
   const navigate = useNavigate()
+  const search = Route.useSearch()
 
   // Control group: a plain React state update, explicitly marked as a
   // transition. The same <ViewTransition> elements animate here.
@@ -21,29 +24,32 @@ function NewsList() {
       </header>
 
       <p className="note">
-        <strong>The POC:</strong> every cover image below is wrapped in React's{' '}
+        <strong>Patched:</strong> every cover image below is wrapped in React's{' '}
         <code>&lt;ViewTransition&gt;</code> with a shared <code>name</code>, and
-        so is the hero image on the article page. The first button animates. The
-        second one, and every article link, does not &mdash; even though the
-        navigation is already wrapped in React's <code>startTransition</code>.
-        Router state reaches the tree through <code>useSyncExternalStore</code>{' '}
-        (via <code>@tanstack/store</code>), and React always commits store
-        updates synchronously, so the update loses its transition lane and{' '}
-        <code>&lt;ViewTransition&gt;</code> never fires.
+        so is the hero image on the article page. All three now animate &mdash;
+        including navigation. The router is running with{' '}
+        <code>experimental_concurrentRenderFrames</code>, which publishes router
+        state to React as one immutable frame per navigation instead of through{' '}
+        <code>useSyncExternalStore</code>, so the update keeps its transition
+        lane and <code>&lt;ViewTransition&gt;</code> fires.
       </p>
 
       <div className="controls">
         <button onClick={() => startTransition(() => setExpanded((e) => !e))}>
-          React state + startTransition &mdash; animates
+          React state + startTransition
         </button>
         <button
           onClick={() =>
             startTransition(() => {
-              navigate({ to: '/article/$id', params: { id: '1' } })
+              navigate({
+                to: '/article/$id',
+                params: { id: '1' },
+                search,
+              })
             })
           }
         >
-          Router navigate + startTransition &mdash; does not animate
+          Router navigate + startTransition
         </button>
       </div>
 
@@ -53,6 +59,7 @@ function NewsList() {
             key={article.id}
             to="/article/$id"
             params={{ id: article.id }}
+            search={search}
             className="card"
           >
             <ViewTransition name={`article-image-${article.id}`}>
