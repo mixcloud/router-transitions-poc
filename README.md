@@ -78,6 +78,86 @@ pnpm exec playwright install chromium  # once
 pnpm verify                            # BASE=... to override the port
 ```
 
+## Benchmarking
+
+The transition counter answers "does a transition run". `scripts/benchmark-inp.mjs`
+answers the question underneath it: **where does the route render happen relative
+to the paint the user is waiting for**, and what that costs in interaction latency
+— the per-interaction quantity INP is a high percentile of.
+
+Both arms are builds of *identical source*; only `VITE_CONCURRENT_FRAMES` differs,
+so nothing but the router's publication path can account for a difference.
+
+```bash
+pnpm exec playwright install chromium        # once
+
+VITE_CONCURRENT_FRAMES=0 pnpm build --outDir dist-control
+VITE_CONCURRENT_FRAMES=1 pnpm build --outDir dist-patched
+pnpm exec vite preview --outDir dist-control --port 4173 --strictPort &
+pnpm exec vite preview --outDir dist-patched --port 4174 --strictPort &
+
+node scripts/benchmark-inp.mjs               # writes benchmark-results.json
+```
+
+The demo's own routes render in well under a millisecond, far too little to show
+a scheduling difference, so `?rows=N` gives the destination route a controllable
+amount of real React reconciliation work (`src/SyntheticRows.tsx`). Sweeping it is
+the point: it shows how interaction latency *responds* to route render cost, which
+is a claim about mechanism rather than a single number.
+
+### Method
+
+- Blocks alternate control/patched, and alternate which arm goes first, so machine
+  drift cannot masquerade as an effect.
+- Each block gets a fresh browser context and discards warmup clicks.
+- CPU is throttled 6x via CDP, the full Chromium build (not headless-shell) so
+  view transitions and paint timing are real.
+- Interaction latency is computed the way INP defines it: group Event Timing
+  entries by `interactionId`, take the maximum `duration` in each group.
+- Two independent witnesses confirm each block ran the build it claims: the mode
+  is read straight off the live router (`__TSR_ROUTER__.options`), and the run
+  counts real `document.startViewTransition` calls.
+
+Event Timing will not report an interaction shorter than 16ms, and rounds
+`duration` to 8ms. An absent entry is therefore a genuine measurement — faster
+than the API can see — not a missed sample.
+
+### Results
+
+6x CPU throttle, 8 blocks x 6 measured clicks — 48 navigations per cell.
+`vt` counts real `document.startViewTransition` calls, and doubles as the proof
+that each arm ran the build it claims.
+
+| `?rows=` | arm | vt | p50 | p95 | max | click frame | blocking |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | control | 0 | 24ms | 32ms | 32ms | — | — |
+| 0 | **patched** | 48 | **24ms** | **24ms** | **24ms** | — | — |
+| 500 | control | 0 | 56ms | 56ms | 64ms | — | — |
+| 500 | **patched** | 48 | **24ms** | **24ms** | **24ms** | — | — |
+| 2000 | control | 0 | 136ms | 144ms | 152ms | 117ms | 63ms |
+| 2000 | **patched** | 48 | **24ms** | **24ms** | **24ms** | 94ms | 25ms |
+| 6000 | control | 0 | 360ms | 456ms | 456ms | 337ms | 284ms |
+| 6000 | **patched** | 48 | **24ms** | **24ms** | **24ms** | 279ms | 183ms |
+
+Control tracks route render cost almost linearly. Patched is flat — 24ms at
+every weight, p50 through max, including the 6000-row route that costs the
+control arm 456ms.
+
+**The patch does not make rendering faster.** The route still renders, and the
+frame that renders it is still long (279ms at 6000 rows). What changes is where
+that work sits relative to the paint the user is waiting for. Under
+`useSyncExternalStore` the render is inside the click's own animation frame, so
+nothing can be presented until it finishes; on the frame path the click handler
+returns in a couple of milliseconds and the render happens in a later frame.
+
+That distinction is the whole mechanism, and it comes with a condition: the
+interaction ends at the *next paint*, so something must actually paint. Here the
+view transition guarantees one. An app with neither a view transition nor pending
+UI on its navigations has nothing to present, and the interaction stretches to
+the commit — see the measurements in
+[mixcloud/Mixcloud#25470](https://github.com/mixcloud/Mixcloud/pull/25470),
+where that is exactly what happened until a navigation progress bar was added.
+
 ## Why it fails
 
 **It is not that navigation forgets to be a transition.** `<Link>` already
@@ -159,14 +239,20 @@ They replace `dist/` and `src/` with a build of
 [`mixcloud/router@concurrent-router-render-frames`](https://github.com/mixcloud/router/tree/concurrent-router-render-frames).
 Two caveats worth knowing:
 
-- That branch is TanStack Router `main` at `0caf6b9`, which is **ahead of the
+- That branch is TanStack Router `main` (currently `b88367ccf9`), which is **ahead of the
   published `1.170.32`** by unreleased upstream commits. So the patches also
   carry those — currently
   [#8169](https://github.com/TanStack/router/pull/8169), a fix to route-scoped
   hooks. They are not part of the render-frame change.
 - Source maps are left untouched, so stepping through the patched packages in
   devtools will show stale mappings. The shipped code is correct; only the maps
-  are.
+  are. Regenerate with `pnpm patch <pkg>`, copy `dist/` and `src/` from the
+  router build over the edit directory, `pnpm patch-commit`, then drop the
+  `*.map` sections — they add an order of magnitude to the patch and tell a
+  reviewer nothing.
+- The patches are byte-identical to the ones in
+  [mixcloud/Mixcloud#25470](https://github.com/mixcloud/Mixcloud/pull/25470),
+  so both repos exercise the same router build.
 
 ## What this POC is *not* about
 
@@ -189,6 +275,9 @@ src/routes/article.$id.tsx   detail page, big hero image
 src/ViewTransition.tsx       typed re-export of the canary API
 src/data/articles.ts         the five hard-coded articles
 src/router.tsx               where experimental_concurrentRenderFrames is set
+src/SyntheticRows.tsx        controllable render load for the benchmark
+src/rows.ts                  the ?rows=N search param
 patches/                     the two pnpm patches
 scripts/verify-transitions.mjs  headless measurement of the table above
+scripts/benchmark-inp.mjs       interaction latency vs route render cost
 ```

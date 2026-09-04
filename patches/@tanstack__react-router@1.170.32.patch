@@ -1,5 +1,5 @@
 diff --git a/dist/cjs/Match.cjs b/dist/cjs/Match.cjs
-index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..a51e984b0d8b48c9eaa4bed24031dc45adda257b 100644
+index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..31bd4e11a33e0d67878edac31f4bbc0b362f4647 100644
 --- a/dist/cjs/Match.cjs
 +++ b/dist/cjs/Match.cjs
 @@ -5,6 +5,7 @@ const require_CatchBoundary = require("./CatchBoundary.cjs");
@@ -10,11 +10,25 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..a51e984b0d8b48c9eaa4bed24031dc45
  const require_not_found = require("./not-found.cjs");
  const require_SafeFragment = require("./SafeFragment.cjs");
  const require_renderRouteNotFound = require("./renderRouteNotFound.cjs");
-@@ -23,9 +24,14 @@ function renderPending(router, route) {
+@@ -23,9 +24,28 @@ function renderPending(router, route) {
  	return process.env.NODE_ENV !== "production" ? require_nonRouteComponentContext.wrapInNonRouteComponentContext(pendingElement, "pendingComponent") : pendingElement;
  }
  var outletMatchSelectionEqual = (a, b) => a[0] === b[0] && a[1] === b[1];
 +var concurrentOutletMatchSelectionEqual = (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
++/**
++* What an `Outlet` selects from a frame that no longer matches its route.
++*
++* A frame is offered to every subscribed consumer, including ones React is
++* about to unmount because the new frame's match tree has a different shape.
++* Those consumers still run their selector against the new frame, so it has to
++* describe a route that has left the tree rather than assume its own match is
++* still there. Rendering no child is correct for a subtree that is going away.
++*/
++var absentOutletMatchSelection = [
++	false,
++	void 0,
++	void 0
++];
  var canWrapInSuspense = (router, route, ssr) => !route.isRoot || route.options.shellComponent || route.options.wrapInSuspense || ssr === false || ssr === "data-only" || !((_tanstack_router_core_isServer.isServer ?? router.isServer) || router.ssr);
  var Match = react.memo(function MatchImpl({ routeId }) {
  	const router = require_useRouter.useRouter();
@@ -25,7 +39,7 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..a51e984b0d8b48c9eaa4bed24031dc45
  	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MatchView, {
  		router,
  		match: router.stores.byRoute.get(routeId).get()
-@@ -42,7 +48,7 @@ function MatchView({ router, match }) {
+@@ -42,7 +62,7 @@ function MatchView({ router, match }) {
  	const routeOnCatch = route.options.onCatch ?? router.options.defaultOnCatch;
  	const routeNotFoundComponent = route.isRoot ? route.options.notFoundComponent ?? router.options.notFoundRoute?.options.component : route.options.notFoundComponent;
  	const resolvedNoSsr = match.ssr === false || match.ssr === "data-only";
@@ -34,7 +48,7 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..a51e984b0d8b48c9eaa4bed24031dc45
  	const ResolvedCatchBoundary = routeErrorComponent ? require_CatchBoundary.CatchBoundary : require_SafeFragment.SafeFragment;
  	const ResolvedNotFoundBoundary = routeNotFoundComponent ? require_not_found.CatchNotFound : require_SafeFragment.SafeFragment;
  	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(route.isRoot ? route.options.shellComponent ?? require_SafeFragment.SafeFragment : require_SafeFragment.SafeFragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_matchContext.matchContext.Provider, {
-@@ -139,7 +145,17 @@ var Outlet = react.memo(function OutletImpl() {
+@@ -139,7 +159,18 @@ var Outlet = react.memo(function OutletImpl() {
  	let parentGlobalNotFound;
  	let parentNotFoundError;
  	let childRouteId;
@@ -43,6 +57,7 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..a51e984b0d8b48c9eaa4bed24031dc45
 +		const matches = state.matches;
 +		const parentIndex = matches.findIndex((match) => match.routeId === routeId);
 +		const parentMatch = matches[parentIndex];
++		if (!parentMatch) return absentOutletMatchSelection;
 +		return [
 +			!!parentMatch._notFound,
 +			parentMatch.error,
@@ -53,7 +68,7 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..a51e984b0d8b48c9eaa4bed24031dc45
  		const matches = router.stores.matches.get();
  		const parentIndex = matches.findIndex((match) => match.routeId === routeId);
  		const parentMatch = matches[parentIndex];
-@@ -156,7 +172,7 @@ var Outlet = react.memo(function OutletImpl() {
+@@ -156,7 +187,7 @@ var Outlet = react.memo(function OutletImpl() {
  	if (parentGlobalNotFound) return require_renderRouteNotFound.renderRouteNotFound(router, router.routesById[routeId], parentNotFoundError);
  	if (!childRouteId) return null;
  	const nextMatch = /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Match, { routeId: childRouteId });
@@ -1007,7 +1022,7 @@ index ab4c65ea990e7d6dbbd1d9b6e1e92aa55167d115..d04d90fcad7a0249db5eec449af1474b
   * Read and select the current route's search parameters with type-safety.
   *
 diff --git a/dist/esm/Match.js b/dist/esm/Match.js
-index 7dffc446e563ea4f5826c5714ef011a391114635..1e2e39621576b0ef9379e6664a711499d5c5fcbd 100644
+index 7dffc446e563ea4f5826c5714ef011a391114635..6aa90631fef5bf41148310c8f3d572ba7dcb4660 100644
 --- a/dist/esm/Match.js
 +++ b/dist/esm/Match.js
 @@ -4,6 +4,7 @@ import { CatchBoundary, ErrorComponent } from "./CatchBoundary.js";
@@ -1018,11 +1033,25 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..1e2e39621576b0ef9379e6664a711499
  import { CatchNotFound } from "./not-found.js";
  import { SafeFragment } from "./SafeFragment.js";
  import { renderRouteNotFound } from "./renderRouteNotFound.js";
-@@ -21,9 +22,14 @@ function renderPending(router, route) {
+@@ -21,9 +22,28 @@ function renderPending(router, route) {
  	return process.env.NODE_ENV !== "production" ? wrapInNonRouteComponentContext(pendingElement, "pendingComponent") : pendingElement;
  }
  var outletMatchSelectionEqual = (a, b) => a[0] === b[0] && a[1] === b[1];
 +var concurrentOutletMatchSelectionEqual = (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
++/**
++* What an `Outlet` selects from a frame that no longer matches its route.
++*
++* A frame is offered to every subscribed consumer, including ones React is
++* about to unmount because the new frame's match tree has a different shape.
++* Those consumers still run their selector against the new frame, so it has to
++* describe a route that has left the tree rather than assume its own match is
++* still there. Rendering no child is correct for a subtree that is going away.
++*/
++var absentOutletMatchSelection = [
++	false,
++	void 0,
++	void 0
++];
  var canWrapInSuspense = (router, route, ssr) => !route.isRoot || route.options.shellComponent || route.options.wrapInSuspense || ssr === false || ssr === "data-only" || !((isServer ?? router.isServer) || router.ssr);
  var Match = React$1.memo(function MatchImpl({ routeId }) {
  	const router = useRouter();
@@ -1033,7 +1062,7 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..1e2e39621576b0ef9379e6664a711499
  	if (isServer ?? router.isServer) return /* @__PURE__ */ jsx(MatchView, {
  		router,
  		match: router.stores.byRoute.get(routeId).get()
-@@ -40,7 +46,7 @@ function MatchView({ router, match }) {
+@@ -40,7 +60,7 @@ function MatchView({ router, match }) {
  	const routeOnCatch = route.options.onCatch ?? router.options.defaultOnCatch;
  	const routeNotFoundComponent = route.isRoot ? route.options.notFoundComponent ?? router.options.notFoundRoute?.options.component : route.options.notFoundComponent;
  	const resolvedNoSsr = match.ssr === false || match.ssr === "data-only";
@@ -1042,7 +1071,7 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..1e2e39621576b0ef9379e6664a711499
  	const ResolvedCatchBoundary = routeErrorComponent ? CatchBoundary : SafeFragment;
  	const ResolvedNotFoundBoundary = routeNotFoundComponent ? CatchNotFound : SafeFragment;
  	return /* @__PURE__ */ jsxs(route.isRoot ? route.options.shellComponent ?? SafeFragment : SafeFragment, { children: [/* @__PURE__ */ jsx(matchContext.Provider, {
-@@ -137,7 +143,17 @@ var Outlet = React$1.memo(function OutletImpl() {
+@@ -137,7 +157,18 @@ var Outlet = React$1.memo(function OutletImpl() {
  	let parentGlobalNotFound;
  	let parentNotFoundError;
  	let childRouteId;
@@ -1051,6 +1080,7 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..1e2e39621576b0ef9379e6664a711499
 +		const matches = state.matches;
 +		const parentIndex = matches.findIndex((match) => match.routeId === routeId);
 +		const parentMatch = matches[parentIndex];
++		if (!parentMatch) return absentOutletMatchSelection;
 +		return [
 +			!!parentMatch._notFound,
 +			parentMatch.error,
@@ -1061,7 +1091,7 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..1e2e39621576b0ef9379e6664a711499
  		const matches = router.stores.matches.get();
  		const parentIndex = matches.findIndex((match) => match.routeId === routeId);
  		const parentMatch = matches[parentIndex];
-@@ -154,7 +170,7 @@ var Outlet = React$1.memo(function OutletImpl() {
+@@ -154,7 +185,7 @@ var Outlet = React$1.memo(function OutletImpl() {
  	if (parentGlobalNotFound) return renderRouteNotFound(router, router.routesById[routeId], parentNotFoundError);
  	if (!childRouteId) return null;
  	const nextMatch = /* @__PURE__ */ jsx(Match, { routeId: childRouteId });
@@ -2006,7 +2036,7 @@ index 186053ecfdc6a204dc1e5b64cb5590d7bb90eccd..9a4b1044308655aa2b3d214b31223479
   * Read and select the current route's search parameters with type-safety.
   *
 diff --git a/src/Match.tsx b/src/Match.tsx
-index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..4657714116eea49444b5d16473c945fae8914f86 100644
+index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..6d1575a77cbf87e0e22cecc234d80ffc1323a8a7 100644
 --- a/src/Match.tsx
 +++ b/src/Match.tsx
 @@ -12,6 +12,10 @@ import { SafeFragment } from './SafeFragment'
@@ -2020,7 +2050,7 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..4657714116eea49444b5d16473c945fa
  import {
    nonRouteComponentContext,
    wrapInNonRouteComponentContext,
-@@ -43,11 +47,22 @@ type OutletMatchSelection = [
+@@ -43,11 +47,37 @@ type OutletMatchSelection = [
    parentNotFoundError: unknown,
  ]
  
@@ -2040,10 +2070,25 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..4657714116eea49444b5d16473c945fa
 +  b: ConcurrentOutletMatchSelection,
 +) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2]
 +
++/**
++ * What an `Outlet` selects from a frame that no longer matches its route.
++ *
++ * A frame is offered to every subscribed consumer, including ones React is
++ * about to unmount because the new frame's match tree has a different shape.
++ * Those consumers still run their selector against the new frame, so it has to
++ * describe a route that has left the tree rather than assume its own match is
++ * still there. Rendering no child is correct for a subtree that is going away.
++ */
++const absentOutletMatchSelection: ConcurrentOutletMatchSelection = [
++  false,
++  undefined,
++  undefined,
++]
++
  const canWrapInSuspense = (
    router: ReturnType<typeof useRouter>,
    route: AnyRoute,
-@@ -66,6 +81,15 @@ export const Match = React.memo(function MatchImpl({
+@@ -66,6 +96,15 @@ export const Match = React.memo(function MatchImpl({
    routeId: string
  }) {
    const router = useRouter()
@@ -2059,7 +2104,7 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..4657714116eea49444b5d16473c945fa
  
    if (isServer ?? router.isServer) {
      const match = router.stores.byRoute.get(routeId)!.get()!
-@@ -101,9 +125,15 @@ function MatchView({
+@@ -101,9 +140,15 @@ function MatchView({
      : route.options.notFoundComponent
  
    const resolvedNoSsr = match.ssr === false || match.ssr === 'data-only'
@@ -2075,7 +2120,7 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..4657714116eea49444b5d16473c945fa
      canWrapInSuspense(router, route, match.ssr) &&
      (route.options.wrapInSuspense ??
        pendingElement ??
-@@ -277,7 +307,28 @@ export const Outlet = React.memo(function OutletImpl() {
+@@ -277,7 +322,29 @@ export const Outlet = React.memo(function OutletImpl() {
    let parentNotFoundError: unknown
    let childRouteId: string | undefined
  
@@ -2092,7 +2137,8 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..4657714116eea49444b5d16473c945fa
 +          const parentIndex = matches.findIndex(
 +            (match) => match.routeId === routeId,
 +          )
-+          const parentMatch = matches[parentIndex]!
++          const parentMatch = matches[parentIndex]
++          if (!parentMatch) return absentOutletMatchSelection
 +          return [
 +            !!parentMatch._notFound,
 +            parentMatch.error,
@@ -2105,7 +2151,7 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..4657714116eea49444b5d16473c945fa
      const matches = router.stores.matches.get()
      const parentIndex = matches.findIndex((match) => match.routeId === routeId)
      const parentMatch = matches[parentIndex]!
-@@ -314,7 +365,11 @@ export const Outlet = React.memo(function OutletImpl() {
+@@ -314,7 +381,11 @@ export const Outlet = React.memo(function OutletImpl() {
  
    const nextMatch = <Match routeId={childRouteId} />
  

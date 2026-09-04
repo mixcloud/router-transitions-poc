@@ -2,13 +2,16 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { startTransition, useState } from 'react'
 import { ViewTransition } from '../ViewTransition'
 import { articles } from '../data/articles'
+import { validateRows } from '../rows'
 
 export const Route = createFileRoute('/')({
+  validateSearch: validateRows,
   component: NewsList,
 })
 
 function NewsList() {
   const navigate = useNavigate()
+  const search = Route.useSearch()
 
   // Control group: a plain React state update, explicitly marked as a
   // transition. The same <ViewTransition> elements animate here.
@@ -38,7 +41,11 @@ function NewsList() {
         <button
           onClick={() =>
             startTransition(() => {
-              navigate({ to: '/article/$id', params: { id: '1' } })
+              navigate({
+                to: '/article/$id',
+                params: { id: '1' },
+                search,
+              })
             })
           }
         >
@@ -52,6 +59,7 @@ function NewsList() {
             key={article.id}
             to="/article/$id"
             params={{ id: article.id }}
+            search={search}
             className="card"
           >
             <ViewTransition name={`article-image-${article.id}`}>
