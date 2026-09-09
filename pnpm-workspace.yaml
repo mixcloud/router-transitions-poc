@@ -1,3 +1,12 @@
+# Dev tooling and `@tanstack/react-start` resolve their own copy of
+# `@tanstack/react-router`, which after the direct bump stayed on an older
+# version — leaving an unpatched router beside the patched one. The overrides
+# collapse that to a single copy, so the patch below applies to every consumer.
+# Keep the `package.json` pin, these overrides and `patchedDependencies` in
+# step, and drop all three together when the patch is no longer needed.
+overrides:
+  '@tanstack/react-router': 1.170.34
+  '@tanstack/router-core': 1.171.29
 patchedDependencies:
-  '@tanstack/react-router@1.170.32': patches/@tanstack__react-router@1.170.32.patch
-  '@tanstack/router-core@1.171.27': patches/@tanstack__router-core@1.171.27.patch
+  '@tanstack/react-router@1.170.34': patches/@tanstack__react-router@1.170.34.patch
+  '@tanstack/router-core@1.171.29': patches/@tanstack__router-core@1.171.29.patch

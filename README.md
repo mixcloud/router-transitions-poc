@@ -25,9 +25,9 @@ one synchronous commit and the image jumps.
 | | |
 | --- | --- |
 | `react` / `react-dom` | `19.3.0-canary-29d9d318-20260826` |
-| `@tanstack/react-router` | `1.170.32` |
+| `@tanstack/react-router` | `1.170.34` |
 | `@tanstack/react-start` | `1.168.49` |
-| `@tanstack/router-core` | `1.171.27` |
+| `@tanstack/router-core` | `1.171.29` |
 | `@tanstack/react-store` | `0.9.3` |
 | `vite` | `8.2.2` |
 
@@ -232,18 +232,19 @@ plain `pnpm install` reproduces everything:
 
 | Patch | Package |
 | --- | --- |
-| `@tanstack__react-router@1.170.32.patch` | `@tanstack/react-router` |
-| `@tanstack__router-core@1.171.27.patch` | `@tanstack/router-core` |
+| `@tanstack__react-router@1.170.34.patch` | `@tanstack/react-router` |
+| `@tanstack__router-core@1.171.29.patch` | `@tanstack/router-core` |
 
 They replace `dist/` and `src/` with a build of
 [`mixcloud/router@concurrent-router-render-frames`](https://github.com/mixcloud/router/tree/concurrent-router-render-frames).
 Two caveats worth knowing:
 
-- That branch is TanStack Router `main` (currently `b88367ccf9`), which is **ahead of the
-  published `1.170.32`** by unreleased upstream commits. So the patches also
-  carry those — currently
-  [#8169](https://github.com/TanStack/router/pull/8169), a fix to route-scoped
-  hooks. They are not part of the render-frame change.
+- That branch is now rebased onto TanStack Router `main` at
+  [`edeb199`](https://github.com/TanStack/router/commit/edeb199), the release
+  commit for `1.170.34` / `1.171.29` — the exact versions these patches target.
+  So unlike earlier revisions, the patches carry **only** the render-frame
+  change: every file they touch is one the change itself touches. Branch head
+  is `0608e9b`.
 - Source maps are left untouched, so stepping through the patched packages in
   devtools will show stale mappings. The shipped code is correct; only the maps
   are. Regenerate with `pnpm patch <pkg>`, copy `dist/` and `src/` from the

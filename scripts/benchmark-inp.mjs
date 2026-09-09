@@ -19,8 +19,8 @@ import { writeFileSync } from 'node:fs'
 const CONTROL = process.env.CONTROL ?? 'http://localhost:4173'
 const PATCHED = process.env.PATCHED ?? 'http://localhost:4174'
 const ROWS = (process.env.ROWS ?? '0,500,2000,6000').split(',').map(Number)
-const BLOCKS = Number(process.env.BLOCKS ?? 4)
-const CLICKS = Number(process.env.CLICKS ?? 5)
+const BLOCKS = Number(process.env.BLOCKS ?? 8)
+const CLICKS = Number(process.env.CLICKS ?? 6)
 const WARMUP = Number(process.env.WARMUP ?? 2)
 const CPU = Number(process.env.CPU ?? 6)
 const OUT = process.env.OUT ?? 'benchmark-results.json'
@@ -32,7 +32,7 @@ const OUT = process.env.OUT ?? 'benchmark-results.json'
  */
 const EVENT_TIMING_FLOOR_MS = 16
 
-const observers = () => {
+const observers = (FLOOR) => {
   window.__perf = { events: [], loafs: [] }
 
   new PerformanceObserver((list) => {
@@ -48,7 +48,11 @@ const observers = () => {
         })
       }
     }
-  }).observe({ type: 'event', durationThreshold: 16, buffered: true })
+  }).observe({
+    type: 'event',
+    durationThreshold: FLOOR,
+    buffered: true,
+  })
 
   new PerformanceObserver((list) => {
     for (const e of list.getEntries()) {
@@ -127,7 +131,18 @@ async function runBlock(browser, label, base, rows) {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
   })
-  await context.addInitScript(observers)
+  // The arm check below throws on a mismatch, which is the point — but it must
+  // not strand the context and its CDP session, or `browser.close()` never
+  // runs and the process hangs after reporting the real problem.
+  try {
+    return await measureBlock(context, label, base, rows)
+  } finally {
+    await context.close()
+  }
+}
+
+async function measureBlock(context, label, base, rows) {
+  await context.addInitScript(observers, EVENT_TIMING_FLOOR_MS)
   const page = await context.newPage()
 
   const cdp = await context.newCDPSession(page)
@@ -181,7 +196,6 @@ async function runBlock(browser, label, base, rows) {
     await page.waitForTimeout(900)
   }
 
-  await context.close()
   return { label, base, rows, concurrentRenderFrames: modeOn, samples }
 }
 

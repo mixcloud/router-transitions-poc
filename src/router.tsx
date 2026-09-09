@@ -1,5 +1,5 @@
-import { createRouter } from '@tanstack/react-router'
-import { routeTree } from './routeTree.gen'
+import { createRouter } from "@tanstack/react-router";
+import { routeTree } from "./routeTree.gen";
 
 /**
  * Opt in to the patched render-frame protocol. Without this the patch is
@@ -9,14 +9,22 @@ import { routeTree } from './routeTree.gen'
  * can compare two builds of identical source. Unset means enabled, which is
  * what the demo ships.
  */
-const CONCURRENT_RENDER_FRAMES =
-  import.meta.env.VITE_CONCURRENT_FRAMES !== '0'
+const CONCURRENT_RENDER_FRAMES = import.meta.env.VITE_CONCURRENT_FRAMES !== "0";
 
 export function getRouter() {
-  return createRouter({
+  const router = createRouter({
     routeTree,
-    defaultPreload: 'intent',
+    defaultPreload: "intent",
     scrollRestoration: true,
     experimental_concurrentRenderFrames: CONCURRENT_RENDER_FRAMES,
-  })
+  });
+
+  // `scripts/benchmark-inp.mjs` reads the mode straight off the live router
+  // rather than trusting which port it connected to. Nothing else in the
+  // stack populates this global, so the benchmark's arm check depends on it.
+  if (typeof window !== "undefined") {
+    (window as unknown as { __TSR_ROUTER__?: unknown }).__TSR_ROUTER__ = router;
+  }
+
+  return router;
 }

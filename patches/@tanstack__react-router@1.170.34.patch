@@ -1,5 +1,5 @@
 diff --git a/dist/cjs/Match.cjs b/dist/cjs/Match.cjs
-index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..31bd4e11a33e0d67878edac31f4bbc0b362f4647 100644
+index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..4015fa6ef0121dff4bd85651b9bdc7652081e484 100644
 --- a/dist/cjs/Match.cjs
 +++ b/dist/cjs/Match.cjs
 @@ -5,6 +5,7 @@ const require_CatchBoundary = require("./CatchBoundary.cjs");
@@ -10,7 +10,7 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..31bd4e11a33e0d67878edac31f4bbc0b
  const require_not_found = require("./not-found.cjs");
  const require_SafeFragment = require("./SafeFragment.cjs");
  const require_renderRouteNotFound = require("./renderRouteNotFound.cjs");
-@@ -23,9 +24,28 @@ function renderPending(router, route) {
+@@ -23,9 +24,32 @@ function renderPending(router, route) {
  	return process.env.NODE_ENV !== "production" ? require_nonRouteComponentContext.wrapInNonRouteComponentContext(pendingElement, "pendingComponent") : pendingElement;
  }
  var outletMatchSelectionEqual = (a, b) => a[0] === b[0] && a[1] === b[1];
@@ -32,14 +32,18 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..31bd4e11a33e0d67878edac31f4bbc0b
  var canWrapInSuspense = (router, route, ssr) => !route.isRoot || route.options.shellComponent || route.options.wrapInSuspense || ssr === false || ssr === "data-only" || !((_tanstack_router_core_isServer.isServer ?? router.isServer) || router.ssr);
  var Match = react.memo(function MatchImpl({ routeId }) {
  	const router = require_useRouter.useRouter();
-+	if (router.options.experimental_concurrentRenderFrames) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MatchView, {
-+		router,
-+		match: require_routerStateContext.useRouterStateSelector(router, (state) => state.matches.find((candidate) => candidate.routeId === routeId))
-+	});
++	if (router.options.experimental_concurrentRenderFrames) {
++		const match = require_routerStateContext.useRouterStateSelector(router, (state) => state.matches.find((candidate) => candidate.routeId === routeId));
++		if (!match) return null;
++		return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MatchView, {
++			router,
++			match
++		});
++	}
  	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MatchView, {
  		router,
  		match: router.stores.byRoute.get(routeId).get()
-@@ -42,7 +62,7 @@ function MatchView({ router, match }) {
+@@ -42,7 +66,7 @@ function MatchView({ router, match }) {
  	const routeOnCatch = route.options.onCatch ?? router.options.defaultOnCatch;
  	const routeNotFoundComponent = route.isRoot ? route.options.notFoundComponent ?? router.options.notFoundRoute?.options.component : route.options.notFoundComponent;
  	const resolvedNoSsr = match.ssr === false || match.ssr === "data-only";
@@ -48,7 +52,7 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..31bd4e11a33e0d67878edac31f4bbc0b
  	const ResolvedCatchBoundary = routeErrorComponent ? require_CatchBoundary.CatchBoundary : require_SafeFragment.SafeFragment;
  	const ResolvedNotFoundBoundary = routeNotFoundComponent ? require_not_found.CatchNotFound : require_SafeFragment.SafeFragment;
  	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(route.isRoot ? route.options.shellComponent ?? require_SafeFragment.SafeFragment : require_SafeFragment.SafeFragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_matchContext.matchContext.Provider, {
-@@ -139,7 +159,18 @@ var Outlet = react.memo(function OutletImpl() {
+@@ -139,7 +163,18 @@ var Outlet = react.memo(function OutletImpl() {
  	let parentGlobalNotFound;
  	let parentNotFoundError;
  	let childRouteId;
@@ -68,7 +72,7 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..31bd4e11a33e0d67878edac31f4bbc0b
  		const matches = router.stores.matches.get();
  		const parentIndex = matches.findIndex((match) => match.routeId === routeId);
  		const parentMatch = matches[parentIndex];
-@@ -156,7 +187,7 @@ var Outlet = react.memo(function OutletImpl() {
+@@ -156,7 +191,7 @@ var Outlet = react.memo(function OutletImpl() {
  	if (parentGlobalNotFound) return require_renderRouteNotFound.renderRouteNotFound(router, router.routesById[routeId], parentNotFoundError);
  	if (!childRouteId) return null;
  	const nextMatch = /* @__PURE__ */ (0, react_jsx_runtime.jsx)(Match, { routeId: childRouteId });
@@ -77,8 +81,21 @@ index 520b4fabc963fd497a9c58b8060d0a8b494e43f6..31bd4e11a33e0d67878edac31f4bbc0b
  		fallback: renderPending(router),
  		children: nextMatch
  	});
+diff --git a/dist/cjs/Match.d.cts b/dist/cjs/Match.d.cts
+index 1bc492c29f06575241b9928529556cf04ac48723..568f96f88890c31aa2e142abb2ae36c19f787a5d 100644
+--- a/dist/cjs/Match.d.cts
++++ b/dist/cjs/Match.d.cts
+@@ -4,7 +4,7 @@ import * as React from 'react';
+ export declare function renderPending(router: ReturnType<typeof useRouter>, route?: AnyRoute): import("react/jsx-runtime").JSX.Element | null;
+ export declare const Match: React.MemoExoticComponent<({ routeId, }: {
+     routeId: string;
+-}) => import("react/jsx-runtime").JSX.Element>;
++}) => import("react/jsx-runtime").JSX.Element | null>;
+ export declare const MatchInner: React.MemoExoticComponent<({ match, }: {
+     match: AnyRouteMatch;
+ }) => any>;
 diff --git a/dist/cjs/Matches.cjs b/dist/cjs/Matches.cjs
-index 0678b4dd2961608b74f486fe9bb68663ecdfc1da..14fb27905cc9cdc0d3f6cfd42b003b5d4f363306 100644
+index 09d60882fda470c287de14c39abdcd6d91a7024f..7ecf43bb2b098ad8152a1b2cf5a7acccd9031637 100644
 --- a/dist/cjs/Matches.cjs
 +++ b/dist/cjs/Matches.cjs
 @@ -4,6 +4,7 @@ const require_utils = require("./utils.cjs");
@@ -298,40 +315,6 @@ index 0e0c6ec7c0e0053e08422a83ab63100243a9752b..11f09978df6f5534b173cc527f7c2f0a
      t: React.Dispatch<React.SetStateAction<AnyRouter | undefined>>;
 +    setRenderFrame: React.Dispatch<React.SetStateAction<RouterRenderFrame | undefined>>;
  }): null;
-diff --git a/dist/cjs/fileRoute.cjs b/dist/cjs/fileRoute.cjs
-index 9baeacdeda0db03f2e2cd6b0f90fd1d1e72e6710..0afde466a71ad6af0490952f954e5854c0efb9d2 100644
---- a/dist/cjs/fileRoute.cjs
-+++ b/dist/cjs/fileRoute.cjs
-@@ -56,9 +56,8 @@ var LazyRoute = class {
- 	constructor(opts) {
- 		this.useMatch = (opts) => {
- 			return require_useMatch.useMatch({
--				select: opts?.select,
--				from: this.options.id,
--				structuralSharing: opts?.structuralSharing
-+				...opts,
-+				from: this.options.id
- 			});
- 		};
- 		this.useRouteContext = (opts) => {
-@@ -69,15 +68,13 @@ var LazyRoute = class {
- 		};
- 		this.useSearch = (opts) => {
- 			return require_useSearch.useSearch({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.options.id
- 			});
- 		};
- 		this.useParams = (opts) => {
- 			return require_useParams.useParams({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.options.id
- 			});
- 		};
 diff --git a/dist/cjs/headContentUtils.cjs b/dist/cjs/headContentUtils.cjs
 index 95f41b30083d10440cf5312819132bdfc941cdca..042fb60292ede2b6e7900b34f7d36b7977fe69a1 100644
 --- a/dist/cjs/headContentUtils.cjs
@@ -359,7 +342,7 @@ index 95f41b30083d10440cf5312819132bdfc941cdca..042fb60292ede2b6e7900b34f7d36b79
  };
  //#endregion
 diff --git a/dist/cjs/link.cjs b/dist/cjs/link.cjs
-index 87738841c6eb417521b9421b1f47207949f7c5d5..95a2f08c98604b9d0dbecc0453b8c344cef79642 100644
+index 8517aec032705164b046a7ca7002d61da9e978ab..95d76061fd0709837d822efb5111689751e201a0 100644
 --- a/dist/cjs/link.cjs
 +++ b/dist/cjs/link.cjs
 @@ -3,6 +3,7 @@ const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
@@ -370,15 +353,15 @@ index 87738841c6eb417521b9421b1f47207949f7c5d5..95a2f08c98604b9d0dbecc0453b8c344
  let _tanstack_router_core = require("@tanstack/router-core");
  let react = require("react");
  react = require_runtime.__toESM(react, 1);
-@@ -235,7 +236,7 @@ function useLinkProps(options, forwardedRef) {
+@@ -173,7 +174,7 @@ function useLinkProps(options, forwardedRef) {
  		router,
  		to
  	]);
--	const [href, externalLink, isActive] = (0, _tanstack_react_store.useStore)(router.stores.location, selectLinkState, compareLinkState);
-+	const [href, externalLink, isActive] = router.options.experimental_concurrentRenderFrames ? require_routerStateContext.useRouterStateSelector(router, (state) => selectLinkState(state.location), compareLinkState) : (0, _tanstack_react_store.useStore)(router.stores.location, selectLinkState, compareLinkState);
- 	const resolvedActiveProps = isActive ? (0, _tanstack_router_core.functionalUpdate)(activeProps, {}) ?? STATIC_ACTIVE_OBJECT : STATIC_EMPTY_OBJECT;
- 	const resolvedInactiveProps = isActive ? STATIC_EMPTY_OBJECT : (0, _tanstack_router_core.functionalUpdate)(inactiveProps, {}) ?? STATIC_EMPTY_OBJECT;
- 	const resolvedClassName = [
+-	const [href, isActive] = (0, _tanstack_react_store.useStore)(router.stores.location, selectLinkState, compareLinkState);
++	const [href, isActive] = router.options.experimental_concurrentRenderFrames ? require_routerStateContext.useRouterStateSelector(router, (state) => selectLinkState(state.location), compareLinkState) : (0, _tanstack_react_store.useStore)(router.stores.location, selectLinkState, compareLinkState);
+ 	const externalLink = isActive === void 0 ? href : void 0;
+ 	const linkDisabled = disabled || href === void 0;
+ 	const hasRenderFetched = react.useRef(false);
 diff --git a/dist/cjs/not-found.cjs b/dist/cjs/not-found.cjs
 index 076fa4638cddb621cb9e8c7ecbc007319da8c124..cfbbc114c978092502434cb77ad73ff29cad084b 100644
 --- a/dist/cjs/not-found.cjs
@@ -424,102 +407,8 @@ index 076fa4638cddb621cb9e8c7ecbc007319da8c124..cfbbc114c978092502434cb77ad73ff2
  	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_CatchBoundary.CatchBoundary, {
  		getResetKey: () => resetKey,
  		onCatch: (error, errorInfo) => {
-diff --git a/dist/cjs/route.cjs b/dist/cjs/route.cjs
-index 825fd133c2cb74b2e7b75124483b57d08ca1e008..34eb1bc5f52b39f964527694fa602f4104aa9af8 100644
---- a/dist/cjs/route.cjs
-+++ b/dist/cjs/route.cjs
-@@ -33,9 +33,8 @@ var RouteApi = class extends _tanstack_router_core.BaseRouteApi {
- 		super({ id });
- 		this.useMatch = (opts) => {
- 			return require_useMatch.useMatch({
--				select: opts?.select,
--				from: this.id,
--				structuralSharing: opts?.structuralSharing
-+				...opts,
-+				from: this.id
- 			});
- 		};
- 		this.useRouteContext = (opts) => {
-@@ -46,15 +45,13 @@ var RouteApi = class extends _tanstack_router_core.BaseRouteApi {
- 		};
- 		this.useSearch = (opts) => {
- 			return require_useSearch.useSearch({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.id
- 			});
- 		};
- 		this.useParams = (opts) => {
- 			return require_useParams.useParams({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.id
- 			});
- 		};
-@@ -99,9 +96,8 @@ var Route = class extends _tanstack_router_core.BaseRoute {
- 		super(options);
- 		this.useMatch = (opts) => {
- 			return require_useMatch.useMatch({
--				select: opts?.select,
--				from: this.id,
--				structuralSharing: opts?.structuralSharing
-+				...opts,
-+				from: this.id
- 			});
- 		};
- 		this.useRouteContext = (opts) => {
-@@ -112,15 +108,13 @@ var Route = class extends _tanstack_router_core.BaseRoute {
- 		};
- 		this.useSearch = (opts) => {
- 			return require_useSearch.useSearch({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.id
- 			});
- 		};
- 		this.useParams = (opts) => {
- 			return require_useParams.useParams({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.id
- 			});
- 		};
-@@ -188,9 +182,8 @@ var RootRoute = class extends _tanstack_router_core.BaseRootRoute {
- 		super(options);
- 		this.useMatch = (opts) => {
- 			return require_useMatch.useMatch({
--				select: opts?.select,
--				from: this.id,
--				structuralSharing: opts?.structuralSharing
-+				...opts,
-+				from: this.id
- 			});
- 		};
- 		this.useRouteContext = (opts) => {
-@@ -201,15 +194,13 @@ var RootRoute = class extends _tanstack_router_core.BaseRootRoute {
- 		};
- 		this.useSearch = (opts) => {
- 			return require_useSearch.useSearch({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.id
- 			});
- 		};
- 		this.useParams = (opts) => {
- 			return require_useParams.useParams({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.id
- 			});
- 		};
 diff --git a/dist/cjs/router.d.cts b/dist/cjs/router.d.cts
-index f71f69ac907e209179b3c41be9db4dc6f6d38524..ef02b697228b62577302c1000e48357f5e2460fe 100644
+index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df4a037b08 100644
 --- a/dist/cjs/router.d.cts
 +++ b/dist/cjs/router.d.cts
 @@ -3,6 +3,14 @@ import { RouterHistory } from '@tanstack/history';
@@ -539,10 +428,10 @@ index f71f69ac907e209179b3c41be9db4dc6f6d38524..ef02b697228b62577302c1000e48357f
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..bc4eb0428e59999a055d1a238381e75fae94f2ec
+index 0000000000000000000000000000000000000000..2c8bbc2d99d1ed912108c991ea3d9d632cdff26f
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,250 @@
+@@ -0,0 +1,251 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -659,8 +548,9 @@ index 0000000000000000000000000000000000000000..bc4eb0428e59999a055d1a238381e75f
 +		commit: (nextFrame) => {
 +			if (pending?.frameId !== nextFrame.frameId) return false;
 +			pending = void 0;
-+			root.committed = nextFrame;
-+			route.committed = nextFrame;
++			const committedFrame = withProgress(nextFrame, router.stores.__store.get());
++			root.committed = committedFrame;
++			route.committed = committedFrame;
 +			route.staged = void 0;
 +			root.notify();
 +			route.notify();
@@ -963,32 +853,6 @@ index 75321489fcca8f6ee9117d3ace09facf6f00bbab..0c952b7485d7fc7781b979e67b387022
  	if (opts.shouldThrow ?? true) {
  		if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
  		(0, _tanstack_router_core.invariant)();
-diff --git a/dist/cjs/useMatch.d.cts b/dist/cjs/useMatch.d.cts
-index 04593c535f3df46f8f2f27f247d77017753775bd..bc32be4fc07754780db3246bcea571fcad4f0cdd 100644
---- a/dist/cjs/useMatch.d.cts
-+++ b/dist/cjs/useMatch.d.cts
-@@ -8,7 +8,7 @@ export interface UseMatchBaseOptions<TRouter extends AnyRouter, TFrom, TStrict e
-     select?: (match: MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict>) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
-     shouldThrow?: TThrow;
- }
--export type UseMatchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean>(opts?: UseMatchBaseOptions<TRouter, TFrom, true, true, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => UseMatchResult<TRouter, TFrom, true, TSelected>;
-+export type UseMatchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean, TThrow extends boolean = true>(opts?: UseMatchBaseOptions<TRouter, TFrom, true, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => ThrowOrOptional<UseMatchResult<TRouter, TFrom, true, TSelected>, TThrow>;
- export type UseMatchOptions<TRouter extends AnyRouter, TFrom extends string | undefined, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing extends boolean> = StrictOrFrom<TRouter, TFrom, TStrict> & UseMatchBaseOptions<TRouter, TFrom, TStrict, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>;
- export type UseMatchResult<TRouter extends AnyRouter, TFrom, TStrict extends boolean, TSelected> = unknown extends TSelected ? TStrict extends true ? MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict> : MakeRouteMatchUnion<TRouter> : TSelected;
- /**
-diff --git a/dist/cjs/useParams.d.cts b/dist/cjs/useParams.d.cts
-index a5e7a60f5250402d845027a67e32fa12607e4618..8a8c2f629bd5e0b17cc0311e8ab02b3d90aafa2d 100644
---- a/dist/cjs/useParams.d.cts
-+++ b/dist/cjs/useParams.d.cts
-@@ -5,7 +5,7 @@ export interface UseParamsBaseOptions<TRouter extends AnyRouter, TFrom, TStrict
-     shouldThrow?: TThrow;
- }
- export type UseParamsOptions<TRouter extends AnyRouter, TFrom extends string | undefined, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing> = StrictOrFrom<TRouter, TFrom, TStrict> & UseParamsBaseOptions<TRouter, TFrom, TStrict, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>;
--export type UseParamsRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean>(opts?: UseParamsBaseOptions<TRouter, TFrom, true, true, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => UseParamsResult<TRouter, TFrom, true, TSelected>;
-+export type UseParamsRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean, TThrow extends boolean = true>(opts?: UseParamsBaseOptions<TRouter, TFrom, true, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => ThrowOrOptional<UseParamsResult<TRouter, TFrom, true, TSelected>, TThrow>;
- /**
-  * Access the current route's path parameters with type-safety.
-  *
 diff --git a/dist/cjs/useRouterState.cjs b/dist/cjs/useRouterState.cjs
 index 678f71e93dd9d9dda1097dc2ccc2a1916b5ea9fd..945ddbb81d5f227b667131ae748f12c2da8c65be 100644
 --- a/dist/cjs/useRouterState.cjs
@@ -1008,21 +872,21 @@ index 678f71e93dd9d9dda1097dc2ccc2a1916b5ea9fd..945ddbb81d5f227b667131ae748f12c2
  	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
  		const state = router.stores.__store.get();
  		return opts?.select ? opts.select(state) : state;
-diff --git a/dist/cjs/useSearch.d.cts b/dist/cjs/useSearch.d.cts
-index ab4c65ea990e7d6dbbd1d9b6e1e92aa55167d115..d04d90fcad7a0249db5eec449af1474b6fb20ded 100644
---- a/dist/cjs/useSearch.d.cts
-+++ b/dist/cjs/useSearch.d.cts
-@@ -5,7 +5,7 @@ export interface UseSearchBaseOptions<TRouter extends AnyRouter, TFrom, TStrict
-     shouldThrow?: TThrow;
- }
- export type UseSearchOptions<TRouter extends AnyRouter, TFrom, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing> = StrictOrFrom<TRouter, TFrom, TStrict> & UseSearchBaseOptions<TRouter, TFrom, TStrict, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>;
--export type UseSearchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean>(opts?: UseSearchBaseOptions<TRouter, TFrom, true, true, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => UseSearchResult<TRouter, TFrom, true, TSelected>;
-+export type UseSearchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean, TThrow extends boolean = true>(opts?: UseSearchBaseOptions<TRouter, TFrom, true, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => ThrowOrOptional<UseSearchResult<TRouter, TFrom, true, TSelected>, TThrow>;
- /**
-  * Read and select the current route's search parameters with type-safety.
-  *
+diff --git a/dist/esm/Match.d.ts b/dist/esm/Match.d.ts
+index d62c0d3de4b965e718476d251164e80621bbf4a0..3154bd60e62f83b15c56abe527ee93c6768de808 100644
+--- a/dist/esm/Match.d.ts
++++ b/dist/esm/Match.d.ts
+@@ -4,7 +4,7 @@ import * as React from 'react';
+ export declare function renderPending(router: ReturnType<typeof useRouter>, route?: AnyRoute): import("react/jsx-runtime").JSX.Element | null;
+ export declare const Match: React.MemoExoticComponent<({ routeId, }: {
+     routeId: string;
+-}) => import("react/jsx-runtime").JSX.Element>;
++}) => import("react/jsx-runtime").JSX.Element | null>;
+ export declare const MatchInner: React.MemoExoticComponent<({ match, }: {
+     match: AnyRouteMatch;
+ }) => any>;
 diff --git a/dist/esm/Match.js b/dist/esm/Match.js
-index 7dffc446e563ea4f5826c5714ef011a391114635..6aa90631fef5bf41148310c8f3d572ba7dcb4660 100644
+index 7dffc446e563ea4f5826c5714ef011a391114635..25bfe9f651e48486cd6c0057298b1f276dc62e61 100644
 --- a/dist/esm/Match.js
 +++ b/dist/esm/Match.js
 @@ -4,6 +4,7 @@ import { CatchBoundary, ErrorComponent } from "./CatchBoundary.js";
@@ -1033,7 +897,7 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..6aa90631fef5bf41148310c8f3d572ba
  import { CatchNotFound } from "./not-found.js";
  import { SafeFragment } from "./SafeFragment.js";
  import { renderRouteNotFound } from "./renderRouteNotFound.js";
-@@ -21,9 +22,28 @@ function renderPending(router, route) {
+@@ -21,9 +22,32 @@ function renderPending(router, route) {
  	return process.env.NODE_ENV !== "production" ? wrapInNonRouteComponentContext(pendingElement, "pendingComponent") : pendingElement;
  }
  var outletMatchSelectionEqual = (a, b) => a[0] === b[0] && a[1] === b[1];
@@ -1055,14 +919,18 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..6aa90631fef5bf41148310c8f3d572ba
  var canWrapInSuspense = (router, route, ssr) => !route.isRoot || route.options.shellComponent || route.options.wrapInSuspense || ssr === false || ssr === "data-only" || !((isServer ?? router.isServer) || router.ssr);
  var Match = React$1.memo(function MatchImpl({ routeId }) {
  	const router = useRouter();
-+	if (router.options.experimental_concurrentRenderFrames) return /* @__PURE__ */ jsx(MatchView, {
-+		router,
-+		match: useRouterStateSelector(router, (state) => state.matches.find((candidate) => candidate.routeId === routeId))
-+	});
++	if (router.options.experimental_concurrentRenderFrames) {
++		const match = useRouterStateSelector(router, (state) => state.matches.find((candidate) => candidate.routeId === routeId));
++		if (!match) return null;
++		return /* @__PURE__ */ jsx(MatchView, {
++			router,
++			match
++		});
++	}
  	if (isServer ?? router.isServer) return /* @__PURE__ */ jsx(MatchView, {
  		router,
  		match: router.stores.byRoute.get(routeId).get()
-@@ -40,7 +60,7 @@ function MatchView({ router, match }) {
+@@ -40,7 +64,7 @@ function MatchView({ router, match }) {
  	const routeOnCatch = route.options.onCatch ?? router.options.defaultOnCatch;
  	const routeNotFoundComponent = route.isRoot ? route.options.notFoundComponent ?? router.options.notFoundRoute?.options.component : route.options.notFoundComponent;
  	const resolvedNoSsr = match.ssr === false || match.ssr === "data-only";
@@ -1071,7 +939,7 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..6aa90631fef5bf41148310c8f3d572ba
  	const ResolvedCatchBoundary = routeErrorComponent ? CatchBoundary : SafeFragment;
  	const ResolvedNotFoundBoundary = routeNotFoundComponent ? CatchNotFound : SafeFragment;
  	return /* @__PURE__ */ jsxs(route.isRoot ? route.options.shellComponent ?? SafeFragment : SafeFragment, { children: [/* @__PURE__ */ jsx(matchContext.Provider, {
-@@ -137,7 +157,18 @@ var Outlet = React$1.memo(function OutletImpl() {
+@@ -137,7 +161,18 @@ var Outlet = React$1.memo(function OutletImpl() {
  	let parentGlobalNotFound;
  	let parentNotFoundError;
  	let childRouteId;
@@ -1091,7 +959,7 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..6aa90631fef5bf41148310c8f3d572ba
  		const matches = router.stores.matches.get();
  		const parentIndex = matches.findIndex((match) => match.routeId === routeId);
  		const parentMatch = matches[parentIndex];
-@@ -154,7 +185,7 @@ var Outlet = React$1.memo(function OutletImpl() {
+@@ -154,7 +189,7 @@ var Outlet = React$1.memo(function OutletImpl() {
  	if (parentGlobalNotFound) return renderRouteNotFound(router, router.routesById[routeId], parentNotFoundError);
  	if (!childRouteId) return null;
  	const nextMatch = /* @__PURE__ */ jsx(Match, { routeId: childRouteId });
@@ -1101,7 +969,7 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..6aa90631fef5bf41148310c8f3d572ba
  		children: nextMatch
  	});
 diff --git a/dist/esm/Matches.js b/dist/esm/Matches.js
-index 68657a0e5a4b11962e415bc86e28cccc25f000d3..cb6698e07e846af52f06e81d75000141b9894c21 100644
+index 165886d6edb650b202f8e2b428aaab7c51d23bf7..b63eeed24c0ea37b750f53e4cad78b7eaae2e4c0 100644
 --- a/dist/esm/Matches.js
 +++ b/dist/esm/Matches.js
 @@ -3,6 +3,7 @@ import { useLayoutEffect } from "./utils.js";
@@ -1320,40 +1188,6 @@ index 51d7e69e3b1ad5a656d4c4e6f3ef690520effbf5..589f69809ebbf2d42a7df38477c53553
  			if (rendered) router.emit({
  				type: "onRendered",
  				...getLocationChangeInfo(resolvedLocation, resolvedLocation)
-diff --git a/dist/esm/fileRoute.js b/dist/esm/fileRoute.js
-index bf5fdc373695dcc5871ea9fcd9ba4da559d6127f..04f88081a5a160285bcf8b759a914b07d0e99af1 100644
---- a/dist/esm/fileRoute.js
-+++ b/dist/esm/fileRoute.js
-@@ -56,9 +56,8 @@ var LazyRoute = class {
- 	constructor(opts) {
- 		this.useMatch = (opts) => {
- 			return useMatch({
--				select: opts?.select,
--				from: this.options.id,
--				structuralSharing: opts?.structuralSharing
-+				...opts,
-+				from: this.options.id
- 			});
- 		};
- 		this.useRouteContext = (opts) => {
-@@ -69,15 +68,13 @@ var LazyRoute = class {
- 		};
- 		this.useSearch = (opts) => {
- 			return useSearch({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.options.id
- 			});
- 		};
- 		this.useParams = (opts) => {
- 			return useParams({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.options.id
- 			});
- 		};
 diff --git a/dist/esm/headContentUtils.js b/dist/esm/headContentUtils.js
 index 25367c5d2fad601817cb97a4b2717ffaa15f663d..4ac565559d15b239c9a14ff4849b4a004302e032 100644
 --- a/dist/esm/headContentUtils.js
@@ -1380,7 +1214,7 @@ index 25367c5d2fad601817cb97a4b2717ffaa15f663d..4ac565559d15b239c9a14ff4849b4a00
  };
  //#endregion
 diff --git a/dist/esm/link.js b/dist/esm/link.js
-index 726a26e42ac00d041bc5b09c2b441f5d0b442d53..d46bd27747197397bc4db5c572463b1e89626c20 100644
+index 77236949d9df8907f3aef87b928f36fc551b30bd..5026da0102bd944aee31f6095e7a21b48b92b89c 100644
 --- a/dist/esm/link.js
 +++ b/dist/esm/link.js
 @@ -2,6 +2,7 @@
@@ -1388,18 +1222,18 @@ index 726a26e42ac00d041bc5b09c2b441f5d0b442d53..d46bd27747197397bc4db5c572463b1e
  import { useHydrated } from "./ClientOnly.js";
  import { useRouter } from "./useRouter.js";
 +import { useRouterStateSelector } from "./routerStateContext.js";
- import { deepEqual, exactPathTest, functionalUpdate, hasKeys, isDangerousProtocol, preloadWarning, removeTrailingSlash } from "@tanstack/router-core";
+ import { deepEqual, exactPathTest, functionalUpdate, getUrlScheme, hasKeys, isDangerousProtocol, preloadWarning, removeTrailingSlash } from "@tanstack/router-core";
  import * as React$1 from "react";
  import { isServer } from "@tanstack/router-core/isServer";
-@@ -233,7 +234,7 @@ function useLinkProps(options, forwardedRef) {
+@@ -171,7 +172,7 @@ function useLinkProps(options, forwardedRef) {
  		router,
  		to
  	]);
--	const [href, externalLink, isActive] = useStore(router.stores.location, selectLinkState, compareLinkState);
-+	const [href, externalLink, isActive] = router.options.experimental_concurrentRenderFrames ? useRouterStateSelector(router, (state) => selectLinkState(state.location), compareLinkState) : useStore(router.stores.location, selectLinkState, compareLinkState);
- 	const resolvedActiveProps = isActive ? functionalUpdate(activeProps, {}) ?? STATIC_ACTIVE_OBJECT : STATIC_EMPTY_OBJECT;
- 	const resolvedInactiveProps = isActive ? STATIC_EMPTY_OBJECT : functionalUpdate(inactiveProps, {}) ?? STATIC_EMPTY_OBJECT;
- 	const resolvedClassName = [
+-	const [href, isActive] = useStore(router.stores.location, selectLinkState, compareLinkState);
++	const [href, isActive] = router.options.experimental_concurrentRenderFrames ? useRouterStateSelector(router, (state) => selectLinkState(state.location), compareLinkState) : useStore(router.stores.location, selectLinkState, compareLinkState);
+ 	const externalLink = isActive === void 0 ? href : void 0;
+ 	const linkDisabled = disabled || href === void 0;
+ 	const hasRenderFetched = React$1.useRef(false);
 diff --git a/dist/esm/not-found.js b/dist/esm/not-found.js
 index f53a10e876c58a632de2b616f679a24175b8b18f..87512658792c114764fcdd80f1f377b0e5fce80d 100644
 --- a/dist/esm/not-found.js
@@ -1444,102 +1278,8 @@ index f53a10e876c58a632de2b616f679a24175b8b18f..87512658792c114764fcdd80f1f377b0
  	return /* @__PURE__ */ jsx(CatchBoundary, {
  		getResetKey: () => resetKey,
  		onCatch: (error, errorInfo) => {
-diff --git a/dist/esm/route.js b/dist/esm/route.js
-index 877e9da2e359e70428c0bd296e5e6d1ff9097843..c4de337709560dadbca085269236481508bfde3d 100644
---- a/dist/esm/route.js
-+++ b/dist/esm/route.js
-@@ -31,9 +31,8 @@ var RouteApi = class extends BaseRouteApi {
- 		super({ id });
- 		this.useMatch = (opts) => {
- 			return useMatch({
--				select: opts?.select,
--				from: this.id,
--				structuralSharing: opts?.structuralSharing
-+				...opts,
-+				from: this.id
- 			});
- 		};
- 		this.useRouteContext = (opts) => {
-@@ -44,15 +43,13 @@ var RouteApi = class extends BaseRouteApi {
- 		};
- 		this.useSearch = (opts) => {
- 			return useSearch({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.id
- 			});
- 		};
- 		this.useParams = (opts) => {
- 			return useParams({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.id
- 			});
- 		};
-@@ -97,9 +94,8 @@ var Route = class extends BaseRoute {
- 		super(options);
- 		this.useMatch = (opts) => {
- 			return useMatch({
--				select: opts?.select,
--				from: this.id,
--				structuralSharing: opts?.structuralSharing
-+				...opts,
-+				from: this.id
- 			});
- 		};
- 		this.useRouteContext = (opts) => {
-@@ -110,15 +106,13 @@ var Route = class extends BaseRoute {
- 		};
- 		this.useSearch = (opts) => {
- 			return useSearch({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.id
- 			});
- 		};
- 		this.useParams = (opts) => {
- 			return useParams({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.id
- 			});
- 		};
-@@ -186,9 +180,8 @@ var RootRoute = class extends BaseRootRoute {
- 		super(options);
- 		this.useMatch = (opts) => {
- 			return useMatch({
--				select: opts?.select,
--				from: this.id,
--				structuralSharing: opts?.structuralSharing
-+				...opts,
-+				from: this.id
- 			});
- 		};
- 		this.useRouteContext = (opts) => {
-@@ -199,15 +192,13 @@ var RootRoute = class extends BaseRootRoute {
- 		};
- 		this.useSearch = (opts) => {
- 			return useSearch({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.id
- 			});
- 		};
- 		this.useParams = (opts) => {
- 			return useParams({
--				select: opts?.select,
--				structuralSharing: opts?.structuralSharing,
-+				...opts,
- 				from: this.id
- 			});
- 		};
 diff --git a/dist/esm/router.d.ts b/dist/esm/router.d.ts
-index 311e1bf0375a336e2bd7abe41203fe383d199af6..3d69a2e5f5f26f693906819bd9335a08c2896662 100644
+index a75a6159942121bcf30ef34d67733867d51d47b7..6ab2577dfa0a5b579b4088622e35f37d53104e04 100644
 --- a/dist/esm/router.d.ts
 +++ b/dist/esm/router.d.ts
 @@ -3,6 +3,14 @@ import { RouterHistory } from '@tanstack/history';
@@ -1637,10 +1377,10 @@ index 0000000000000000000000000000000000000000..26a58056225453c5a26a1c620c138a4a
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..bb27075407fab87c37833d48bba5ab332c1efc64
+index 0000000000000000000000000000000000000000..3c55ea58e53c67e9ebf8694c0e11d735603a2823
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,244 @@
+@@ -0,0 +1,245 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import { useHydrated } from "./ClientOnly.js";
@@ -1755,8 +1495,9 @@ index 0000000000000000000000000000000000000000..bb27075407fab87c37833d48bba5ab33
 +		commit: (nextFrame) => {
 +			if (pending?.frameId !== nextFrame.frameId) return false;
 +			pending = void 0;
-+			root.committed = nextFrame;
-+			route.committed = nextFrame;
++			const committedFrame = withProgress(nextFrame, router.stores.__store.get());
++			root.committed = committedFrame;
++			route.committed = committedFrame;
 +			route.staged = void 0;
 +			root.notify();
 +			route.notify();
@@ -1924,19 +1665,6 @@ index f0956ede1c6d3fd463201b281f4cd73073e5e9d7..92144f0db97ef99496e46ad1966e4214
  	if (isServer ?? router.isServer) {
  		const location = router.stores.location.get();
  		return opts?.select ? opts.select(location) : location;
-diff --git a/dist/esm/useMatch.d.ts b/dist/esm/useMatch.d.ts
-index 4c8d6ff58af0c74739d5e0b226f5b07390b87d3e..c2623c5bb27a7c301c912404de0721c2d138e1f8 100644
---- a/dist/esm/useMatch.d.ts
-+++ b/dist/esm/useMatch.d.ts
-@@ -8,7 +8,7 @@ export interface UseMatchBaseOptions<TRouter extends AnyRouter, TFrom, TStrict e
-     select?: (match: MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict>) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
-     shouldThrow?: TThrow;
- }
--export type UseMatchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean>(opts?: UseMatchBaseOptions<TRouter, TFrom, true, true, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => UseMatchResult<TRouter, TFrom, true, TSelected>;
-+export type UseMatchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean, TThrow extends boolean = true>(opts?: UseMatchBaseOptions<TRouter, TFrom, true, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => ThrowOrOptional<UseMatchResult<TRouter, TFrom, true, TSelected>, TThrow>;
- export type UseMatchOptions<TRouter extends AnyRouter, TFrom extends string | undefined, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing extends boolean> = StrictOrFrom<TRouter, TFrom, TStrict> & UseMatchBaseOptions<TRouter, TFrom, TStrict, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>;
- export type UseMatchResult<TRouter extends AnyRouter, TFrom, TStrict extends boolean, TSelected> = unknown extends TSelected ? TStrict extends true ? MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict> : MakeRouteMatchUnion<TRouter> : TSelected;
- /**
 diff --git a/dist/esm/useMatch.js b/dist/esm/useMatch.js
 index 5d0c7a6a044c18341f101b8f5d5485cd06326c0d..2603f560fadf967952f0d3dd262f0cfd34e85e1f 100644
 --- a/dist/esm/useMatch.js
@@ -1990,19 +1718,6 @@ index 5d0c7a6a044c18341f101b8f5d5485cd06326c0d..2603f560fadf967952f0d3dd262f0cfd
  	if (opts.shouldThrow ?? true) {
  		if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
  		invariant();
-diff --git a/dist/esm/useParams.d.ts b/dist/esm/useParams.d.ts
-index 99cc19882a22b76e0f81b726fedc6f7859675ec1..ef3780a0b246d5e888393f7745c4faf0d4cf87b5 100644
---- a/dist/esm/useParams.d.ts
-+++ b/dist/esm/useParams.d.ts
-@@ -5,7 +5,7 @@ export interface UseParamsBaseOptions<TRouter extends AnyRouter, TFrom, TStrict
-     shouldThrow?: TThrow;
- }
- export type UseParamsOptions<TRouter extends AnyRouter, TFrom extends string | undefined, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing> = StrictOrFrom<TRouter, TFrom, TStrict> & UseParamsBaseOptions<TRouter, TFrom, TStrict, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>;
--export type UseParamsRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean>(opts?: UseParamsBaseOptions<TRouter, TFrom, true, true, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => UseParamsResult<TRouter, TFrom, true, TSelected>;
-+export type UseParamsRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean, TThrow extends boolean = true>(opts?: UseParamsBaseOptions<TRouter, TFrom, true, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => ThrowOrOptional<UseParamsResult<TRouter, TFrom, true, TSelected>, TThrow>;
- /**
-  * Access the current route's path parameters with type-safety.
-  *
 diff --git a/dist/esm/useRouterState.js b/dist/esm/useRouterState.js
 index d82afeead0daa8ccb8756ad3376a20015c4b7427..a02ded087ccd8b686947c157279dd94d67d4fce1 100644
 --- a/dist/esm/useRouterState.js
@@ -2022,21 +1737,8 @@ index d82afeead0daa8ccb8756ad3376a20015c4b7427..a02ded087ccd8b686947c157279dd94d
  	if (isServer ?? router.isServer) {
  		const state = router.stores.__store.get();
  		return opts?.select ? opts.select(state) : state;
-diff --git a/dist/esm/useSearch.d.ts b/dist/esm/useSearch.d.ts
-index 186053ecfdc6a204dc1e5b64cb5590d7bb90eccd..9a4b1044308655aa2b3d214b31223479491ab494 100644
---- a/dist/esm/useSearch.d.ts
-+++ b/dist/esm/useSearch.d.ts
-@@ -5,7 +5,7 @@ export interface UseSearchBaseOptions<TRouter extends AnyRouter, TFrom, TStrict
-     shouldThrow?: TThrow;
- }
- export type UseSearchOptions<TRouter extends AnyRouter, TFrom, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing> = StrictOrFrom<TRouter, TFrom, TStrict> & UseSearchBaseOptions<TRouter, TFrom, TStrict, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>;
--export type UseSearchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean>(opts?: UseSearchBaseOptions<TRouter, TFrom, true, true, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => UseSearchResult<TRouter, TFrom, true, TSelected>;
-+export type UseSearchRoute<out TFrom> = <TRouter extends AnyRouter = RegisteredRouter, TSelected = unknown, TStructuralSharing extends boolean = boolean, TThrow extends boolean = true>(opts?: UseSearchBaseOptions<TRouter, TFrom, true, TThrow, TSelected, TStructuralSharing> & StructuralSharingOption<TRouter, TSelected, TStructuralSharing>) => ThrowOrOptional<UseSearchResult<TRouter, TFrom, true, TSelected>, TThrow>;
- /**
-  * Read and select the current route's search parameters with type-safety.
-  *
 diff --git a/src/Match.tsx b/src/Match.tsx
-index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..6d1575a77cbf87e0e22cecc234d80ffc1323a8a7 100644
+index 97b8f7958926aff039e63d90e4213a78e064fe2d..9a77fcdaaaa3672042dc8374430eb020ffc4d79e 100644
 --- a/src/Match.tsx
 +++ b/src/Match.tsx
 @@ -12,6 +12,10 @@ import { SafeFragment } from './SafeFragment'
@@ -2088,7 +1790,7 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..6d1575a77cbf87e0e22cecc234d80ffc
  const canWrapInSuspense = (
    router: ReturnType<typeof useRouter>,
    route: AnyRoute,
-@@ -66,6 +96,15 @@ export const Match = React.memo(function MatchImpl({
+@@ -66,6 +96,22 @@ export const Match = React.memo(function MatchImpl({
    routeId: string
  }) {
    const router = useRouter()
@@ -2099,12 +1801,19 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..6d1575a77cbf87e0e22cecc234d80ffc
 +    const match = useRouterStateSelector(router, (state) =>
 +      state.matches.find((candidate) => candidate.routeId === routeId),
 +    )
-+    return <MatchView router={router} match={match!} />
++    // Same reasoning as `absentOutletMatchSelection`: a frame that drops this
++    // route can reach a consumer React has not unmounted yet. Rendering no
++    // match is correct for a subtree that is going away, and is safer than
++    // asserting a match the frame does not describe.
++    if (!match) {
++      return null
++    }
++    return <MatchView router={router} match={match} />
 +  }
  
    if (isServer ?? router.isServer) {
      const match = router.stores.byRoute.get(routeId)!.get()!
-@@ -101,9 +140,15 @@ function MatchView({
+@@ -101,9 +147,15 @@ function MatchView({
      : route.options.notFoundComponent
  
    const resolvedNoSsr = match.ssr === false || match.ssr === 'data-only'
@@ -2120,7 +1829,7 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..6d1575a77cbf87e0e22cecc234d80ffc
      canWrapInSuspense(router, route, match.ssr) &&
      (route.options.wrapInSuspense ??
        pendingElement ??
-@@ -277,7 +322,29 @@ export const Outlet = React.memo(function OutletImpl() {
+@@ -277,7 +329,29 @@ export const Outlet = React.memo(function OutletImpl() {
    let parentNotFoundError: unknown
    let childRouteId: string | undefined
  
@@ -2151,7 +1860,7 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..6d1575a77cbf87e0e22cecc234d80ffc
      const matches = router.stores.matches.get()
      const parentIndex = matches.findIndex((match) => match.routeId === routeId)
      const parentMatch = matches[parentIndex]!
-@@ -314,7 +381,11 @@ export const Outlet = React.memo(function OutletImpl() {
+@@ -314,7 +388,11 @@ export const Outlet = React.memo(function OutletImpl() {
  
    const nextMatch = <Match routeId={childRouteId} />
  
@@ -2165,7 +1874,7 @@ index a0bfa89d5528820013ef2cd7be65ea7eef35ea4f..6d1575a77cbf87e0e22cecc234d80ffc
        <React.Suspense fallback={renderPending(router)}>
          {nextMatch}
 diff --git a/src/Matches.tsx b/src/Matches.tsx
-index cada2373ff9a6ea8e971763712798e23bef10d34..847bc4ca74744981ec5886aa18ec956588a3c032 100644
+index 576c40a16fee63e13794f0265d38a160e16d53bc..8187e50ebba3036903d98e456332bbde19bb1dda 100644
 --- a/src/Matches.tsx
 +++ b/src/Matches.tsx
 @@ -12,12 +12,20 @@ import { Transitioner, settleOwner } from './Transitioner'
@@ -2511,47 +2220,6 @@ index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..1d23929bb5c3c7e017d3e8757e4f49e5
      } else if (!router._tx) {
        router.load({ sync: true }).catch(console.error)
      }
-diff --git a/src/fileRoute.ts b/src/fileRoute.ts
-index e5fdb4993b920c2907203b904308caa2d04195f8..f4d8c9b9676a0bb327a1f23bb08d9b8f39555855 100644
---- a/src/fileRoute.ts
-+++ b/src/fileRoute.ts
-@@ -218,11 +218,7 @@ export class LazyRoute<TRoute extends AnyRoute> {
-   }
- 
-   useMatch: UseMatchRoute<TRoute['id']> = (opts) => {
--    return useMatch({
--      select: opts?.select,
--      from: this.options.id,
--      structuralSharing: opts?.structuralSharing,
--    } as any) as any
-+    return useMatch({ ...opts, from: this.options.id } as any) as any
-   }
- 
-   useRouteContext: UseRouteContextRoute<TRoute['id']> = (opts) => {
-@@ -230,21 +226,11 @@ export class LazyRoute<TRoute extends AnyRoute> {
-   }
- 
-   useSearch: UseSearchRoute<TRoute['id']> = (opts) => {
--    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
--    return useSearch({
--      select: opts?.select,
--      structuralSharing: opts?.structuralSharing,
--      from: this.options.id,
--    } as any) as any
-+    return useSearch({ ...opts, from: this.options.id } as any)
-   }
- 
-   useParams: UseParamsRoute<TRoute['id']> = (opts) => {
--    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
--    return useParams({
--      select: opts?.select,
--      structuralSharing: opts?.structuralSharing,
--      from: this.options.id,
--    } as any) as any
-+    return useParams({ ...opts, from: this.options.id } as any)
-   }
- 
-   useLoaderDeps: UseLoaderDepsRoute<TRoute['id']> = (opts) => {
 diff --git a/src/headContentUtils.tsx b/src/headContentUtils.tsx
 index d61ca829dbee43e402f743cc4b7788e44f7e7c39..1e4da11b70f45b20e3378984a88f2e3879fb95ab 100644
 --- a/src/headContentUtils.tsx
@@ -2600,10 +2268,10 @@ index d61ca829dbee43e402f743cc4b7788e44f7e7c39..1e4da11b70f45b20e3378984a88f2e38
    return useStore(router.stores.matches, selectTags, deepEqual)
  }
 diff --git a/src/link.tsx b/src/link.tsx
-index a0d69689867741d9a6171d23b69f45620186108c..c80a540f800811add38912682ff901ab21a0c5c8 100644
+index 6f0998c635548a1b6ec924ebc6a3f242ff765cd6..7af1fede0fce75b609de50ec2a0bd1227934307c 100644
 --- a/src/link.tsx
 +++ b/src/link.tsx
-@@ -13,6 +13,7 @@ import {
+@@ -14,6 +14,7 @@ import {
  } from '@tanstack/router-core'
  import { isServer } from '@tanstack/router-core/isServer'
  import { useRouter } from './useRouter'
@@ -2611,30 +2279,17 @@ index a0d69689867741d9a6171d23b69f45620186108c..c80a540f800811add38912682ff901ab
  
  import { useForwardedRef, useIntersectionObserver } from './utils'
  
-@@ -262,7 +263,10 @@ export function useLinkProps<
-       }
-     }
- 
--    const next = router.buildLocation({ ...options, from: options.from } as any)
-+    const next = router.buildLocation({
-+      ...options,
-+      from: options.from,
-+    } as any)
- 
-     // Use publicHref - it contains the correct href for display
-     // When a rewrite changes the origin, publicHref is the full URL
-@@ -557,12 +561,16 @@ export function useLinkProps<
+@@ -458,12 +459,15 @@ export function useLinkProps<
      [stableActiveOptions, disabled, isHydrated, _options, router, to],
    )
  
 -  // eslint-disable-next-line react-hooks/rules-of-hooks
--  const [href, externalLink, isActive] = useStore(
+-  const [href, isActive] = useStore(
 -    router.stores.location,
 -    selectLinkState,
 -    compareLinkState,
 -  )
-+  const [href, externalLink, isActive] = router.options
-+    .experimental_concurrentRenderFrames
++  const [href, isActive] = router.options.experimental_concurrentRenderFrames
 +    ? // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
 +      useRouterStateSelector(
 +        router,
@@ -2643,11 +2298,11 @@ index a0d69689867741d9a6171d23b69f45620186108c..c80a540f800811add38912682ff901ab
 +      )
 +    : // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
 +      useStore(router.stores.location, selectLinkState, compareLinkState)
+   const externalLink = isActive === undefined ? href : undefined
+   const linkDisabled = disabled || href === undefined
  
-   // Get the active props
-   const resolvedActiveProps: React.HTMLAttributes<HTMLAnchorElement> = isActive
 diff --git a/src/not-found.tsx b/src/not-found.tsx
-index ce3a04c74860a764a39a7469bbc307785b48dfaa..53c9810f3f791b9a370c2dfa02e2a4e2cf9cd700 100644
+index 458a30520b0ccfd7095cfc101b783e4a20d9112e..87f3ca6fe806fb8a3ccbcf6f9dcd13cfd2d57bc0 100644
 --- a/src/not-found.tsx
 +++ b/src/not-found.tsx
 @@ -4,6 +4,7 @@ import { isServer } from '@tanstack/router-core/isServer'
@@ -2719,123 +2374,8 @@ index ce3a04c74860a764a39a7469bbc307785b48dfaa..53c9810f3f791b9a370c2dfa02e2a4e2
    const resetKey = `not-found-${pathname}-${status}`
  
    return (
-diff --git a/src/route.tsx b/src/route.tsx
-index 6f6961807b5b6fa4a44a1fdbf6975275ad56e5c7..57dca9ef029b6f5ad4d338d61438c7b498d6b0db 100644
---- a/src/route.tsx
-+++ b/src/route.tsx
-@@ -107,11 +107,7 @@ export class RouteApi<
-   }
- 
-   useMatch: UseMatchRoute<TId> = (opts) => {
--    return useMatch({
--      select: opts?.select,
--      from: this.id,
--      structuralSharing: opts?.structuralSharing,
--    } as any) as any
-+    return useMatch({ ...opts, from: this.id } as any) as any
-   }
- 
-   useRouteContext: UseRouteContextRoute<TId> = (opts) => {
-@@ -119,21 +115,11 @@ export class RouteApi<
-   }
- 
-   useSearch: UseSearchRoute<TId> = (opts) => {
--    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
--    return useSearch({
--      select: opts?.select,
--      structuralSharing: opts?.structuralSharing,
--      from: this.id,
--    } as any) as any
-+    return useSearch({ ...opts, from: this.id } as any)
-   }
- 
-   useParams: UseParamsRoute<TId> = (opts) => {
--    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
--    return useParams({
--      select: opts?.select,
--      structuralSharing: opts?.structuralSharing,
--      from: this.id,
--    } as any) as any
-+    return useParams({ ...opts, from: this.id } as any)
-   }
- 
-   useLoaderDeps: UseLoaderDepsRoute<TId> = (opts) => {
-@@ -261,11 +247,7 @@ export class Route<
-   }
- 
-   useMatch: UseMatchRoute<TId> = (opts) => {
--    return useMatch({
--      select: opts?.select,
--      from: this.id,
--      structuralSharing: opts?.structuralSharing,
--    } as any) as any
-+    return useMatch({ ...opts, from: this.id } as any) as any
-   }
- 
-   useRouteContext: UseRouteContextRoute<TId> = (opts?) => {
-@@ -273,21 +255,11 @@ export class Route<
-   }
- 
-   useSearch: UseSearchRoute<TId> = (opts) => {
--    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
--    return useSearch({
--      select: opts?.select,
--      structuralSharing: opts?.structuralSharing,
--      from: this.id,
--    } as any) as any
-+    return useSearch({ ...opts, from: this.id } as any)
-   }
- 
-   useParams: UseParamsRoute<TId> = (opts) => {
--    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
--    return useParams({
--      select: opts?.select,
--      structuralSharing: opts?.structuralSharing,
--      from: this.id,
--    } as any) as any
-+    return useParams({ ...opts, from: this.id } as any)
-   }
- 
-   useLoaderDeps: UseLoaderDepsRoute<TId> = (opts) => {
-@@ -532,11 +504,7 @@ export class RootRoute<
-   }
- 
-   useMatch: UseMatchRoute<RootRouteId> = (opts) => {
--    return useMatch({
--      select: opts?.select,
--      from: this.id,
--      structuralSharing: opts?.structuralSharing,
--    } as any) as any
-+    return useMatch({ ...opts, from: this.id } as any) as any
-   }
- 
-   useRouteContext: UseRouteContextRoute<RootRouteId> = (opts) => {
-@@ -544,21 +512,11 @@ export class RootRoute<
-   }
- 
-   useSearch: UseSearchRoute<RootRouteId> = (opts) => {
--    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
--    return useSearch({
--      select: opts?.select,
--      structuralSharing: opts?.structuralSharing,
--      from: this.id,
--    } as any) as any
-+    return useSearch({ ...opts, from: this.id } as any)
-   }
- 
-   useParams: UseParamsRoute<RootRouteId> = (opts) => {
--    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
--    return useParams({
--      select: opts?.select,
--      structuralSharing: opts?.structuralSharing,
--      from: this.id,
--    } as any) as any
-+    return useParams({ ...opts, from: this.id } as any)
-   }
- 
-   useLoaderDeps: UseLoaderDepsRoute<RootRouteId> = (opts) => {
 diff --git a/src/router.ts b/src/router.ts
-index 178eace31bd84cef131aa743993beea9ac92b30a..3b1c647dde9d5220c112a7a67828eb694be686d2 100644
+index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff94663533744ddec 100644
 --- a/src/router.ts
 +++ b/src/router.ts
 @@ -16,6 +16,14 @@ import type {
@@ -2855,10 +2395,10 @@ index 178eace31bd84cef131aa743993beea9ac92b30a..3b1c647dde9d5220c112a7a67828eb69
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..549fc720fde98b06b67345afb5dfd63376c723a7
+index 0000000000000000000000000000000000000000..2f74b015aecc825520ba27b7b4590b0d7db73832
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,425 @@
+@@ -0,0 +1,435 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3072,8 +2612,18 @@ index 0000000000000000000000000000000000000000..549fc720fde98b06b67345afb5dfd633
 +      pending = undefined
 +      // The staged publication is now what everyone has committed, so the
 +      // staged slot empties and both scopes resolve to it.
-+      root.committed = nextFrame
-+      route.committed = nextFrame
++      //
++      // Progress comes from the head rather than from the frame, because a
++      // newer navigation may already be loading by the time this one commits.
++      // Committing the frame's own `status`/`isLoading` would replace that
++      // navigation's overlay with a stale idle snapshot, and it may emit
++      // nothing further until it finishes — leaving progress false throughout.
++      const committedFrame = withProgress(
++        nextFrame,
++        router.stores.__store.get(),
++      )
++      root.committed = committedFrame
++      route.committed = committedFrame
 +      route.staged = undefined
 +      root.notify()
 +      route.notify()
@@ -3337,7 +2887,7 @@ index 5c8c7c8d7e6c17d229ca10f4d6d7022987ec6d07..5ee3072ed98d1b076a3d88b619ea81e9
      const location = router.stores.location.get()
      return (
 diff --git a/src/useMatch.tsx b/src/useMatch.tsx
-index 35d66739620de667799510ef2f1ce9ee72a865fe..c69bdb08b52b2ececdac42f5ab914aa7628f397b 100644
+index d66a69f640514fee47dcdb48e6507549074696d5..c69bdb08b52b2ececdac42f5ab914aa7628f397b 100644
 --- a/src/useMatch.tsx
 +++ b/src/useMatch.tsx
 @@ -6,6 +6,7 @@ import { invariant, replaceEqualDeep } from '@tanstack/router-core'
@@ -3348,28 +2898,7 @@ index 35d66739620de667799510ef2f1ce9ee72a865fe..c69bdb08b52b2ececdac42f5ab914aa7
  import type {
    StructuralSharingOption,
    ValidateSelected,
-@@ -79,17 +80,18 @@ export type UseMatchRoute<out TFrom> = <
-   TRouter extends AnyRouter = RegisteredRouter,
-   TSelected = unknown,
-   TStructuralSharing extends boolean = boolean,
-+  TThrow extends boolean = true,
- >(
-   opts?: UseMatchBaseOptions<
-     TRouter,
-     TFrom,
-     true,
--    true,
-+    TThrow,
-     TSelected,
-     TStructuralSharing
-   > &
-     StructuralSharingOption<TRouter, TSelected, TStructuralSharing>,
--) => UseMatchResult<TRouter, TFrom, true, TSelected>
-+) => ThrowOrOptional<UseMatchResult<TRouter, TFrom, true, TSelected>, TThrow>
- 
- export type UseMatchOptions<
-   TRouter extends AnyRouter,
-@@ -149,36 +151,50 @@ export function useMatch<
+@@ -150,36 +151,50 @@ export function useMatch<
    const routeId = opts.from ?? nearestRouteId
    const matchStore = router.stores.getMatchStore(routeId!)
  
@@ -3442,31 +2971,6 @@ index 35d66739620de667799510ef2f1ce9ee72a865fe..c69bdb08b52b2ececdac42f5ab914aa7
    }
  
    if (opts.shouldThrow ?? true) {
-diff --git a/src/useParams.tsx b/src/useParams.tsx
-index 444eee7a41642864e7a83b8466b4891e2c99fe99..44a6e47f9d3b0a0114acb91018e103229ea3a093 100644
---- a/src/useParams.tsx
-+++ b/src/useParams.tsx
-@@ -49,17 +49,18 @@ export type UseParamsRoute<out TFrom> = <
-   TRouter extends AnyRouter = RegisteredRouter,
-   TSelected = unknown,
-   TStructuralSharing extends boolean = boolean,
-+  TThrow extends boolean = true,
- >(
-   opts?: UseParamsBaseOptions<
-     TRouter,
-     TFrom,
-     /* TStrict */ true,
--    /* TThrow */ true,
-+    TThrow,
-     TSelected,
-     TStructuralSharing
-   > &
-     StructuralSharingOption<TRouter, TSelected, TStructuralSharing>,
--) => UseParamsResult<TRouter, TFrom, true, TSelected>
-+) => ThrowOrOptional<UseParamsResult<TRouter, TFrom, true, TSelected>, TThrow>
- 
- /**
-  * Access the current route's path parameters with type-safety.
 diff --git a/src/useRouterState.tsx b/src/useRouterState.tsx
 index f3fbb2ad6e964587bcadd452c12ce639f4d8d92e..621b350b426e22faf5128a59ee5b20dea804f7a1 100644
 --- a/src/useRouterState.tsx
@@ -3495,28 +2999,3 @@ index f3fbb2ad6e964587bcadd452c12ce639f4d8d92e..621b350b426e22faf5128a59ee5b20de
    // During SSR we render exactly once and do not need reactivity.
    // Avoid subscribing to the store (and any structural sharing work) on the server.
    // The expression must stay inlined in the `if` so bundlers fold the
-diff --git a/src/useSearch.tsx b/src/useSearch.tsx
-index 09f1a29b6a993c15298939c7372e9f61db09674e..3979967d76e4cde0819775cab4156070e1323533 100644
---- a/src/useSearch.tsx
-+++ b/src/useSearch.tsx
-@@ -49,17 +49,18 @@ export type UseSearchRoute<out TFrom> = <
-   TRouter extends AnyRouter = RegisteredRouter,
-   TSelected = unknown,
-   TStructuralSharing extends boolean = boolean,
-+  TThrow extends boolean = true,
- >(
-   opts?: UseSearchBaseOptions<
-     TRouter,
-     TFrom,
-     /* TStrict */ true,
--    /* TThrow */ true,
-+    TThrow,
-     TSelected,
-     TStructuralSharing
-   > &
-     StructuralSharingOption<TRouter, TSelected, TStructuralSharing>,
--) => UseSearchResult<TRouter, TFrom, true, TSelected>
-+) => ThrowOrOptional<UseSearchResult<TRouter, TFrom, true, TSelected>, TThrow>
- 
- /**
-  * Read and select the current route's search parameters with type-safety.
