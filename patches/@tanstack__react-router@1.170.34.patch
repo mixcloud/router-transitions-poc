@@ -342,7 +342,7 @@ index 95f41b30083d10440cf5312819132bdfc941cdca..042fb60292ede2b6e7900b34f7d36b79
  };
  //#endregion
 diff --git a/dist/cjs/link.cjs b/dist/cjs/link.cjs
-index 8517aec032705164b046a7ca7002d61da9e978ab..95d76061fd0709837d822efb5111689751e201a0 100644
+index 8517aec032705164b046a7ca7002d61da9e978ab..38990b66899228aa502a39d993250696a569723c 100644
 --- a/dist/cjs/link.cjs
 +++ b/dist/cjs/link.cjs
 @@ -3,6 +3,7 @@ const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
@@ -353,15 +353,56 @@ index 8517aec032705164b046a7ca7002d61da9e978ab..95d76061fd0709837d822efb51116897
  let _tanstack_router_core = require("@tanstack/router-core");
  let react = require("react");
  react = require_runtime.__toESM(react, 1);
-@@ -173,7 +174,7 @@ function useLinkProps(options, forwardedRef) {
+@@ -164,7 +165,11 @@ function useLinkProps(options, forwardedRef) {
+ 			..._options
+ 		});
+ 		const hrefOption = getHrefOption(next, router, disabled);
+-		return [hrefOption, !disabled && (!hrefOption || (0, _tanstack_router_core.getUrlScheme)(hrefOption)) ? void 0 : resolveIsActive(location, next, stableActiveOptions, router.basepath, isHydrated)];
++		return [
++			hrefOption,
++			!disabled && (!hrefOption || (0, _tanstack_router_core.getUrlScheme)(hrefOption)) ? void 0 : resolveIsActive(location, next, stableActiveOptions, router.basepath, isHydrated),
++			location
++		];
+ 	}, [
+ 		stableActiveOptions,
+ 		disabled,
+@@ -173,18 +178,25 @@ function useLinkProps(options, forwardedRef) {
  		router,
  		to
  	]);
 -	const [href, isActive] = (0, _tanstack_react_store.useStore)(router.stores.location, selectLinkState, compareLinkState);
-+	const [href, isActive] = router.options.experimental_concurrentRenderFrames ? require_routerStateContext.useRouterStateSelector(router, (state) => selectLinkState(state.location), compareLinkState) : (0, _tanstack_react_store.useStore)(router.stores.location, selectLinkState, compareLinkState);
++	const [href, isActive, hrefFrom] = router.options.experimental_concurrentRenderFrames ? require_routerStateContext.useRouterStateSelector(router, (state) => selectLinkState(state.location), compareLinkState) : (0, _tanstack_react_store.useStore)(router.stores.location, selectLinkState, compareLinkState);
  	const externalLink = isActive === void 0 ? href : void 0;
  	const linkDisabled = disabled || href === void 0;
  	const hasRenderFetched = react.useRef(false);
+ 	const preload = options.reloadDocument || externalLink || linkDisabled ? false : userPreload ?? router.options.defaultPreload;
+ 	const preloadDelay = userPreloadDelay ?? router.options.defaultPreloadDelay ?? 0;
+ 	const doPreload = react.useCallback(() => {
+-		router.preloadRoute(_options).catch((err) => {
++		router.preloadRoute({
++			_fromLocation: hrefFrom,
++			..._options
++		}).catch((err) => {
+ 			console.warn(err);
+ 			console.warn(_tanstack_router_core.preloadWarning);
+ 		});
+-	}, [router, _options]);
++	}, [
++		router,
++		_options,
++		hrefFrom
++	]);
+ 	const enqueuePreload = react.useCallback((e) => {
+ 		if (!e) {
+ 			cancelPreload(innerRef);
+@@ -247,6 +259,7 @@ function useLinkProps(options, forwardedRef) {
+ 		if (!linkDisabled && !(e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) && !e.defaultPrevented && (!effectiveTarget || effectiveTarget === "_self") && e.button === 0) {
+ 			e.preventDefault();
+ 			router.navigate({
++				_fromLocation: hrefFrom,
+ 				..._options,
+ 				replace,
+ 				resetScroll,
 diff --git a/dist/cjs/not-found.cjs b/dist/cjs/not-found.cjs
 index 076fa4638cddb621cb9e8c7ecbc007319da8c124..cfbbc114c978092502434cb77ad73ff29cad084b 100644
 --- a/dist/cjs/not-found.cjs
@@ -428,10 +469,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c67fbce168266d36f85add8091c0831023dc1efa
+index 0000000000000000000000000000000000000000..514be795c0b09934d9712afbd35bfa6f21dd02fa
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,277 @@
+@@ -0,0 +1,276 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -644,12 +685,11 @@ index 0000000000000000000000000000000000000000..c67fbce168266d36f85add8091c08310
 +		frameId: offeredFrame(scope).frameId,
 +		revision: 0
 +	}));
-+	const rendered = react.useRef(void 0);
 +	const committed = react.useRef(void 0);
-+	rendered.current = selector(resolveFrame(scope, presenting.frameId));
++	const rendered = selector(resolveFrame(scope, presenting.frameId));
 +	require_utils.useLayoutEffect(() => {
 +		committed.current = {
-+			value: rendered.current,
++			value: rendered,
 +			selector,
 +			compare
 +		};
@@ -685,7 +725,7 @@ index 0000000000000000000000000000000000000000..c67fbce168266d36f85add8091c08310
 +		refresh();
 +		return unsubscribe;
 +	}, [scope]);
-+	return rendered.current;
++	return rendered;
 +}
 +/**
 +* Whether this render should consolidate route suspension at the frame root.
@@ -1240,7 +1280,7 @@ index 25367c5d2fad601817cb97a4b2717ffaa15f663d..4ac565559d15b239c9a14ff4849b4a00
  };
  //#endregion
 diff --git a/dist/esm/link.js b/dist/esm/link.js
-index 77236949d9df8907f3aef87b928f36fc551b30bd..5026da0102bd944aee31f6095e7a21b48b92b89c 100644
+index 77236949d9df8907f3aef87b928f36fc551b30bd..b40e4a22732c3b3da9001f8639079415c0577016 100644
 --- a/dist/esm/link.js
 +++ b/dist/esm/link.js
 @@ -2,6 +2,7 @@
@@ -1251,15 +1291,56 @@ index 77236949d9df8907f3aef87b928f36fc551b30bd..5026da0102bd944aee31f6095e7a21b4
  import { deepEqual, exactPathTest, functionalUpdate, getUrlScheme, hasKeys, isDangerousProtocol, preloadWarning, removeTrailingSlash } from "@tanstack/router-core";
  import * as React$1 from "react";
  import { isServer } from "@tanstack/router-core/isServer";
-@@ -171,7 +172,7 @@ function useLinkProps(options, forwardedRef) {
+@@ -162,7 +163,11 @@ function useLinkProps(options, forwardedRef) {
+ 			..._options
+ 		});
+ 		const hrefOption = getHrefOption(next, router, disabled);
+-		return [hrefOption, !disabled && (!hrefOption || getUrlScheme(hrefOption)) ? void 0 : resolveIsActive(location, next, stableActiveOptions, router.basepath, isHydrated)];
++		return [
++			hrefOption,
++			!disabled && (!hrefOption || getUrlScheme(hrefOption)) ? void 0 : resolveIsActive(location, next, stableActiveOptions, router.basepath, isHydrated),
++			location
++		];
+ 	}, [
+ 		stableActiveOptions,
+ 		disabled,
+@@ -171,18 +176,25 @@ function useLinkProps(options, forwardedRef) {
  		router,
  		to
  	]);
 -	const [href, isActive] = useStore(router.stores.location, selectLinkState, compareLinkState);
-+	const [href, isActive] = router.options.experimental_concurrentRenderFrames ? useRouterStateSelector(router, (state) => selectLinkState(state.location), compareLinkState) : useStore(router.stores.location, selectLinkState, compareLinkState);
++	const [href, isActive, hrefFrom] = router.options.experimental_concurrentRenderFrames ? useRouterStateSelector(router, (state) => selectLinkState(state.location), compareLinkState) : useStore(router.stores.location, selectLinkState, compareLinkState);
  	const externalLink = isActive === void 0 ? href : void 0;
  	const linkDisabled = disabled || href === void 0;
  	const hasRenderFetched = React$1.useRef(false);
+ 	const preload = options.reloadDocument || externalLink || linkDisabled ? false : userPreload ?? router.options.defaultPreload;
+ 	const preloadDelay = userPreloadDelay ?? router.options.defaultPreloadDelay ?? 0;
+ 	const doPreload = React$1.useCallback(() => {
+-		router.preloadRoute(_options).catch((err) => {
++		router.preloadRoute({
++			_fromLocation: hrefFrom,
++			..._options
++		}).catch((err) => {
+ 			console.warn(err);
+ 			console.warn(preloadWarning);
+ 		});
+-	}, [router, _options]);
++	}, [
++		router,
++		_options,
++		hrefFrom
++	]);
+ 	const enqueuePreload = React$1.useCallback((e) => {
+ 		if (!e) {
+ 			cancelPreload(innerRef);
+@@ -245,6 +257,7 @@ function useLinkProps(options, forwardedRef) {
+ 		if (!linkDisabled && !(e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) && !e.defaultPrevented && (!effectiveTarget || effectiveTarget === "_self") && e.button === 0) {
+ 			e.preventDefault();
+ 			router.navigate({
++				_fromLocation: hrefFrom,
+ 				..._options,
+ 				replace,
+ 				resetScroll,
 diff --git a/dist/esm/not-found.js b/dist/esm/not-found.js
 index f53a10e876c58a632de2b616f679a24175b8b18f..87512658792c114764fcdd80f1f377b0e5fce80d 100644
 --- a/dist/esm/not-found.js
@@ -1403,10 +1484,10 @@ index 0000000000000000000000000000000000000000..26a58056225453c5a26a1c620c138a4a
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..daabc767b5cec0a969b4d919d8c08e0431d84789
+index 0000000000000000000000000000000000000000..9042fc56c6b65a06ee0b8edc83014a1d9ed0c950
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,271 @@
+@@ -0,0 +1,270 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import { useHydrated } from "./ClientOnly.js";
@@ -1617,12 +1698,11 @@ index 0000000000000000000000000000000000000000..daabc767b5cec0a969b4d919d8c08e04
 +		frameId: offeredFrame(scope).frameId,
 +		revision: 0
 +	}));
-+	const rendered = React$1.useRef(void 0);
 +	const committed = React$1.useRef(void 0);
-+	rendered.current = selector(resolveFrame(scope, presenting.frameId));
++	const rendered = selector(resolveFrame(scope, presenting.frameId));
 +	useLayoutEffect(() => {
 +		committed.current = {
-+			value: rendered.current,
++			value: rendered,
 +			selector,
 +			compare
 +		};
@@ -1658,7 +1738,7 @@ index 0000000000000000000000000000000000000000..daabc767b5cec0a969b4d919d8c08e04
 +		refresh();
 +		return unsubscribe;
 +	}, [scope]);
-+	return rendered.current;
++	return rendered;
 +}
 +/**
 +* Whether this render should consolidate route suspension at the frame root.
@@ -2322,7 +2402,7 @@ index d61ca829dbee43e402f743cc4b7788e44f7e7c39..1e4da11b70f45b20e3378984a88f2e38
    return useStore(router.stores.matches, selectTags, deepEqual)
  }
 diff --git a/src/link.tsx b/src/link.tsx
-index 6f0998c635548a1b6ec924ebc6a3f242ff765cd6..7af1fede0fce75b609de50ec2a0bd1227934307c 100644
+index 6f0998c635548a1b6ec924ebc6a3f242ff765cd6..a6f547b6ed13af085e394b083b361e30c74e653f 100644
 --- a/src/link.tsx
 +++ b/src/link.tsx
 @@ -14,6 +14,7 @@ import {
@@ -2333,7 +2413,35 @@ index 6f0998c635548a1b6ec924ebc6a3f242ff765cd6..7af1fede0fce75b609de50ec2a0bd122
  
  import { useForwardedRef, useIntersectionObserver } from './utils'
  
-@@ -458,12 +459,15 @@ export function useLinkProps<
+@@ -35,7 +36,20 @@ import type {
+ 
+ // Undefined active state marks an external or blocked link.
+ // Keep that classification with the href instead of parsing it again on render.
+-type LinkState = [href: string | undefined, isActive?: boolean]
++/**
++ * `from` is the location the `href` was built against. Navigation and
++ * preloading have to resolve against that same location, not whichever one the
++ * router has reached since: with concurrent render frames a link rendered
++ * against the visible route would otherwise navigate relative to the route
++ * being prepared, so a functional `search` updater would build one location
++ * for the href the user sees and another for the click that follows it.
++ * `compareLinkState` ignores it, so it cannot cost a re-render.
++ */
++type LinkState = [
++  href: string | undefined,
++  isActive?: boolean,
++  from?: ParsedLocation,
++]
+ 
+ // Keep a referentially stable value while the contents are equal. Links
+ // routinely pass inline `params` / `search` object literals, which would
+@@ -453,17 +467,22 @@ export function useLinkProps<
+               router.basepath,
+               isHydrated,
+             ),
++        location,
+       ]
+     },
      [stableActiveOptions, disabled, isHydrated, _options, router, to],
    )
  
@@ -2343,7 +2451,8 @@ index 6f0998c635548a1b6ec924ebc6a3f242ff765cd6..7af1fede0fce75b609de50ec2a0bd122
 -    selectLinkState,
 -    compareLinkState,
 -  )
-+  const [href, isActive] = router.options.experimental_concurrentRenderFrames
++  const [href, isActive, hrefFrom] = router.options
++    .experimental_concurrentRenderFrames
 +    ? // eslint-disable-next-line react-hooks/rules-of-hooks -- option is static
 +      useRouterStateSelector(
 +        router,
@@ -2355,6 +2464,39 @@ index 6f0998c635548a1b6ec924ebc6a3f242ff765cd6..7af1fede0fce75b609de50ec2a0bd122
    const externalLink = isActive === undefined ? href : undefined
    const linkDisabled = disabled || href === undefined
  
+@@ -480,12 +499,16 @@ export function useLinkProps<
+   // eslint-disable-next-line react-hooks/rules-of-hooks
+   const doPreload = React.useCallback(() => {
+     // `preloadRoute` builds the location itself; it is no longer held in render
+-    // state. It only reads the options, so `_options` can go through as-is.
+-    router.preloadRoute(_options as any).catch((err) => {
+-      console.warn(err)
+-      console.warn(preloadWarning)
+-    })
+-  }, [router, _options])
++    // state. It resolves against `hrefFrom` so it preloads the destination this
++    // link is displaying, and an explicit `_fromLocation` in the options still
++    // wins.
++    router
++      .preloadRoute({ _fromLocation: hrefFrom, ..._options } as any)
++      .catch((err) => {
++        console.warn(err)
++        console.warn(preloadWarning)
++      })
++  }, [router, _options, hrefFrom])
+ 
+   // eslint-disable-next-line react-hooks/rules-of-hooks
+   const enqueuePreload = React.useCallback(
+@@ -595,6 +618,9 @@ export function useLinkProps<
+       // All is well? Navigate!
+       // N.B. we don't call `router.commitLocation(next) here because we want to run `validateSearch` before committing
+       router.navigate({
++        // Resolve against the location this link's href was built from, so the
++        // click goes where the href says it does.
++        _fromLocation: hrefFrom,
+         ..._options,
+         replace,
+         resetScroll,
 diff --git a/src/not-found.tsx b/src/not-found.tsx
 index 458a30520b0ccfd7095cfc101b783e4a20d9112e..87f3ca6fe806fb8a3ccbcf6f9dcd13cfd2d57bc0 100644
 --- a/src/not-found.tsx
@@ -2449,10 +2591,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..6ea2c028d1d589991bacfb156c167f2860696d52
+index 0000000000000000000000000000000000000000..f85f91419b1acb2b90ae5de0094898837e14b25a
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,488 @@
+@@ -0,0 +1,491 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -2819,11 +2961,6 @@ index 0000000000000000000000000000000000000000..6ea2c028d1d589991bacfb156c167f28
 +    frameId: offeredFrame(scope).frameId,
 +    revision: 0,
 +  }))
-+  // The selection for the render currently executing. A render can be
-+  // discarded — suspended, interrupted, or superseded — so this is
-+  // work in progress, not necessarily what anyone can see.
-+  // eslint-disable-next-line react-hooks/rules-of-hooks
-+  const rendered = React.useRef<TSelected>(undefined as TSelected)
 +  // What actually reached the screen: the selection, and the selector and
 +  // comparator that produced it. Kept together, because comparing a value from
 +  // one selector against a value from another is meaningless. Boxed so that a
@@ -2838,11 +2975,19 @@ index 0000000000000000000000000000000000000000..6ea2c028d1d589991bacfb156c167f28
 +    | undefined
 +  >(undefined)
 +
-+  rendered.current = selector(resolveFrame(scope, presenting.frameId))
++  // The selection for the render currently executing. A render can be
++  // discarded — suspended, interrupted, or superseded — so this is work in
++  // progress, not necessarily what anyone can see; it is a plain local, and
++  // the effect below closes over it, so each render carries its own. Holding
++  // it in a ref instead would let a later render overwrite it before an
++  // earlier one commits, and the earlier tree's effect would then record a
++  // selection that was never on its screen — enough to skip a re-render it
++  // needed.
++  const rendered = selector(resolveFrame(scope, presenting.frameId))
 +
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
 +  useLayoutEffect(() => {
-+    committed.current = { value: rendered.current, selector, compare }
++    committed.current = { value: rendered, selector, compare }
 +  })
 +
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -2918,7 +3063,7 @@ index 0000000000000000000000000000000000000000..6ea2c028d1d589991bacfb156c167f28
 +    return unsubscribe
 +  }, [scope])
 +
-+  return rendered.current
++  return rendered
 +}
 +
 +/**
