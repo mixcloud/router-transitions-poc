@@ -96,7 +96,7 @@ index 1bc492c29f06575241b9928529556cf04ac48723..568f96f88890c31aa2e142abb2ae36c1
      match: AnyRouteMatch;
  }) => any>;
 diff --git a/dist/cjs/Matches.cjs b/dist/cjs/Matches.cjs
-index 09d60882fda470c287de14c39abdcd6d91a7024f..cfee907209671df08532994a76a8c4f91f6bce59 100644
+index 09d60882fda470c287de14c39abdcd6d91a7024f..93ae29feb3e5efb784919c194fc6ce3134ccc287 100644
 --- a/dist/cjs/Matches.cjs
 +++ b/dist/cjs/Matches.cjs
 @@ -4,6 +4,7 @@ const require_utils = require("./utils.cjs");
@@ -107,12 +107,17 @@ index 09d60882fda470c287de14c39abdcd6d91a7024f..cfee907209671df08532994a76a8c4f9
  const require_useMatch = require("./useMatch.cjs");
  const require_Transitioner = require("./Transitioner.cjs");
  const require_SafeFragment = require("./SafeFragment.cjs");
-@@ -21,24 +22,52 @@ let _tanstack_react_store = require("@tanstack/react-store");
+@@ -21,24 +22,57 @@ let _tanstack_react_store = require("@tanstack/react-store");
  */
  function Matches() {
  	const router = require_useRouter.useRouter();
 +	const routerStateOwner = require_routerStateContext.useRouterStateOwner();
-+	const [renderFrame, setRenderFrame] = react.useState();
++	const [queuedFrame, setQueuedFrame] = react.useState();
++	const renderFrame = queuedFrame?.router === router ? queuedFrame.frame : void 0;
++	const setRenderFrame = react.useCallback((frame) => setQueuedFrame(frame ? {
++		router,
++		frame
++	} : void 0), [router]);
 +	const activeFrame = renderFrame ?? routerStateOwner?.frame;
  	const rootRoute = router.routesById[_tanstack_router_core.rootRouteId];
  	const pendingElement = require_Match.renderPending(router, rootRoute);
@@ -167,7 +172,7 @@ index 09d60882fda470c287de14c39abdcd6d91a7024f..cfee907209671df08532994a76a8c4f9
  	const matchComponent = routeId ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_Match.Match, { routeId }) : null;
  	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_matchContext.matchContext.Provider, {
  		value: routeId,
-@@ -79,6 +108,19 @@ function useMatchRoute() {
+@@ -79,6 +113,23 @@ function useMatchRoute() {
  			includeSearch
  		});
  	};
@@ -182,18 +187,22 @@ index 09d60882fda470c287de14c39abdcd6d91a7024f..cfee907209671df08532994a76a8c4f9
 +				includeSearch,
 +				_state: state
 +			});
-+		}, [router, state]);
++		}, [
++			router,
++			state,
++			(0, _tanstack_react_store.useStore)(router.stores.location, (location) => location.href)
++		]);
 +	}
  	return react.useCallback((opts) => {
  		const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
  		return router.matchRoute(rest, {
-@@ -108,6 +150,10 @@ function MatchRoute(props) {
+@@ -108,6 +159,10 @@ function MatchRoute(props) {
  }
  function useMatches(opts) {
  	const router = require_useRouter.useRouter();
 +	if (require_routerStateContext.useFrameMode(router)) {
 +		const selectMatches = require_useMatch.useStructuralSharing(opts, router);
-+		return require_routerStateContext.useRouterStateSelector(router, (state) => selectMatches(state.matches));
++		return require_routerStateContext.useRouterStateSelector(router, require_useMatch.withSelectorCache((state) => selectMatches(state.matches), selectMatches));
 +	}
  	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
  		const matches = router.stores.matches.get();
@@ -304,7 +313,7 @@ index 43ace5eb908d6e4629e887a4c4baec475e6cbb49..c1be05ece4684b9ad1494ebaa3d997da
  				type: "onRendered",
  				...(0, _tanstack_router_core.getLocationChangeInfo)(resolvedLocation, resolvedLocation)
 diff --git a/dist/cjs/Transitioner.d.cts b/dist/cjs/Transitioner.d.cts
-index 0e0c6ec7c0e0053e08422a83ab63100243a9752b..11f09978df6f5534b173cc527f7c2f0a082bd7ef 100644
+index 0e0c6ec7c0e0053e08422a83ab63100243a9752b..969c12bf47cfb9cf3203818896f788e74c06c8d5 100644
 --- a/dist/cjs/Transitioner.d.cts
 +++ b/dist/cjs/Transitioner.d.cts
 @@ -1,6 +1,8 @@
@@ -315,7 +324,7 @@ index 0e0c6ec7c0e0053e08422a83ab63100243a9752b..11f09978df6f5534b173cc527f7c2f0a
 -export declare function Transitioner({ t, }: {
 +export declare function Transitioner({ t, setRenderFrame, }: {
      t: React.Dispatch<React.SetStateAction<AnyRouter | undefined>>;
-+    setRenderFrame: React.Dispatch<React.SetStateAction<RouterRenderFrame | undefined>>;
++    setRenderFrame: (frame: RouterRenderFrame | undefined) => void;
  }): null;
 diff --git a/dist/cjs/headContentUtils.cjs b/dist/cjs/headContentUtils.cjs
 index 95f41b30083d10440cf5312819132bdfc941cdca..90177049a8b7628af66420c2469e65834271f66d 100644
@@ -451,10 +460,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..de01deb2df2d8acc8b5d2a4b23a56f008a56a1a4
+index 0000000000000000000000000000000000000000..0c3ae68a437984b60da88ef91320fa4234047ea8
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,306 @@
+@@ -0,0 +1,321 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -682,10 +691,17 @@ index 0000000000000000000000000000000000000000..de01deb2df2d8acc8b5d2a4b23a56f00
 +	const ownerScope = react.useContext(routerStateScopeContext);
 +	const scope = ownerScope && ownerScope.router === router ? ownerScope : detachedScope(router);
 +	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return selector(offeredFrame(scope));
-+	const [presenting, setPresenting] = react.useState(() => ({
++	const [stored, setPresenting] = react.useState(() => ({
++		scope,
 +		frameId: offeredFrame(scope).frameId,
 +		revision: 0
 +	}));
++	const rebase = react.useCallback((previous) => previous.scope === scope ? previous : {
++		scope,
++		frameId: offeredFrame(scope).frameId,
++		revision: previous.revision
++	}, [scope]);
++	const presenting = rebase(stored);
 +	const presentingRef = react.useRef(presenting);
 +	const committed = react.useRef(void 0);
 +	const rendered = selector(resolveFrame(scope, presenting.frameId));
@@ -707,18 +723,25 @@ index 0000000000000000000000000000000000000000..de01deb2df2d8acc8b5d2a4b23a56f00
 +	}, [getPresentedFrame, presentedFrame]);
 +	require_utils.useLayoutEffect(() => {
 +		const stillHolds = (onScreen, frame) => {
++			const cached = onScreen.selector.snapshotCache?.();
 +			try {
 +				return onScreen.compare(onScreen.value, onScreen.selector(frame));
 +			} catch {
 +				return false;
++			} finally {
++				onScreen.selector.restoreCache?.(cached);
 +			}
 +		};
 +		const refresh = () => {
 +			const onScreen = committed.current;
 +			if (!onScreen) return;
-+			setPresenting((previous) => stillHolds(onScreen, resolveFrame(scope, previous.frameId)) ? previous : {
-+				...previous,
-+				revision: previous.revision + 1
++			if (stillHolds(onScreen, resolveFrame(scope, presentingRef.current.frameId))) return;
++			setPresenting((previous) => {
++				const base = rebase(previous);
++				return {
++					...base,
++					revision: base.revision + 1
++				};
 +			});
 +		};
 +		const unsubscribe = scope.subscribe((offered) => {
@@ -729,13 +752,14 @@ index 0000000000000000000000000000000000000000..de01deb2df2d8acc8b5d2a4b23a56f00
 +			const onScreen = committed.current;
 +			if (onScreen && stillHolds(onScreen, offered)) return;
 +			setPresenting((previous) => ({
++				scope,
 +				frameId: offered.frameId,
-+				revision: previous.revision + 1
++				revision: rebase(previous).revision + 1
 +			}));
 +		});
 +		refresh();
 +		return unsubscribe;
-+	}, [scope]);
++	}, [rebase, scope]);
 +	return rendered;
 +}
 +/**
@@ -764,11 +788,12 @@ index 0000000000000000000000000000000000000000..de01deb2df2d8acc8b5d2a4b23a56f00
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..7bea8233ac96ca4d7125bc8ece90ec679325d9f7
+index 0000000000000000000000000000000000000000..8252cc7e5ae5d6346a2ff409602087e35b49b637
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,102 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
++import { CacheableSelector } from './useMatch.cjs';
 +import * as React from 'react';
 +export type RouterRenderFrame = RouterState<any>;
 +/**
@@ -845,7 +870,7 @@ index 0000000000000000000000000000000000000000..7bea8233ac96ca4d7125bc8ece90ec67
 + * keeps the isolation behaviour it mounted with.
 + */
 +export declare function useFrameMode(router: AnyRouter): boolean;
-+export declare function useRouterStateSelector<TSelected>(router: AnyRouter, selector: (state: RouterState<any>) => TSelected, compare?: (a: TSelected, b: TSelected) => boolean, 
++export declare function useRouterStateSelector<TSelected>(router: AnyRouter, selector: CacheableSelector<RouterState<any>, TSelected>, compare?: (a: TSelected, b: TSelected) => boolean, 
 +/**
 + * Filled with a getter for the publication this consumer is presenting, for
 + * a caller that needs it outside render — an event handler resolving against
@@ -886,7 +911,7 @@ index 42e5fb8bce9c3101b83534bcd089e669e31bf99a..66ff359ceb710a1ac4c43d57a3b42389
  	return (0, _tanstack_react_store.useStore)(router.stores.location, (location) => location.state.__TSR_index !== 0);
  }
 diff --git a/dist/cjs/useLocation.cjs b/dist/cjs/useLocation.cjs
-index 298ca58600c50aafbdea22de49de99cddfe53817..38f5300d1aef95160f01a20509fba4fb81f6c4e0 100644
+index 298ca58600c50aafbdea22de49de99cddfe53817..ae0c140da48259bfbc45ef0c1a533e2894bcd224 100644
 --- a/dist/cjs/useLocation.cjs
 +++ b/dist/cjs/useLocation.cjs
 @@ -1,5 +1,6 @@
@@ -902,13 +927,13 @@ index 298ca58600c50aafbdea22de49de99cddfe53817..38f5300d1aef95160f01a20509fba4fb
  	const router = require_useRouter.useRouter();
 +	if (require_routerStateContext.useFrameMode(router)) {
 +		const selectLocation = require_useMatch.useStructuralSharing(opts, router);
-+		return require_routerStateContext.useRouterStateSelector(router, (state) => selectLocation(state.location));
++		return require_routerStateContext.useRouterStateSelector(router, require_useMatch.withSelectorCache((state) => selectLocation(state.location), selectLocation));
 +	}
  	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
  		const location = router.stores.location.get();
  		return opts?.select ? opts.select(location) : location;
 diff --git a/dist/cjs/useMatch.cjs b/dist/cjs/useMatch.cjs
-index 75321489fcca8f6ee9117d3ace09facf6f00bbab..685ddac366568f82ecf3625c9222a7049b29ffaf 100644
+index 75321489fcca8f6ee9117d3ace09facf6f00bbab..7bc04798a4110fc709ee57e96802cdcb67e18467 100644
 --- a/dist/cjs/useMatch.cjs
 +++ b/dist/cjs/useMatch.cjs
 @@ -2,6 +2,7 @@
@@ -919,7 +944,38 @@ index 75321489fcca8f6ee9117d3ace09facf6f00bbab..685ddac366568f82ecf3625c9222a704
  let _tanstack_router_core = require("@tanstack/router-core");
  let react = require("react");
  react = require_runtime.__toESM(react, 1);
-@@ -26,20 +27,29 @@ function useMatch(opts) {
+@@ -9,13 +10,29 @@ let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
+ let _tanstack_react_store = require("@tanstack/react-store");
+ //#region src/useMatch.tsx
+ var dummyMatch = {};
++/**
++* Carry a selector's cache handles onto a closure wrapping it, so a caller
++* that selects from a frame through a structural-sharing selector stays
++* probe-safe.
++*/
++function withSelectorCache(wrapper, inner) {
++	const cacheable = wrapper;
++	cacheable.snapshotCache = inner.snapshotCache;
++	cacheable.restoreCache = inner.restoreCache;
++	return cacheable;
++}
+ function useStructuralSharing(opts, router) {
+ 	const previousResult = react.useRef();
+-	return (slice) => {
++	const select = (slice) => {
+ 		const selected = opts?.select ? opts.select(slice) : slice;
+ 		if (opts?.structuralSharing ?? router.options.defaultStructuralSharing) return previousResult.current = (0, _tanstack_router_core.replaceEqualDeep)(previousResult.current, selected);
+ 		return selected;
+ 	};
++	select.snapshotCache = () => previousResult.current;
++	select.restoreCache = (cached) => {
++		previousResult.current = cached;
++	};
++	return select;
+ }
+ /**
+ * Read and select the nearest or targeted route match.
+@@ -26,20 +43,29 @@ function useMatch(opts) {
  	const nearestRouteId = react.useContext(opts.from ? require_matchContext.dummyMatchContext : require_matchContext.matchContext);
  	const routeId = opts.from ?? nearestRouteId;
  	const matchStore = router.stores.getMatchStore(routeId);
@@ -948,10 +1004,10 @@ index 75321489fcca8f6ee9117d3ace09facf6f00bbab..685ddac366568f82ecf3625c9222a704
 +		if (matchSelection !== dummyMatch) return matchSelection;
 +	} else {
 +		const selector = useStructuralSharing(opts, router);
-+		const matchSelection = require_routerStateContext.useRouterStateSelector(router, (state) => {
++		const matchSelection = require_routerStateContext.useRouterStateSelector(router, withSelectorCache((state) => {
 +			const match = state.matches.find((candidate) => candidate.routeId === routeId);
 +			return match ? selector(match) : dummyMatch;
-+		});
++		}, selector));
 +		if (matchSelection !== dummyMatch) return matchSelection;
  	}
 -	const selector = useStructuralSharing(opts, router);
@@ -960,6 +1016,51 @@ index 75321489fcca8f6ee9117d3ace09facf6f00bbab..685ddac366568f82ecf3625c9222a704
  	if (opts.shouldThrow ?? true) {
  		if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
  		(0, _tanstack_router_core.invariant)();
+@@ -48,5 +74,6 @@ function useMatch(opts) {
+ //#endregion
+ exports.useMatch = useMatch;
+ exports.useStructuralSharing = useStructuralSharing;
++exports.withSelectorCache = withSelectorCache;
+ 
+ //# sourceMappingURL=useMatch.cjs.map
+\ No newline at end of file
+diff --git a/dist/cjs/useMatch.d.cts b/dist/cjs/useMatch.d.cts
+index bc32be4fc07754780db3246bcea571fcad4f0cdd..155007a42b5888fb4616a7d0df8468857f8405de 100644
+--- a/dist/cjs/useMatch.d.cts
++++ b/dist/cjs/useMatch.d.cts
+@@ -1,9 +1,31 @@
+ import { StructuralSharingOption, ValidateSelected } from './structuralSharing.cjs';
+ import { AnyRouter, MakeRouteMatch, MakeRouteMatchUnion, RegisteredRouter, StrictOrFrom, ThrowConstraint, ThrowOrOptional } from '@tanstack/router-core';
++/**
++ * A selector whose cached previous result can be saved and put back.
++ *
++ * Structural sharing keeps a consumer's selection referentially stable by
++ * caching the last result and returning it again whenever the next one is
++ * deep-equal. The render-frame path also runs selectors *outside* render, to
++ * decide whether a consumer's selection changed under a publication it has
++ * been offered — and a cache write from there describes a render that may
++ * never commit. So that path saves the cache, runs the selector, and puts the
++ * cache back; a consumer that accepts the offer re-renders and writes it for
++ * real. See `useRouterStateSelector`.
++ */
++export type CacheableSelector<TSlice, TSelected> = ((slice: TSlice) => TSelected) & {
++    snapshotCache?: () => unknown;
++    restoreCache?: (cached: unknown) => void;
++};
++/**
++ * Carry a selector's cache handles onto a closure wrapping it, so a caller
++ * that selects from a frame through a structural-sharing selector stays
++ * probe-safe.
++ */
++export declare function withSelectorCache<TOuter, TInner, TSelected>(wrapper: (slice: TOuter) => TSelected, inner: CacheableSelector<TInner, any>): CacheableSelector<TOuter, TSelected>;
+ export declare function useStructuralSharing<TRouter extends AnyRouter, TSelected, TStructuralSharing extends boolean, TStoreSlice, TSelectSlice = TStoreSlice>(opts: {
+     select?: (slice: TSelectSlice) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
+     structuralSharing?: boolean;
+-} | undefined, router: TRouter): (slice: TStoreSlice) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
++} | undefined, router: TRouter): CacheableSelector<TStoreSlice, ValidateSelected<TRouter, TSelected, TStructuralSharing>>;
+ export interface UseMatchBaseOptions<TRouter extends AnyRouter, TFrom, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing extends boolean> {
+     select?: (match: MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict>) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
+     shouldThrow?: TThrow;
 diff --git a/dist/cjs/useRouterState.cjs b/dist/cjs/useRouterState.cjs
 index 678f71e93dd9d9dda1097dc2ccc2a1916b5ea9fd..e56eda94a66c23cdea44a1ac89bd921175bab284 100644
 --- a/dist/cjs/useRouterState.cjs
@@ -1077,23 +1178,30 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..98a640512b3ef625c1ddd0c46d77d115
  		children: nextMatch
  	});
 diff --git a/dist/esm/Matches.js b/dist/esm/Matches.js
-index 165886d6edb650b202f8e2b428aaab7c51d23bf7..96c9381ae54aed3c29b24478fd65d0daac386f53 100644
+index 165886d6edb650b202f8e2b428aaab7c51d23bf7..0361fd30126f0035a73ea8ae32afb93ff9bc86cd 100644
 --- a/dist/esm/Matches.js
 +++ b/dist/esm/Matches.js
-@@ -3,6 +3,7 @@ import { useLayoutEffect } from "./utils.js";
+@@ -3,7 +3,8 @@ import { useLayoutEffect } from "./utils.js";
  import { CatchBoundary } from "./CatchBoundary.js";
  import { matchContext } from "./matchContext.js";
  import { useRouter } from "./useRouter.js";
+-import { useStructuralSharing } from "./useMatch.js";
 +import { RouterStateFrame, useFrameMode, useFrameRootBoundary, useRouterStateOwner, useRouterStateSelector } from "./routerStateContext.js";
- import { useStructuralSharing } from "./useMatch.js";
++import { useStructuralSharing, withSelectorCache } from "./useMatch.js";
  import { Transitioner, settleOwner } from "./Transitioner.js";
  import { SafeFragment } from "./SafeFragment.js";
-@@ -19,24 +20,52 @@ import { useStore } from "@tanstack/react-store";
+ import { Match, renderPending } from "./Match.js";
+@@ -19,24 +20,57 @@ import { useStore } from "@tanstack/react-store";
  */
  function Matches() {
  	const router = useRouter();
 +	const routerStateOwner = useRouterStateOwner();
-+	const [renderFrame, setRenderFrame] = React$1.useState();
++	const [queuedFrame, setQueuedFrame] = React$1.useState();
++	const renderFrame = queuedFrame?.router === router ? queuedFrame.frame : void 0;
++	const setRenderFrame = React$1.useCallback((frame) => setQueuedFrame(frame ? {
++		router,
++		frame
++	} : void 0), [router]);
 +	const activeFrame = renderFrame ?? routerStateOwner?.frame;
  	const rootRoute = router.routesById[rootRouteId];
  	const pendingElement = renderPending(router, rootRoute);
@@ -1148,7 +1256,7 @@ index 165886d6edb650b202f8e2b428aaab7c51d23bf7..96c9381ae54aed3c29b24478fd65d0da
  	const matchComponent = routeId ? /* @__PURE__ */ jsx(Match, { routeId }) : null;
  	return /* @__PURE__ */ jsx(matchContext.Provider, {
  		value: routeId,
-@@ -77,6 +106,19 @@ function useMatchRoute() {
+@@ -77,6 +111,23 @@ function useMatchRoute() {
  			includeSearch
  		});
  	};
@@ -1163,18 +1271,22 @@ index 165886d6edb650b202f8e2b428aaab7c51d23bf7..96c9381ae54aed3c29b24478fd65d0da
 +				includeSearch,
 +				_state: state
 +			});
-+		}, [router, state]);
++		}, [
++			router,
++			state,
++			useStore(router.stores.location, (location) => location.href)
++		]);
 +	}
  	return React$1.useCallback((opts) => {
  		const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
  		return router.matchRoute(rest, {
-@@ -106,6 +148,10 @@ function MatchRoute(props) {
+@@ -106,6 +157,10 @@ function MatchRoute(props) {
  }
  function useMatches(opts) {
  	const router = useRouter();
 +	if (useFrameMode(router)) {
 +		const selectMatches = useStructuralSharing(opts, router);
-+		return useRouterStateSelector(router, (state) => selectMatches(state.matches));
++		return useRouterStateSelector(router, withSelectorCache((state) => selectMatches(state.matches), selectMatches));
 +	}
  	if (isServer ?? router.isServer) {
  		const matches = router.stores.matches.get();
@@ -1230,7 +1342,7 @@ index 19e559af255e745a0b2e46bdf5dcd18f5c6f1ff4..8daab828163f0b2567c446a1b0baccbe
  function renderScripts(router, scripts) {
  	if ((isServer ?? router.isServer) && router.serverSsr) {
 diff --git a/dist/esm/Transitioner.d.ts b/dist/esm/Transitioner.d.ts
-index 0e0c6ec7c0e0053e08422a83ab63100243a9752b..0d80aa89739162c8304775cdcbfc723c8ace740b 100644
+index 0e0c6ec7c0e0053e08422a83ab63100243a9752b..214c2a024758eaac39747166e5747b09bdf3d724 100644
 --- a/dist/esm/Transitioner.d.ts
 +++ b/dist/esm/Transitioner.d.ts
 @@ -1,6 +1,8 @@
@@ -1241,7 +1353,7 @@ index 0e0c6ec7c0e0053e08422a83ab63100243a9752b..0d80aa89739162c8304775cdcbfc723c
 -export declare function Transitioner({ t, }: {
 +export declare function Transitioner({ t, setRenderFrame, }: {
      t: React.Dispatch<React.SetStateAction<AnyRouter | undefined>>;
-+    setRenderFrame: React.Dispatch<React.SetStateAction<RouterRenderFrame | undefined>>;
++    setRenderFrame: (frame: RouterRenderFrame | undefined) => void;
  }): null;
 diff --git a/dist/esm/Transitioner.js b/dist/esm/Transitioner.js
 index 51d7e69e3b1ad5a656d4c4e6f3ef690520effbf5..589f69809ebbf2d42a7df38477c535534891b224 100644
@@ -1429,11 +1541,12 @@ index a75a6159942121bcf30ef34d67733867d51d47b7..6ab2577dfa0a5b579b4088622e35f37d
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..7bea8233ac96ca4d7125bc8ece90ec679325d9f7
+index 0000000000000000000000000000000000000000..f97a74b8809de13edb77665c290406721af7a37a
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,102 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
++import { CacheableSelector } from './useMatch.js';
 +import * as React from 'react';
 +export type RouterRenderFrame = RouterState<any>;
 +/**
@@ -1510,7 +1623,7 @@ index 0000000000000000000000000000000000000000..7bea8233ac96ca4d7125bc8ece90ec67
 + * keeps the isolation behaviour it mounted with.
 + */
 +export declare function useFrameMode(router: AnyRouter): boolean;
-+export declare function useRouterStateSelector<TSelected>(router: AnyRouter, selector: (state: RouterState<any>) => TSelected, compare?: (a: TSelected, b: TSelected) => boolean, 
++export declare function useRouterStateSelector<TSelected>(router: AnyRouter, selector: CacheableSelector<RouterState<any>, TSelected>, compare?: (a: TSelected, b: TSelected) => boolean, 
 +/**
 + * Filled with a getter for the publication this consumer is presenting, for
 + * a caller that needs it outside render — an event handler resolving against
@@ -1536,10 +1649,10 @@ index 0000000000000000000000000000000000000000..7bea8233ac96ca4d7125bc8ece90ec67
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..81605dcedb75956a95266c1cf34ee52ae5b752e8
+index 0000000000000000000000000000000000000000..b21b46fe9440166f940aca0c189d5adabe5c3d5b
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,299 @@
+@@ -0,0 +1,314 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import { useHydrated } from "./ClientOnly.js";
@@ -1765,10 +1878,17 @@ index 0000000000000000000000000000000000000000..81605dcedb75956a95266c1cf34ee52a
 +	const ownerScope = React$1.useContext(routerStateScopeContext);
 +	const scope = ownerScope && ownerScope.router === router ? ownerScope : detachedScope(router);
 +	if (isServer ?? router.isServer) return selector(offeredFrame(scope));
-+	const [presenting, setPresenting] = React$1.useState(() => ({
++	const [stored, setPresenting] = React$1.useState(() => ({
++		scope,
 +		frameId: offeredFrame(scope).frameId,
 +		revision: 0
 +	}));
++	const rebase = React$1.useCallback((previous) => previous.scope === scope ? previous : {
++		scope,
++		frameId: offeredFrame(scope).frameId,
++		revision: previous.revision
++	}, [scope]);
++	const presenting = rebase(stored);
 +	const presentingRef = React$1.useRef(presenting);
 +	const committed = React$1.useRef(void 0);
 +	const rendered = selector(resolveFrame(scope, presenting.frameId));
@@ -1790,18 +1910,25 @@ index 0000000000000000000000000000000000000000..81605dcedb75956a95266c1cf34ee52a
 +	}, [getPresentedFrame, presentedFrame]);
 +	useLayoutEffect(() => {
 +		const stillHolds = (onScreen, frame) => {
++			const cached = onScreen.selector.snapshotCache?.();
 +			try {
 +				return onScreen.compare(onScreen.value, onScreen.selector(frame));
 +			} catch {
 +				return false;
++			} finally {
++				onScreen.selector.restoreCache?.(cached);
 +			}
 +		};
 +		const refresh = () => {
 +			const onScreen = committed.current;
 +			if (!onScreen) return;
-+			setPresenting((previous) => stillHolds(onScreen, resolveFrame(scope, previous.frameId)) ? previous : {
-+				...previous,
-+				revision: previous.revision + 1
++			if (stillHolds(onScreen, resolveFrame(scope, presentingRef.current.frameId))) return;
++			setPresenting((previous) => {
++				const base = rebase(previous);
++				return {
++					...base,
++					revision: base.revision + 1
++				};
 +			});
 +		};
 +		const unsubscribe = scope.subscribe((offered) => {
@@ -1812,13 +1939,14 @@ index 0000000000000000000000000000000000000000..81605dcedb75956a95266c1cf34ee52a
 +			const onScreen = committed.current;
 +			if (onScreen && stillHolds(onScreen, offered)) return;
 +			setPresenting((previous) => ({
++				scope,
 +				frameId: offered.frameId,
-+				revision: previous.revision + 1
++				revision: rebase(previous).revision + 1
 +			}));
 +		});
 +		refresh();
 +		return unsubscribe;
-+	}, [scope]);
++	}, [rebase, scope]);
 +	return rendered;
 +}
 +/**
@@ -1857,32 +1985,71 @@ index edd68923c55ee831b53da0278a99fa2db82b378e..6a1cca21c1eaaf598f91dbd8f37bcf61
  	return useStore(router.stores.location, (location) => location.state.__TSR_index !== 0);
  }
 diff --git a/dist/esm/useLocation.js b/dist/esm/useLocation.js
-index f0956ede1c6d3fd463201b281f4cd73073e5e9d7..40c215b6fbc4b8ce36576e04a3583963197763d6 100644
+index f0956ede1c6d3fd463201b281f4cd73073e5e9d7..516c543820f9e84dc74b5e3bed331db4bed085c1 100644
 --- a/dist/esm/useLocation.js
 +++ b/dist/esm/useLocation.js
-@@ -1,5 +1,6 @@
+@@ -1,6 +1,7 @@
  "use client";
  import { useRouter } from "./useRouter.js";
+-import { useStructuralSharing } from "./useMatch.js";
 +import { useFrameMode, useRouterStateSelector } from "./routerStateContext.js";
- import { useStructuralSharing } from "./useMatch.js";
++import { useStructuralSharing, withSelectorCache } from "./useMatch.js";
  import { isServer } from "@tanstack/router-core/isServer";
  import { useStore } from "@tanstack/react-store";
+ //#region src/useLocation.tsx
 @@ -17,6 +18,10 @@ import { useStore } from "@tanstack/react-store";
  */
  function useLocation(opts) {
  	const router = useRouter();
 +	if (useFrameMode(router)) {
 +		const selectLocation = useStructuralSharing(opts, router);
-+		return useRouterStateSelector(router, (state) => selectLocation(state.location));
++		return useRouterStateSelector(router, withSelectorCache((state) => selectLocation(state.location), selectLocation));
 +	}
  	if (isServer ?? router.isServer) {
  		const location = router.stores.location.get();
  		return opts?.select ? opts.select(location) : location;
+diff --git a/dist/esm/useMatch.d.ts b/dist/esm/useMatch.d.ts
+index c2623c5bb27a7c301c912404de0721c2d138e1f8..4c9ecef3fca10245fbc3c5117cd4f357fbe9fd10 100644
+--- a/dist/esm/useMatch.d.ts
++++ b/dist/esm/useMatch.d.ts
+@@ -1,9 +1,31 @@
+ import { StructuralSharingOption, ValidateSelected } from './structuralSharing.js';
+ import { AnyRouter, MakeRouteMatch, MakeRouteMatchUnion, RegisteredRouter, StrictOrFrom, ThrowConstraint, ThrowOrOptional } from '@tanstack/router-core';
++/**
++ * A selector whose cached previous result can be saved and put back.
++ *
++ * Structural sharing keeps a consumer's selection referentially stable by
++ * caching the last result and returning it again whenever the next one is
++ * deep-equal. The render-frame path also runs selectors *outside* render, to
++ * decide whether a consumer's selection changed under a publication it has
++ * been offered — and a cache write from there describes a render that may
++ * never commit. So that path saves the cache, runs the selector, and puts the
++ * cache back; a consumer that accepts the offer re-renders and writes it for
++ * real. See `useRouterStateSelector`.
++ */
++export type CacheableSelector<TSlice, TSelected> = ((slice: TSlice) => TSelected) & {
++    snapshotCache?: () => unknown;
++    restoreCache?: (cached: unknown) => void;
++};
++/**
++ * Carry a selector's cache handles onto a closure wrapping it, so a caller
++ * that selects from a frame through a structural-sharing selector stays
++ * probe-safe.
++ */
++export declare function withSelectorCache<TOuter, TInner, TSelected>(wrapper: (slice: TOuter) => TSelected, inner: CacheableSelector<TInner, any>): CacheableSelector<TOuter, TSelected>;
+ export declare function useStructuralSharing<TRouter extends AnyRouter, TSelected, TStructuralSharing extends boolean, TStoreSlice, TSelectSlice = TStoreSlice>(opts: {
+     select?: (slice: TSelectSlice) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
+     structuralSharing?: boolean;
+-} | undefined, router: TRouter): (slice: TStoreSlice) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
++} | undefined, router: TRouter): CacheableSelector<TStoreSlice, ValidateSelected<TRouter, TSelected, TStructuralSharing>>;
+ export interface UseMatchBaseOptions<TRouter extends AnyRouter, TFrom, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing extends boolean> {
+     select?: (match: MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict>) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
+     shouldThrow?: TThrow;
 diff --git a/dist/esm/useMatch.js b/dist/esm/useMatch.js
-index 5d0c7a6a044c18341f101b8f5d5485cd06326c0d..0d71f0c5b4c4446ed11ed6368df4d85041dc99bf 100644
+index 5d0c7a6a044c18341f101b8f5d5485cd06326c0d..4c3265a6c51f93617e0bbb07621b2f9d80cdc311 100644
 --- a/dist/esm/useMatch.js
 +++ b/dist/esm/useMatch.js
-@@ -1,6 +1,7 @@
+@@ -1,19 +1,36 @@
  "use client";
  import { dummyMatchContext, matchContext } from "./matchContext.js";
  import { useRouter } from "./useRouter.js";
@@ -1890,7 +2057,37 @@ index 5d0c7a6a044c18341f101b8f5d5485cd06326c0d..0d71f0c5b4c4446ed11ed6368df4d850
  import { invariant, replaceEqualDeep } from "@tanstack/router-core";
  import * as React$1 from "react";
  import { isServer } from "@tanstack/router-core/isServer";
-@@ -24,20 +25,29 @@ function useMatch(opts) {
+ import { useStore } from "@tanstack/react-store";
+ //#region src/useMatch.tsx
+ var dummyMatch = {};
++/**
++* Carry a selector's cache handles onto a closure wrapping it, so a caller
++* that selects from a frame through a structural-sharing selector stays
++* probe-safe.
++*/
++function withSelectorCache(wrapper, inner) {
++	const cacheable = wrapper;
++	cacheable.snapshotCache = inner.snapshotCache;
++	cacheable.restoreCache = inner.restoreCache;
++	return cacheable;
++}
+ function useStructuralSharing(opts, router) {
+ 	const previousResult = React$1.useRef();
+-	return (slice) => {
++	const select = (slice) => {
+ 		const selected = opts?.select ? opts.select(slice) : slice;
+ 		if (opts?.structuralSharing ?? router.options.defaultStructuralSharing) return previousResult.current = replaceEqualDeep(previousResult.current, selected);
+ 		return selected;
+ 	};
++	select.snapshotCache = () => previousResult.current;
++	select.restoreCache = (cached) => {
++		previousResult.current = cached;
++	};
++	return select;
+ }
+ /**
+ * Read and select the nearest or targeted route match.
+@@ -24,26 +41,35 @@ function useMatch(opts) {
  	const nearestRouteId = React$1.useContext(opts.from ? dummyMatchContext : matchContext);
  	const routeId = opts.from ?? nearestRouteId;
  	const matchStore = router.stores.getMatchStore(routeId);
@@ -1919,10 +2116,10 @@ index 5d0c7a6a044c18341f101b8f5d5485cd06326c0d..0d71f0c5b4c4446ed11ed6368df4d850
 +		if (matchSelection !== dummyMatch) return matchSelection;
 +	} else {
 +		const selector = useStructuralSharing(opts, router);
-+		const matchSelection = useRouterStateSelector(router, (state) => {
++		const matchSelection = useRouterStateSelector(router, withSelectorCache((state) => {
 +			const match = state.matches.find((candidate) => candidate.routeId === routeId);
 +			return match ? selector(match) : dummyMatch;
-+		});
++		}, selector));
 +		if (matchSelection !== dummyMatch) return matchSelection;
  	}
 -	const selector = useStructuralSharing(opts, router);
@@ -1931,6 +2128,14 @@ index 5d0c7a6a044c18341f101b8f5d5485cd06326c0d..0d71f0c5b4c4446ed11ed6368df4d850
  	if (opts.shouldThrow ?? true) {
  		if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
  		invariant();
+ 	}
+ }
+ //#endregion
+-export { useMatch, useStructuralSharing };
++export { useMatch, useStructuralSharing, withSelectorCache };
+ 
+ //# sourceMappingURL=useMatch.js.map
+\ No newline at end of file
 diff --git a/dist/esm/useRouterState.js b/dist/esm/useRouterState.js
 index d82afeead0daa8ccb8756ad3376a20015c4b7427..0dd3fe001ea55add8b34450d224d7a97842a6819 100644
 --- a/dist/esm/useRouterState.js
@@ -2084,10 +2289,17 @@ index 97b8f7958926aff039e63d90e4213a78e064fe2d..c5a943a3b42328657690fd9fc88f3e0b
        <React.Suspense fallback={renderPending(router)}>
          {nextMatch}
 diff --git a/src/Matches.tsx b/src/Matches.tsx
-index 576c40a16fee63e13794f0265d38a160e16d53bc..e0e478bda3e6abe463ba7caff696ef9727e25aca 100644
+index 576c40a16fee63e13794f0265d38a160e16d53bc..15713ddf26db2ada0ab3e610f2cd9e37d44317b0 100644
 --- a/src/Matches.tsx
 +++ b/src/Matches.tsx
-@@ -12,12 +12,21 @@ import { Transitioner, settleOwner } from './Transitioner'
+@@ -6,18 +6,27 @@ import { rootRouteId } from '@tanstack/router-core'
+ import { isServer } from '@tanstack/router-core/isServer'
+ import { CatchBoundary } from './CatchBoundary'
+ import { useRouter } from './useRouter'
+-import { useStructuralSharing } from './useMatch'
++import { useStructuralSharing, withSelectorCache } from './useMatch'
+ import { useLayoutEffect } from './utils'
+ import { Transitioner, settleOwner } from './Transitioner'
  import { matchContext } from './matchContext'
  import { Match, renderPending } from './Match'
  import { SafeFragment } from './SafeFragment'
@@ -2109,12 +2321,35 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..e0e478bda3e6abe463ba7caff696ef97
    AnyRouter,
    DeepPartial,
    Expand,
-@@ -47,13 +56,22 @@ declare module '@tanstack/router-core' {
+@@ -28,6 +37,7 @@ import type {
+   MatchRouteOptions,
+   RegisteredRouter,
+   ResolveRoute,
++  RouterState,
+   ToSubOptionsProps,
+ } from '@tanstack/router-core'
+ 
+@@ -47,13 +57,37 @@ declare module '@tanstack/router-core' {
   */
  export function Matches() {
    const router = useRouter()
 +  const routerStateOwner = useRouterStateOwner()
-+  const [renderFrame, setRenderFrame] = React.useState<RouterRenderFrame>()
++  // Tagged with the router that produced it. A router swapped under a mounted
++  // provider keeps its own navigation in flight, along with the
++  // `startTransition` override holding this dispatch, so its staged frame can
++  // still arrive here afterwards. Untagged it would mask the current router's
++  // own frame — and because `frameId` counts per router, a collision could
++  // commit the wrong router's snapshot outright.
++  const [queuedFrame, setQueuedFrame] = React.useState<
++    { router: AnyRouter; frame: RouterRenderFrame } | undefined
++  >()
++  const renderFrame =
++    queuedFrame?.router === router ? queuedFrame.frame : undefined
++  const setRenderFrame = React.useCallback(
++    (frame: RouterRenderFrame | undefined) =>
++      setQueuedFrame(frame ? { router, frame } : undefined),
++    [router],
++  )
 +  const activeFrame = renderFrame ?? routerStateOwner?.frame
    const rootRoute: AnyRoute = router.routesById[rootRouteId]
  
@@ -2134,7 +2369,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..e0e478bda3e6abe463ba7caff696ef97
  
    const inner = (
      <>
-@@ -65,10 +83,21 @@ export function Matches() {
+@@ -65,10 +99,21 @@ export function Matches() {
            // router object, so React skips the update.
            // eslint-disable-next-line react-hooks/rules-of-hooks -- server only, condition is static
            t={React.useState<AnyRouter>()[1]}
@@ -2157,7 +2392,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..e0e478bda3e6abe463ba7caff696ef97
        </ResolvedSuspense>
      </>
    )
-@@ -80,25 +109,57 @@ export function Matches() {
+@@ -80,25 +125,55 @@ export function Matches() {
    )
  }
  
@@ -2169,9 +2404,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..e0e478bda3e6abe463ba7caff696ef97
 +}: {
 +  activeFrame?: RouterRenderFrame
 +  renderFrame?: RouterRenderFrame
-+  setRenderFrame: React.Dispatch<
-+    React.SetStateAction<RouterRenderFrame | undefined>
-+  >
++  setRenderFrame: (frame: RouterRenderFrame | undefined) => void
 +}) {
    const router = useRouter()
 +  const routerStateOwner = useRouterStateOwner()
@@ -2226,7 +2459,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..e0e478bda3e6abe463ba7caff696ef97
  
    const matchComponent = routeId ? <Match routeId={routeId} /> : null
  
-@@ -177,6 +238,32 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
+@@ -177,6 +252,45 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
      }
    }
  
@@ -2252,14 +2485,27 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..e0e478bda3e6abe463ba7caff696ef97
 +          } as any,
 +        )
 +      },
-+      [router, state],
++      [
++        router,
++        state,
++        // An explicit `matchRoute({ pending: true })` resolves against the
++        // head, so this hook has to re-render when the head moves — and a
++        // second navigation starting while the first is still pending changes
++        // only the location, which stages no frame and leaves the presented
++        // one identical. Without this a destination indicator would keep
++        // reporting the navigation that has already been superseded. It is the
++        // one hook that spans both, so it is the one that subscribes to both;
++        // non-pending queries still resolve against the presented frame.
++        // eslint-disable-next-line react-hooks/rules-of-hooks, react-hooks/exhaustive-deps
++        useStore(router.stores.location, (location) => location.href),
++      ],
 +    )
 +  }
 +
    // eslint-disable-next-line react-hooks/rules-of-hooks
    return React.useCallback(
      (opts) => {
-@@ -267,6 +354,15 @@ export function useMatches<
+@@ -267,6 +381,19 @@ export function useMatches<
  ): UseMatchesResult<TRouter, TSelected> {
    const router = useRouter<TRouter>()
  
@@ -2267,8 +2513,12 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..e0e478bda3e6abe463ba7caff696ef97
 +    // eslint-disable-next-line react-hooks/rules-of-hooks
 +    const selectMatches = useStructuralSharing(opts, router)
 +    // eslint-disable-next-line react-hooks/rules-of-hooks
-+    return useRouterStateSelector(router, (state) =>
-+      selectMatches(state.matches),
++    return useRouterStateSelector(
++      router,
++      withSelectorCache(
++        (state: RouterState<any>) => selectMatches(state.matches),
++        selectMatches,
++      ),
 +    ) as UseMatchesResult<TRouter, TSelected>
 +  }
 +
@@ -2354,7 +2604,7 @@ index a1b189d4c6a4dceacebf1330b5d39cfc02637437..4b471f5d181961dac98269d4ea8a4282
  }
  
 diff --git a/src/Transitioner.tsx b/src/Transitioner.tsx
-index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..1d23929bb5c3c7e017d3e8757e4f49e508ae86ec 100644
+index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..18c41171de6e8ea41cae4dbc3cded1112fa22517 100644
 --- a/src/Transitioner.tsx
 +++ b/src/Transitioner.tsx
 @@ -4,7 +4,9 @@ import * as React from 'react'
@@ -2367,23 +2617,21 @@ index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..1d23929bb5c3c7e017d3e8757e4f49e5
  
  export function settleOwner(
    owner: NonNullable<AnyRouter['_rendered']>,
-@@ -17,10 +19,15 @@ export function settleOwner(
+@@ -17,10 +19,13 @@ export function settleOwner(
  
  export function Transitioner({
    t,
 +  setRenderFrame,
  }: {
    t: React.Dispatch<React.SetStateAction<AnyRouter | undefined>>
-+  setRenderFrame: React.Dispatch<
-+    React.SetStateAction<RouterRenderFrame | undefined>
-+  >
++  setRenderFrame: (frame: RouterRenderFrame | undefined) => void
  }) {
    const router = useRouter()
 +  const routerStateOwner = useRouterStateOwner()
    const acknowledgement = (router._rendered ??= [])
    const mounted =
      process.env.NODE_ENV !== 'production'
-@@ -33,7 +40,23 @@ export function Transitioner({
+@@ -33,7 +38,23 @@ export function Transitioner({
        settleOwner(acknowledgement, false)
        acknowledgement.push(expected, resolve)
        t(router)
@@ -2408,7 +2656,7 @@ index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..1d23929bb5c3c7e017d3e8757e4f49e5
      })
  
    // Subscribe before canonicalizing so the initial URL has exactly one load.
-@@ -78,14 +101,17 @@ export function Transitioner({
+@@ -78,14 +99,17 @@ export function Transitioner({
        resolvedLocation?.href === location.href &&
        resolvedLocation.state.__TSR_key === location.state.__TSR_key
      ) {
@@ -2670,10 +2918,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..d6df711df6bba93870b1daae6f3089a0551661a9
+index 0000000000000000000000000000000000000000..7889daf79ef0225998b4496d3cb35e435af92f5e
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,548 @@
+@@ -0,0 +1,590 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -2681,6 +2929,7 @@ index 0000000000000000000000000000000000000000..d6df711df6bba93870b1daae6f3089a0
 +import { useLayoutEffect } from './utils'
 +import { useHydrated } from './ClientOnly'
 +import type { AnyRouter, RouterState } from '@tanstack/router-core'
++import type { CacheableSelector } from './useMatch'
 +
 +export type RouterRenderFrame = RouterState<any>
 +
@@ -3035,7 +3284,7 @@ index 0000000000000000000000000000000000000000..d6df711df6bba93870b1daae6f3089a0
 +
 +export function useRouterStateSelector<TSelected>(
 +  router: AnyRouter,
-+  selector: (state: RouterState<any>) => TSelected,
++  selector: CacheableSelector<RouterState<any>, TSelected>,
 +  compare: (a: TSelected, b: TSelected) => boolean = defaultCompare,
 +  /**
 +   * Filled with a getter for the publication this consumer is presenting, for
@@ -3070,11 +3319,32 @@ index 0000000000000000000000000000000000000000..d6df711df6bba93870b1daae6f3089a0
 +  // publication without the still-visible tree following it there. `revision`
 +  // makes every accepted update a distinct state value, so a progress-only
 +  // change — same frame, new status — still re-renders.
++  //
++  // The scope is part of it because `frameId` only means anything within one:
++  // a different router counts frames from its own start, so an identity
++  // carried over could collide and read as this consumer having accepted a
++  // frame it was never offered. A scope change starts the identity over —
++  // rebased rather than reset, so `revision` stays monotonic and a pending
++  // update cannot land on a value React considers unchanged.
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
-+  const [presenting, setPresenting] = React.useState(() => ({
++  const [stored, setPresenting] = React.useState(() => ({
++    scope,
 +    frameId: offeredFrame(scope).frameId,
 +    revision: 0,
 +  }))
++  // eslint-disable-next-line react-hooks/rules-of-hooks
++  const rebase = React.useCallback(
++    (previous: { scope: RouterStateScope; frameId: number; revision: number }) =>
++      previous.scope === scope
++        ? previous
++        : {
++            scope,
++            frameId: offeredFrame(scope).frameId,
++            revision: previous.revision,
++          },
++    [scope],
++  )
++  const presenting = rebase(stored)
 +  // The publication this consumer is presenting, for `presentedFrame` to read
 +  // after the fact. Updated at commit, so it describes the tree on screen
 +  // rather than a render that may yet be discarded.
@@ -3088,7 +3358,7 @@ index 0000000000000000000000000000000000000000..d6df711df6bba93870b1daae6f3089a0
 +  const committed = React.useRef<
 +    | {
 +        value: TSelected
-+        selector: (state: RouterState<any>) => TSelected
++        selector: CacheableSelector<RouterState<any>, TSelected>
 +        compare: (a: TSelected, b: TSelected) => boolean
 +      }
 +    | undefined
@@ -3156,23 +3426,42 @@ index 0000000000000000000000000000000000000000..d6df711df6bba93870b1daae6f3089a0
 +      onScreen: NonNullable<typeof committed.current>,
 +      frame: RouterRenderFrame,
 +    ) => {
++      // A structural-sharing selector caches its last result to keep the
++      // selection referentially stable, and this runs it against a
++      // publication that may never commit. Writing that cache here would
++      // leave the still-visible tree comparing against a result it never
++      // rendered, and it would return a fresh object next time — breaking
++      // the stability the option promises. So the cache is put back
++      // afterwards; a consumer that accepts the offer re-renders and writes
++      // it for real.
++      const cached = onScreen.selector.snapshotCache?.()
 +      try {
 +        return onScreen.compare(onScreen.value, onScreen.selector(frame))
 +      } catch {
 +        return false
++      } finally {
++        onScreen.selector.restoreCache?.(cached)
 +      }
 +    }
 +
++    // Decided here rather than inside the updater: `stillHolds` runs user code
++    // and borrows the selector's cache, and React may call an updater more than
++    // once — twice in Strict Mode — so a side-effecting one would run the
++    // selector more often than there were notifications. It also has to answer
++    // for the publication this notification described, which an updater
++    // running later might not resolve to.
 +    const refresh = () => {
 +      const onScreen = committed.current
 +      if (!onScreen) {
 +        return
 +      }
-+      setPresenting((previous) =>
-+        stillHolds(onScreen, resolveFrame(scope, previous.frameId))
-+          ? previous
-+          : { ...previous, revision: previous.revision + 1 },
-+      )
++      if (stillHolds(onScreen, resolveFrame(scope, presentingRef.current.frameId))) {
++        return
++      }
++      setPresenting((previous) => {
++        const base = rebase(previous)
++        return { ...base, revision: base.revision + 1 }
++      })
 +    }
 +
 +    const unsubscribe = scope.subscribe((offered) => {
@@ -3185,8 +3474,9 @@ index 0000000000000000000000000000000000000000..d6df711df6bba93870b1daae6f3089a0
 +        return
 +      }
 +      setPresenting((previous) => ({
++        scope,
 +        frameId: offered.frameId,
-+        revision: previous.revision + 1,
++        revision: rebase(previous).revision + 1,
 +      }))
 +    })
 +
@@ -3197,7 +3487,7 @@ index 0000000000000000000000000000000000000000..d6df711df6bba93870b1daae6f3089a0
 +    refresh()
 +
 +    return unsubscribe
-+  }, [scope])
++  }, [rebase, scope])
 +
 +  return rendered
 +}
@@ -3250,13 +3540,15 @@ index a20f947f438b0c9170284a3f751a98d1feeddb44..a0afae298f156d0a0fd5d959db281b11
      return router.stores.location.get().state.__TSR_index !== 0
    }
 diff --git a/src/useLocation.tsx b/src/useLocation.tsx
-index 5c8c7c8d7e6c17d229ca10f4d6d7022987ec6d07..c6b74bd4a9a42ce25586939d05517c0debfaaf20 100644
+index 5c8c7c8d7e6c17d229ca10f4d6d7022987ec6d07..21bd07ce4f34772c2e7c10c202c3bc74d375774c 100644
 --- a/src/useLocation.tsx
 +++ b/src/useLocation.tsx
-@@ -4,6 +4,10 @@ import { useStore } from '@tanstack/react-store'
+@@ -3,7 +3,11 @@
+ import { useStore } from '@tanstack/react-store'
  import { isServer } from '@tanstack/router-core/isServer'
  import { useRouter } from './useRouter'
- import { useStructuralSharing } from './useMatch'
+-import { useStructuralSharing } from './useMatch'
++import { useStructuralSharing, withSelectorCache } from './useMatch'
 +import {
 +  useFrameMode,
 +  useRouterStateSelector,
@@ -3264,7 +3556,7 @@ index 5c8c7c8d7e6c17d229ca10f4d6d7022987ec6d07..c6b74bd4a9a42ce25586939d05517c0d
  import type {
    StructuralSharingOption,
    ValidateSelected,
-@@ -52,6 +56,15 @@ export function useLocation<
+@@ -52,6 +56,19 @@ export function useLocation<
  ): UseLocationResult<TRouter, TSelected> {
    const router = useRouter<TRouter>()
  
@@ -3272,8 +3564,12 @@ index 5c8c7c8d7e6c17d229ca10f4d6d7022987ec6d07..c6b74bd4a9a42ce25586939d05517c0d
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
 +    const selectLocation = useStructuralSharing(opts, router)
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
-+    return useRouterStateSelector(router, (state) =>
-+      selectLocation(state.location),
++    return useRouterStateSelector(
++      router,
++      withSelectorCache(
++        (state: RouterState<any>) => selectLocation(state.location),
++        selectLocation,
++      ),
 +    ) as UseLocationResult<TRouter, TSelected>
 +  }
 +
@@ -3281,7 +3577,7 @@ index 5c8c7c8d7e6c17d229ca10f4d6d7022987ec6d07..c6b74bd4a9a42ce25586939d05517c0d
      const location = router.stores.location.get()
      return (
 diff --git a/src/useMatch.tsx b/src/useMatch.tsx
-index d66a69f640514fee47dcdb48e6507549074696d5..b077a8a7956e8216c73f9880070f1d9379f33d2f 100644
+index d66a69f640514fee47dcdb48e6507549074696d5..e97dadbe221ba5d482938cb7c4613d3fa8bb4aec 100644
 --- a/src/useMatch.tsx
 +++ b/src/useMatch.tsx
 @@ -6,6 +6,10 @@ import { invariant, replaceEqualDeep } from '@tanstack/router-core'
@@ -3295,7 +3591,92 @@ index d66a69f640514fee47dcdb48e6507549074696d5..b077a8a7956e8216c73f9880070f1d93
  import type {
    StructuralSharingOption,
    ValidateSelected,
-@@ -150,36 +154,50 @@ export function useMatch<
+@@ -15,6 +19,7 @@ import type {
+   MakeRouteMatch,
+   MakeRouteMatchUnion,
+   RegisteredRouter,
++  RouterState,
+   StrictOrFrom,
+   ThrowConstraint,
+   ThrowOrOptional,
+@@ -22,6 +27,40 @@ import type {
+ 
+ const dummyMatch = {}
+ 
++/**
++ * A selector whose cached previous result can be saved and put back.
++ *
++ * Structural sharing keeps a consumer's selection referentially stable by
++ * caching the last result and returning it again whenever the next one is
++ * deep-equal. The render-frame path also runs selectors *outside* render, to
++ * decide whether a consumer's selection changed under a publication it has
++ * been offered — and a cache write from there describes a render that may
++ * never commit. So that path saves the cache, runs the selector, and puts the
++ * cache back; a consumer that accepts the offer re-renders and writes it for
++ * real. See `useRouterStateSelector`.
++ */
++export type CacheableSelector<TSlice, TSelected> = ((
++  slice: TSlice,
++) => TSelected) & {
++  snapshotCache?: () => unknown
++  restoreCache?: (cached: unknown) => void
++}
++
++/**
++ * Carry a selector's cache handles onto a closure wrapping it, so a caller
++ * that selects from a frame through a structural-sharing selector stays
++ * probe-safe.
++ */
++export function withSelectorCache<TOuter, TInner, TSelected>(
++  wrapper: (slice: TOuter) => TSelected,
++  inner: CacheableSelector<TInner, any>,
++): CacheableSelector<TOuter, TSelected> {
++  const cacheable: CacheableSelector<TOuter, TSelected> = wrapper
++  cacheable.snapshotCache = inner.snapshotCache
++  cacheable.restoreCache = inner.restoreCache
++  return cacheable
++}
++
+ export function useStructuralSharing<
+   TRouter extends AnyRouter,
+   TSelected,
+@@ -38,14 +77,18 @@ export function useStructuralSharing<
+       }
+     | undefined,
+   router: TRouter,
+-): (
+-  slice: TStoreSlice,
+-) => ValidateSelected<TRouter, TSelected, TStructuralSharing> {
++): CacheableSelector<
++  TStoreSlice,
++  ValidateSelected<TRouter, TSelected, TStructuralSharing>
++> {
+   const previousResult =
+     // @ts-expect-error -- init to undefined, but without writing `undefined` to shave bytes
+     React.useRef<ValidateSelected<TRouter, TSelected, TStructuralSharing>>()
+ 
+-  return (slice) => {
++  const select: CacheableSelector<
++    TStoreSlice,
++    ValidateSelected<TRouter, TSelected, TStructuralSharing>
++  > = (slice) => {
+     const selected = opts?.select
+       ? opts.select(slice as unknown as TSelectSlice)
+       : (slice as ValidateSelected<TRouter, TSelected, TStructuralSharing>)
+@@ -59,6 +102,12 @@ export function useStructuralSharing<
+ 
+     return selected
+   }
++  select.snapshotCache = () => previousResult.current
++  select.restoreCache = (cached: unknown) => {
++    previousResult.current =
++      cached as ValidateSelected<TRouter, TSelected, TStructuralSharing>
++  }
++  return select
+ }
+ 
+ export interface UseMatchBaseOptions<
+@@ -150,36 +199,53 @@ export function useMatch<
    const routeId = opts.from ?? nearestRouteId
    const matchStore = router.stores.getMatchStore(routeId!)
  
@@ -3353,12 +3734,15 @@ index d66a69f640514fee47dcdb48e6507549074696d5..b077a8a7956e8216c73f9880070f1d93
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
 +    const selector = useStructuralSharing(opts, router)
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
-+    const matchSelection = useRouterStateSelector(router, (state) => {
-+      const match = state.matches.find(
-+        (candidate) => candidate.routeId === routeId,
-+      )
-+      return match ? selector(match as any) : dummyMatch
-+    })
++    const matchSelection = useRouterStateSelector(
++      router,
++      withSelectorCache((state: RouterState<any>) => {
++        const match = state.matches.find(
++          (candidate) => candidate.routeId === routeId,
++        )
++        return match ? selector(match as any) : dummyMatch
++      }, selector),
++    )
  
 -  if (matchSelection !== dummyMatch) {
 -    return matchSelection as any

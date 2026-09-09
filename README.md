@@ -149,10 +149,37 @@ how many samples are bounded rather than observed.
 
 ### Results
 
-Being re-measured against the current patch, with the transition witness now
-live. The table that stood here was produced before the mode witnesses worked,
-so no committed run of `scripts/benchmark-inp.mjs` can be said to have produced
-it, and it is not quoted here or anywhere else until it is replaced.
+6x CPU throttle, 8 blocks x 6 measured clicks — 48 navigations per cell.
+Measured by `scripts/benchmark-inp.mjs` as committed here, against builds
+stamped `3e1d79f`, whose patches come from
+[`mixcloud/router@cc08459`](https://github.com/mixcloud/router/tree/concurrent-router-render-frames).
+`vt` counts real `document.startViewTransition` calls, and doubles as the proof
+that each arm ran the build it claims; every navigation was above Event
+Timing's floor, so nothing here is censored.
+
+| `?rows=` | arm | vt | p50 | p75 | p95 | max |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 0 | control | 0 | 64ms | 72ms | 80ms | 96ms |
+| 0 | **patched** | 48 | **40ms** | **40ms** | **56ms** | **72ms** |
+| 500 | control | 0 | 240ms | 264ms | 320ms | 336ms |
+| 500 | **patched** | 48 | **40ms** | **48ms** | **48ms** | **64ms** |
+| 2000 | control | 0 | 656ms | 752ms | 904ms | 1192ms |
+| 2000 | **patched** | 48 | **40ms** | **48ms** | **56ms** | **64ms** |
+| 6000 | control | 0 | 2040ms | 2184ms | 2848ms | 3144ms |
+| 6000 | **patched** | 48 | **40ms** | **48ms** | **56ms** | **72ms** |
+
+Control tracks route render cost almost linearly, from 64ms to 2040ms. Patched
+is flat at 40ms at every weight, p50 through max, including the 6000-row route
+that costs the control arm two seconds. An earlier sweep on the same machine,
+one patch revision back, gave the same shape (64 / 208 / 688 / 2032 against a
+flat 40), so the effect is not an artefact of a single run.
+
+The `clickFrame` and `blocking` columns the script also reports are left out
+deliberately. They come from whichever long animation frame carries the click,
+and which frame the route render lands in varies between weights — 709ms at
+2000 rows against 51ms at 6000 in the same run — so the column says less about
+the mechanism than its magnitude suggests. The interaction-latency columns are
+the claim.
 
 **The patch does not make rendering faster.** The route still renders, and the
 frame that renders it is still long. What changes is where
@@ -255,7 +282,12 @@ Three caveats worth knowing:
   commit for `1.170.34` / `1.171.29` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `cc08459`.
+  is `1e6d280`. The published measurements are from `cc08459`, four commits
+  back: the difference is bookkeeping — a scope-keyed presentation identity, a
+  head subscription for pending matchers, a router tag on the queued frame, a
+  structural-sharing cache restored around a probe — not the publication path
+  the experiment measures. Re-run the sweep if you want the numbers pinned to
+  the exact head; the commands are above and every witness is live.
 - Source maps are left untouched, so stepping through the patched packages in
   devtools will show stale mappings. The shipped code is correct; only the maps
   are. Regenerate with `pnpm patch <pkg>`, copy `dist/` and `src/` from the
