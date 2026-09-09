@@ -99,6 +99,12 @@ pnpm exec vite preview --outDir dist-patched --port 4174 --strictPort &
 node scripts/benchmark-inp.mjs               # writes benchmark-results.json
 ```
 
+Restart both preview servers after any rebuild: each one loads a server bundle
+whose HTML references the previous build's hashed assets, so a stale server
+serves a page that never hydrates. Both witnesses catch it — the run fails on
+the arm check rather than measuring an unhydrated page — but the fix is the
+restart, not the script.
+
 The demo's own routes render in well under a millisecond, far too little to show
 a scheduling difference, so `?rows=N` gives the destination route a controllable
 amount of real React reconciliation work (`src/SyntheticRows.tsx`). Sweeping it is
@@ -128,27 +134,13 @@ than the API can see — not a missed sample.
 
 ### Results
 
-6x CPU throttle, 8 blocks x 6 measured clicks — 48 navigations per cell.
-`vt` counts real `document.startViewTransition` calls, and doubles as the proof
-that each arm ran the build it claims.
-
-| `?rows=` | arm | vt | p50 | p95 | max | click frame | blocking |
-| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0 | control | 0 | 24ms | 32ms | 32ms | — | — |
-| 0 | **patched** | 48 | **24ms** | **24ms** | **24ms** | — | — |
-| 500 | control | 0 | 56ms | 56ms | 64ms | — | — |
-| 500 | **patched** | 48 | **24ms** | **24ms** | **24ms** | — | — |
-| 2000 | control | 0 | 136ms | 144ms | 152ms | 117ms | 63ms |
-| 2000 | **patched** | 48 | **24ms** | **24ms** | **24ms** | 94ms | 25ms |
-| 6000 | control | 0 | 360ms | 456ms | 456ms | 337ms | 284ms |
-| 6000 | **patched** | 48 | **24ms** | **24ms** | **24ms** | 279ms | 183ms |
-
-Control tracks route render cost almost linearly. Patched is flat — 24ms at
-every weight, p50 through max, including the 6000-row route that costs the
-control arm 456ms.
+Being re-measured against the current patch, with the transition witness now
+live. The table that stood here was produced before the mode witnesses worked,
+so no committed run of `scripts/benchmark-inp.mjs` can be said to have produced
+it, and it is not quoted here or anywhere else until it is replaced.
 
 **The patch does not make rendering faster.** The route still renders, and the
-frame that renders it is still long (279ms at 6000 rows). What changes is where
+frame that renders it is still long. What changes is where
 that work sits relative to the paint the user is waiting for. Under
 `useSyncExternalStore` the render is inside the click's own animation frame, so
 nothing can be presented until it finishes; on the frame path the click handler
@@ -241,23 +233,24 @@ plain `pnpm install` reproduces everything:
 
 They replace `dist/` and `src/` with a build of
 [`mixcloud/router@concurrent-router-render-frames`](https://github.com/mixcloud/router/tree/concurrent-router-render-frames).
-Two caveats worth knowing:
+Three caveats worth knowing:
 
 - That branch is now rebased onto TanStack Router `main` at
   [`edeb199`](https://github.com/TanStack/router/commit/edeb199), the release
   commit for `1.170.34` / `1.171.29` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `0608e9b`.
+  is `479e67a`.
 - Source maps are left untouched, so stepping through the patched packages in
   devtools will show stale mappings. The shipped code is correct; only the maps
   are. Regenerate with `pnpm patch <pkg>`, copy `dist/` and `src/` from the
   router build over the edit directory, `pnpm patch-commit`, then drop the
   `*.map` sections — they add an order of magnitude to the patch and tell a
   reviewer nothing.
-- The patches are byte-identical to the ones in
-  [mixcloud/Mixcloud#25470](https://github.com/mixcloud/Mixcloud/pull/25470),
-  so both repos exercise the same router build.
+- [mixcloud/Mixcloud#25470](https://github.com/mixcloud/Mixcloud/pull/25470)
+  carries patches of the same branch, but no longer of the same commit: these
+  are ahead of it. Refresh that PR's patches before comparing behaviour between
+  the two repos.
 
 ## What this POC is *not* about
 

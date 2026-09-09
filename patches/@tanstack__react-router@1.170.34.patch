@@ -428,10 +428,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..2c8bbc2d99d1ed912108c991ea3d9d632cdff26f
+index 0000000000000000000000000000000000000000..c67fbce168266d36f85add8091c0831023dc1efa
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,251 @@
+@@ -0,0 +1,277 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -440,7 +440,6 @@ index 0000000000000000000000000000000000000000..2c8bbc2d99d1ed912108c991ea3d9d63
 +react = require_runtime.__toESM(react, 1);
 +let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
 +let react_jsx_runtime = require("react/jsx-runtime");
-+let _tanstack_react_store = require("@tanstack/react-store");
 +//#region src/routerStateContext.tsx
 +var defaultCompare = (a, b) => a === b;
 +/** The publication a fresh reader at this position should start from. */
@@ -605,12 +604,42 @@ index 0000000000000000000000000000000000000000..2c8bbc2d99d1ed912108c991ea3d9d63
 +function useRouterStateOwner() {
 +	return react.useContext(routerStateOwnerContext);
 +}
++/**
++* The scope for a reader that has no owner above it for the router it names —
++* `useRouterState({ router })` pointing at another instance, or a consumer
++* rendered outside `RouterProvider`.
++*
++* There is no presentation to isolate here, so this scope presents the store
++* head and treats every notification as a plain refresh: the same content the
++* default `useStore` path gives. Going through the *same* hooks as a scoped
++* reader is the point — the argument can change between renders, and a reader
++* that changed hook shape with it would crash on the hook order rather than
++* merely read a different router. Cached per router so the identity the
++* subscription effect depends on stays stable.
++*/
++var detachedScopes = /* @__PURE__ */ new WeakMap();
++function detachedScope(router) {
++	const existing = detachedScopes.get(router);
++	if (existing) return existing;
++	const scope = {
++		router,
++		get committed() {
++			return router.stores.__store.get();
++		},
++		staged: void 0,
++		subscribe: (subscriber) => {
++			const subscription = router.stores.__store.subscribe(() => subscriber(void 0));
++			return () => subscription.unsubscribe();
++		},
++		notify: () => {}
++	};
++	detachedScopes.set(router, scope);
++	return scope;
++}
 +function useRouterStateSelector(router, selector, compare = defaultCompare) {
-+	const scope = react.useContext(routerStateScopeContext);
-+	if (!scope || scope.router !== router) {
-+		if (_tanstack_router_core_isServer.isServer ?? router.isServer) return selector(router.stores.__store.get());
-+		return (0, _tanstack_react_store.useStore)(router.stores.__store, selector, compare);
-+	}
++	const ownerScope = react.useContext(routerStateScopeContext);
++	const scope = ownerScope && ownerScope.router === router ? ownerScope : detachedScope(router);
++	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return selector(offeredFrame(scope));
 +	const [presenting, setPresenting] = react.useState(() => ({
 +		frameId: offeredFrame(scope).frameId,
 +		revision: 0
@@ -626,15 +655,19 @@ index 0000000000000000000000000000000000000000..2c8bbc2d99d1ed912108c991ea3d9d63
 +		};
 +	});
 +	require_utils.useLayoutEffect(() => {
++		const stillHolds = (onScreen, frame) => {
++			try {
++				return onScreen.compare(onScreen.value, onScreen.selector(frame));
++			} catch {
++				return false;
++			}
++		};
 +		const refresh = () => {
 +			const onScreen = committed.current;
 +			if (!onScreen) return;
-+			setPresenting((previous) => {
-+				const next = onScreen.selector(resolveFrame(scope, previous.frameId));
-+				return onScreen.compare(onScreen.value, next) ? previous : {
-+					...previous,
-+					revision: previous.revision + 1
-+				};
++			setPresenting((previous) => stillHolds(onScreen, resolveFrame(scope, previous.frameId)) ? previous : {
++				...previous,
++				revision: previous.revision + 1
 +			});
 +		};
 +		const unsubscribe = scope.subscribe((offered) => {
@@ -643,15 +676,8 @@ index 0000000000000000000000000000000000000000..2c8bbc2d99d1ed912108c991ea3d9d63
 +				return;
 +			}
 +			const onScreen = committed.current;
-+			if (!onScreen) {
-+				setPresenting((previous) => ({
-+					frameId: offered.frameId,
-+					revision: previous.revision + 1
-+				}));
-+				return;
-+			}
-+			const next = onScreen.selector(offered);
-+			if (!onScreen.compare(onScreen.value, next)) setPresenting((previous) => ({
++			if (onScreen && stillHolds(onScreen, offered)) return;
++			setPresenting((previous) => ({
 +				frameId: offered.frameId,
 +				revision: previous.revision + 1
 +			}));
@@ -1377,17 +1403,16 @@ index 0000000000000000000000000000000000000000..26a58056225453c5a26a1c620c138a4a
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..3c55ea58e53c67e9ebf8694c0e11d735603a2823
+index 0000000000000000000000000000000000000000..daabc767b5cec0a969b4d919d8c08e0431d84789
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,245 @@
+@@ -0,0 +1,271 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import { useHydrated } from "./ClientOnly.js";
 +import * as React$1 from "react";
 +import { isServer } from "@tanstack/router-core/isServer";
 +import { jsx } from "react/jsx-runtime";
-+import { useStore } from "@tanstack/react-store";
 +//#region src/routerStateContext.tsx
 +var defaultCompare = (a, b) => a === b;
 +/** The publication a fresh reader at this position should start from. */
@@ -1552,12 +1577,42 @@ index 0000000000000000000000000000000000000000..3c55ea58e53c67e9ebf8694c0e11d735
 +function useRouterStateOwner() {
 +	return React$1.useContext(routerStateOwnerContext);
 +}
++/**
++* The scope for a reader that has no owner above it for the router it names —
++* `useRouterState({ router })` pointing at another instance, or a consumer
++* rendered outside `RouterProvider`.
++*
++* There is no presentation to isolate here, so this scope presents the store
++* head and treats every notification as a plain refresh: the same content the
++* default `useStore` path gives. Going through the *same* hooks as a scoped
++* reader is the point — the argument can change between renders, and a reader
++* that changed hook shape with it would crash on the hook order rather than
++* merely read a different router. Cached per router so the identity the
++* subscription effect depends on stays stable.
++*/
++var detachedScopes = /* @__PURE__ */ new WeakMap();
++function detachedScope(router) {
++	const existing = detachedScopes.get(router);
++	if (existing) return existing;
++	const scope = {
++		router,
++		get committed() {
++			return router.stores.__store.get();
++		},
++		staged: void 0,
++		subscribe: (subscriber) => {
++			const subscription = router.stores.__store.subscribe(() => subscriber(void 0));
++			return () => subscription.unsubscribe();
++		},
++		notify: () => {}
++	};
++	detachedScopes.set(router, scope);
++	return scope;
++}
 +function useRouterStateSelector(router, selector, compare = defaultCompare) {
-+	const scope = React$1.useContext(routerStateScopeContext);
-+	if (!scope || scope.router !== router) {
-+		if (isServer ?? router.isServer) return selector(router.stores.__store.get());
-+		return useStore(router.stores.__store, selector, compare);
-+	}
++	const ownerScope = React$1.useContext(routerStateScopeContext);
++	const scope = ownerScope && ownerScope.router === router ? ownerScope : detachedScope(router);
++	if (isServer ?? router.isServer) return selector(offeredFrame(scope));
 +	const [presenting, setPresenting] = React$1.useState(() => ({
 +		frameId: offeredFrame(scope).frameId,
 +		revision: 0
@@ -1573,15 +1628,19 @@ index 0000000000000000000000000000000000000000..3c55ea58e53c67e9ebf8694c0e11d735
 +		};
 +	});
 +	useLayoutEffect(() => {
++		const stillHolds = (onScreen, frame) => {
++			try {
++				return onScreen.compare(onScreen.value, onScreen.selector(frame));
++			} catch {
++				return false;
++			}
++		};
 +		const refresh = () => {
 +			const onScreen = committed.current;
 +			if (!onScreen) return;
-+			setPresenting((previous) => {
-+				const next = onScreen.selector(resolveFrame(scope, previous.frameId));
-+				return onScreen.compare(onScreen.value, next) ? previous : {
-+					...previous,
-+					revision: previous.revision + 1
-+				};
++			setPresenting((previous) => stillHolds(onScreen, resolveFrame(scope, previous.frameId)) ? previous : {
++				...previous,
++				revision: previous.revision + 1
 +			});
 +		};
 +		const unsubscribe = scope.subscribe((offered) => {
@@ -1590,15 +1649,8 @@ index 0000000000000000000000000000000000000000..3c55ea58e53c67e9ebf8694c0e11d735
 +				return;
 +			}
 +			const onScreen = committed.current;
-+			if (!onScreen) {
-+				setPresenting((previous) => ({
-+					frameId: offered.frameId,
-+					revision: previous.revision + 1
-+				}));
-+				return;
-+			}
-+			const next = onScreen.selector(offered);
-+			if (!onScreen.compare(onScreen.value, next)) setPresenting((previous) => ({
++			if (onScreen && stillHolds(onScreen, offered)) return;
++			setPresenting((previous) => ({
 +				frameId: offered.frameId,
 +				revision: previous.revision + 1
 +			}));
@@ -1738,7 +1790,7 @@ index d82afeead0daa8ccb8756ad3376a20015c4b7427..a02ded087ccd8b686947c157279dd94d
  		const state = router.stores.__store.get();
  		return opts?.select ? opts.select(state) : state;
 diff --git a/src/Match.tsx b/src/Match.tsx
-index 97b8f7958926aff039e63d90e4213a78e064fe2d..9a77fcdaaaa3672042dc8374430eb020ffc4d79e 100644
+index 97b8f7958926aff039e63d90e4213a78e064fe2d..4211c8ac5ba36ddd6822fa84a539ed65d2a905e8 100644
 --- a/src/Match.tsx
 +++ b/src/Match.tsx
 @@ -12,6 +12,10 @@ import { SafeFragment } from './SafeFragment'
@@ -1829,7 +1881,7 @@ index 97b8f7958926aff039e63d90e4213a78e064fe2d..9a77fcdaaaa3672042dc8374430eb020
      canWrapInSuspense(router, route, match.ssr) &&
      (route.options.wrapInSuspense ??
        pendingElement ??
-@@ -277,7 +329,29 @@ export const Outlet = React.memo(function OutletImpl() {
+@@ -277,7 +329,31 @@ export const Outlet = React.memo(function OutletImpl() {
    let parentNotFoundError: unknown
    let childRouteId: string | undefined
  
@@ -1847,7 +1899,9 @@ index 97b8f7958926aff039e63d90e4213a78e064fe2d..9a77fcdaaaa3672042dc8374430eb020
 +            (match) => match.routeId === routeId,
 +          )
 +          const parentMatch = matches[parentIndex]
-+          if (!parentMatch) return absentOutletMatchSelection
++          if (!parentMatch) {
++            return absentOutletMatchSelection
++          }
 +          return [
 +            !!parentMatch._notFound,
 +            parentMatch.error,
@@ -1860,7 +1914,7 @@ index 97b8f7958926aff039e63d90e4213a78e064fe2d..9a77fcdaaaa3672042dc8374430eb020
      const matches = router.stores.matches.get()
      const parentIndex = matches.findIndex((match) => match.routeId === routeId)
      const parentMatch = matches[parentIndex]!
-@@ -314,7 +388,11 @@ export const Outlet = React.memo(function OutletImpl() {
+@@ -314,7 +390,11 @@ export const Outlet = React.memo(function OutletImpl() {
  
    const nextMatch = <Match routeId={childRouteId} />
  
@@ -2395,14 +2449,13 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..2f74b015aecc825520ba27b7b4590b0d7db73832
+index 0000000000000000000000000000000000000000..6ea2c028d1d589991bacfb156c167f2860696d52
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,435 @@
+@@ -0,0 +1,488 @@
 +'use client'
 +
 +import * as React from 'react'
-+import { useStore } from '@tanstack/react-store'
 +import { isServer } from '@tanstack/router-core/isServer'
 +import { useLayoutEffect } from './utils'
 +import { useHydrated } from './ClientOnly'
@@ -2699,21 +2752,61 @@ index 0000000000000000000000000000000000000000..2f74b015aecc825520ba27b7b4590b0d
 +  return React.useContext(routerStateOwnerContext)
 +}
 +
++/**
++ * The scope for a reader that has no owner above it for the router it names —
++ * `useRouterState({ router })` pointing at another instance, or a consumer
++ * rendered outside `RouterProvider`.
++ *
++ * There is no presentation to isolate here, so this scope presents the store
++ * head and treats every notification as a plain refresh: the same content the
++ * default `useStore` path gives. Going through the *same* hooks as a scoped
++ * reader is the point — the argument can change between renders, and a reader
++ * that changed hook shape with it would crash on the hook order rather than
++ * merely read a different router. Cached per router so the identity the
++ * subscription effect depends on stays stable.
++ */
++const detachedScopes = new WeakMap<AnyRouter, RouterStateScope>()
++
++function detachedScope(router: AnyRouter): RouterStateScope {
++  const existing = detachedScopes.get(router)
++  if (existing) {
++    return existing
++  }
++  const scope: RouterStateScope = {
++    router,
++    get committed() {
++      return router.stores.__store.get()
++    },
++    staged: undefined,
++    subscribe: (subscriber) => {
++      const subscription = router.stores.__store.subscribe(() =>
++        subscriber(undefined),
++      )
++      return () => subscription.unsubscribe()
++    },
++    notify: () => {},
++  }
++  detachedScopes.set(router, scope)
++  return scope
++}
++
 +export function useRouterStateSelector<TSelected>(
 +  router: AnyRouter,
 +  selector: (state: RouterState<any>) => TSelected,
 +  compare: (a: TSelected, b: TSelected) => boolean = defaultCompare,
 +): TSelected {
-+  const scope = React.useContext(routerStateScopeContext)
++  const ownerScope = React.useContext(routerStateScopeContext)
++  // Not conditional on anything that can change: whichever scope this reader
++  // resolves to, the hooks below run, in this order, on every render.
++  const scope =
++    ownerScope && ownerScope.router === router
++      ? ownerScope
++      : detachedScope(router)
 +
-+  if (!scope || scope.router !== router) {
-+    if (isServer ?? router.isServer) {
-+      return selector(router.stores.__store.get())
-+    }
-+    // The frame option is fixed when the router is created, so this branch
-+    // cannot change hook order during the lifetime of a mounted router.
-+    // eslint-disable-next-line react-hooks/rules-of-hooks
-+    return useStore(router.stores.__store, selector, compare)
++  if (isServer ?? router.isServer) {
++    // One render, no reactivity, so nothing to subscribe to. `offeredFrame` is
++    // what the client path would resolve on its first render.
++    return selector(offeredFrame(scope))
 +  }
 +
 +  // Which publication this consumer is presenting. It lives in React state, so
@@ -2767,17 +2860,38 @@ index 0000000000000000000000000000000000000000..2f74b015aecc825520ba27b7b4590b0d
 +    // Re-read the publication this consumer is already presenting, without
 +    // moving it onto another one. Used for every notification that is not an
 +    // offer, and when the subscription is installed.
++    // Whether the selection this consumer has on screen still holds for
++    // `frame`.
++    //
++    // A selector and a comparator are user code, and this runs them outside
++    // React's render — from the Router's `startTransition`, by way of
++    // `notify`. A throw here would reach neither an error boundary (there is
++    // no component on the stack) nor the consumer that owns the selector; it
++    // would unwind into whichever navigation sent the notification and wedge
++    // it. So a throwing selector is read as "the selection changed": this
++    // consumer re-renders, the selector throws during render instead, and the
++    // nearest error boundary handles it the way it would on the store path.
++    const stillHolds = (
++      onScreen: NonNullable<typeof committed.current>,
++      frame: RouterRenderFrame,
++    ) => {
++      try {
++        return onScreen.compare(onScreen.value, onScreen.selector(frame))
++      } catch {
++        return false
++      }
++    }
++
 +    const refresh = () => {
 +      const onScreen = committed.current
 +      if (!onScreen) {
 +        return
 +      }
-+      setPresenting((previous) => {
-+        const next = onScreen.selector(resolveFrame(scope, previous.frameId))
-+        return onScreen.compare(onScreen.value, next)
++      setPresenting((previous) =>
++        stillHolds(onScreen, resolveFrame(scope, previous.frameId))
 +          ? previous
-+          : { ...previous, revision: previous.revision + 1 }
-+      })
++          : { ...previous, revision: previous.revision + 1 },
++      )
 +    }
 +
 +    const unsubscribe = scope.subscribe((offered) => {
@@ -2786,20 +2900,13 @@ index 0000000000000000000000000000000000000000..2f74b015aecc825520ba27b7b4590b0d
 +        return
 +      }
 +      const onScreen = committed.current
-+      if (!onScreen) {
-+        setPresenting((previous) => ({
-+          frameId: offered.frameId,
-+          revision: previous.revision + 1,
-+        }))
++      if (onScreen && stillHolds(onScreen, offered)) {
 +        return
 +      }
-+      const next = onScreen.selector(offered)
-+      if (!onScreen.compare(onScreen.value, next)) {
-+        setPresenting((previous) => ({
-+          frameId: offered.frameId,
-+          revision: previous.revision + 1,
-+        }))
-+      }
++      setPresenting((previous) => ({
++        frameId: offered.frameId,
++        revision: previous.revision + 1,
++      }))
 +    })
 +
 +    // A publication can land between this consumer's render and this effect —
