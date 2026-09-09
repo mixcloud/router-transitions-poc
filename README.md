@@ -255,7 +255,7 @@ Three caveats worth knowing:
   commit for `1.170.34` / `1.171.29` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `4eba1b4`.
+  is `cc08459`.
 - Source maps are left untouched, so stepping through the patched packages in
   devtools will show stale mappings. The shipped code is correct; only the maps
   are. Regenerate with `pnpm patch <pkg>`, copy `dist/` and `src/` from the
