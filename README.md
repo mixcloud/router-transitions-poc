@@ -115,8 +115,12 @@ is a claim about mechanism rather than a single number.
 - Interaction latency is computed the way INP defines it: group Event Timing
   entries by `interactionId`, take the maximum `duration` in each group.
 - Two independent witnesses confirm each block ran the build it claims: the mode
-  is read straight off the live router (`__TSR_ROUTER__.options`), and the run
-  counts real `document.startViewTransition` calls.
+  is read straight off the live router (`__TSR_ROUTER__.options`), and real
+  `document.startViewTransition` calls are counted. The count is the
+  application's own tally (`window.__vt`, kept by `src/TransitionCounter.tsx`);
+  the harness only reads it, and fails the block outright if it is missing,
+  rather than installing a second wrapper that would count each transition
+  twice.
 
 Event Timing will not report an interaction shorter than 16ms, and rounds
 `duration` to 8ms. An absent entry is therefore a genuine measurement — faster

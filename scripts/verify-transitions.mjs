@@ -15,17 +15,19 @@ const browser = await chromium.launch({
 })
 const page = await browser.newPage({ viewport: { width: 1200, height: 900 } })
 
-await page.addInitScript(() => {
-  window.__vt = 0
-  const original = document.startViewTransition?.bind(document)
-  if (!original) return
-  document.startViewTransition = (...args) => {
-    window.__vt++
-    return original(...args)
-  }
-})
-
 await page.goto(BASE, { waitUntil: 'networkidle' })
+
+// The count comes from the application's own tally: `TransitionCounter` wraps
+// `document.startViewTransition` and increments `window.__vt`. Wrapping it
+// again from here would count every transition twice. Assert the tally exists
+// rather than reading `undefined` and silently reporting nothing.
+const tally = await page.evaluate(() => typeof window.__vt)
+if (tally !== 'number') {
+  throw new Error(
+    `${BASE} exposes no window.__vt tally (typeof ${tally}); ` +
+      'is TransitionCounter mounted?',
+  )
+}
 
 const count = () => page.evaluate(() => window.__vt)
 const measure = async (label, action) => {

@@ -72,18 +72,6 @@ const observers = (FLOOR) => {
       })
     }
   }).observe({ type: 'long-animation-frame', buffered: true })
-
-  // Mode witness. On the patched build a router navigation keeps its
-  // transition lane, so React's <ViewTransition> fires; on the control it
-  // cannot. Counting real calls proves each block ran the build it claims to.
-  window.__vt = 0
-  const original = document.startViewTransition?.bind(document)
-  if (original) {
-    document.startViewTransition = (...args) => {
-      window.__vt++
-      return original(...args)
-    }
-  }
 }
 
 const percentile = (sorted, p) => {
@@ -164,6 +152,21 @@ async function measureBlock(context, label, base, rows) {
     throw new Error(
       `${base} reports experimental_concurrentRenderFrames=${modeOn}, ` +
         `expected ${expected} for the "${label}" arm`,
+    )
+  }
+
+  // Mode witness. On the patched build a router navigation keeps its
+  // transition lane, so React's <ViewTransition> fires; on the control it
+  // cannot, so counting real calls proves each block ran the build it claims.
+  // The count is the application's own tally (`TransitionCounter` wraps
+  // `document.startViewTransition` and increments `window.__vt`) — wrapping it
+  // again from here would count every transition twice. Assert the tally
+  // exists rather than reading `undefined` and silently reporting zero.
+  const tally = await page.evaluate(() => typeof window.__vt)
+  if (tally !== 'number') {
+    throw new Error(
+      `${base} exposes no window.__vt tally (typeof ${tally}); the ` +
+        'transition witness would be dead. Is TransitionCounter mounted?',
     )
   }
 
