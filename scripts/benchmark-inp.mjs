@@ -96,7 +96,16 @@ const summarise = (values) => {
   }
 }
 
-/** Interaction latency per INP's definition: max duration per interactionId. */
+/**
+ * Interaction latency per INP's definition: max duration per interactionId.
+ *
+ * May be empty: Event Timing refuses to report an interaction shorter than
+ * `EVENT_TIMING_FLOOR_MS`, so a navigation faster than the API can see
+ * produces no entry at all. That absence is a measurement, not a miss — see
+ * `armLatencies`, which is where it has to be handled, because dropping those
+ * navigations here would make every percentile conditional on the arm being
+ * slow enough to observe.
+ */
 const interactionLatencies = (events) => {
   const byId = new Map()
   for (const e of events) {
@@ -109,11 +118,73 @@ const interactionLatencies = (events) => {
 }
 
 /**
+ * Every measured navigation's latency, with the unobservable ones kept.
+ *
+ * A navigation with no Event Timing entry is *left-censored*: its true
+ * latency is somewhere below the floor, and the floor is therefore an upper
+ * bound for it. Substituting the floor keeps the navigation in the
+ * distribution and makes every percentile an upper bound on the real one —
+ * which is the conservative direction for the fast arm, and the only way the
+ * two arms describe the same set of navigations. `censored` reports how many
+ * samples that was, so a reader can see how much of an arm is bounded rather
+ * than observed.
+ */
+const armLatencies = (samples) => {
+  const values = []
+  let censored = 0
+  for (const sample of samples) {
+    const observed = interactionLatencies(sample.events)
+    if (observed.length) {
+      values.push(...observed)
+    } else {
+      censored++
+      values.push(EVENT_TIMING_FLOOR_MS)
+    }
+  }
+  return { values, censored }
+}
+
+/**
  * The frame that carries the click. Its duration is the main-thread work the
  * user waits through before anything can be painted.
  */
 const clickFrame = (loafs) =>
   loafs.find((l) => l.firstUIEventTimestamp > 0) ?? null
+
+/**
+ * Wait for a preview server to answer, so a benchmark started alongside
+ * `vite preview` fails on a server that never comes up rather than on the
+ * first `page.goto`.
+ */
+async function waitForServer(base) {
+  const deadline = Date.now() + 30_000
+  for (;;) {
+    try {
+      const response = await fetch(base, { method: 'GET' })
+      if (response.ok) {
+        return
+      }
+    } catch {
+      // Not listening yet.
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`${base} did not answer within 30s`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+}
+
+/**
+ * The build both arms must have come from.
+ *
+ * Set by the first block to report one; every later block is checked against
+ * it. `--strictPort` makes `vite preview` refuse an occupied port, so a
+ * server left running from an earlier build keeps serving that build — and
+ * the mode check would still accept it, because the mode is right. Comparing
+ * the stamp is what makes "builds of identical source" a checked claim
+ * instead of a trusted one.
+ */
+let requiredBuildId
 
 async function runBlock(browser, label, base, rows) {
   const context = await browser.newContext({
@@ -147,6 +218,23 @@ async function measureBlock(context, label, base, rows) {
       window.__TSR_ROUTER__?.options?.experimental_concurrentRenderFrames ??
       null,
   )
+  const buildId = await page.evaluate(() => window.__BUILD_ID__ ?? null)
+  if (!buildId) {
+    throw new Error(
+      `${base} reports no build stamp. Build both arms with ` +
+        'VITE_BUILD_ID set (see README "Benchmarking") so the two arms can ' +
+        'be checked against each other.',
+    )
+  }
+  requiredBuildId ??= buildId
+  if (buildId !== requiredBuildId) {
+    throw new Error(
+      `${base} serves build ${buildId}, but this run started against ` +
+        `${requiredBuildId}. Both arms must be builds of the same source — ` +
+        'rebuild and restart both preview servers.',
+    )
+  }
+
   const expected = label === 'patched'
   if (modeOn !== expected) {
     throw new Error(
@@ -169,6 +257,10 @@ async function measureBlock(context, label, base, rows) {
         'transition witness would be dead. Is TransitionCounter mounted?',
     )
   }
+  // The tally existing only proves the counter mounted; it is seeded even
+  // where the platform has no View Transition API. Each measured navigation
+  // is checked against what its arm must produce, below.
+  const expectedTransitions = expected ? 1 : 0
 
   const samples = []
   for (let i = 0; i < WARMUP + CLICKS; i++) {
@@ -185,13 +277,23 @@ async function measureBlock(context, label, base, rows) {
     await page.waitForTimeout(1200)
 
     if (measured) {
-      samples.push(
-        await page.evaluate(() => ({
-          events: window.__perf.events,
-          loafs: window.__perf.loafs,
-          viewTransitions: window.__vt - window.__vtBefore,
-        })),
-      )
+      const sample = await page.evaluate(() => ({
+        events: window.__perf.events,
+        loafs: window.__perf.loafs,
+        viewTransitions: window.__vt - window.__vtBefore,
+      }))
+      // The latency claim rests on a transition providing the next paint, so a
+      // navigation that did not produce exactly the transitions its arm
+      // requires is not a slower sample — it is a different experiment, and
+      // averaging it in would hide whatever went wrong.
+      if (sample.viewTransitions !== expectedTransitions) {
+        throw new Error(
+          `${base} rows=${rows}: navigation ${i - WARMUP + 1} ran ` +
+            `${sample.viewTransitions} view transition(s), expected ` +
+            `${expectedTransitions} for the "${label}" arm`,
+        )
+      }
+      samples.push(sample)
     }
 
     await page.goBack()
@@ -209,6 +311,8 @@ const browser = await chromium.launch({
   executablePath: process.env.CHROME_PATH || undefined,
   args: ['--enable-experimental-web-platform-features'],
 })
+
+await Promise.all([waitForServer(CONTROL), waitForServer(PATCHED)])
 
 const blocks = []
 for (const rows of ROWS) {
@@ -237,16 +341,16 @@ const sweep = ROWS.map((rows) => {
     const samples = blocks
       .filter((b) => b.label === label && b.rows === rows)
       .flatMap((b) => b.samples)
-    const latencies = samples.flatMap((s) => interactionLatencies(s.events))
+    const { values: latencies, censored } = armLatencies(samples)
     const clickFrames = samples
       .map((s) => clickFrame(s.loafs))
       .filter(Boolean)
 
     arms[label] = {
       navigations: samples.length,
-      navigationsWithReportableInteraction: samples.filter(
-        (s) => interactionLatencies(s.events).length > 0,
-      ).length,
+      navigationsWithReportableInteraction: samples.length - censored,
+      // Navigations too fast for Event Timing, counted at the floor above.
+      navigationsCensoredAtFloor: censored,
       viewTransitionsFired: samples.reduce((t, s) => t + s.viewTransitions, 0),
       interactionLatencyMs: summarise(latencies),
       clickFrameDurationMs: summarise(clickFrames.map((f) => f.duration)),
@@ -271,6 +375,7 @@ writeFileSync(
         clicksPerBlock: CLICKS,
         warmupPerBlock: WARMUP,
         eventTimingFloorMs: EVENT_TIMING_FLOOR_MS,
+        buildId: requiredBuildId,
         control: CONTROL,
         patched: PATCHED,
       },
@@ -286,7 +391,12 @@ const n = (v, w) => (v === null ? '—' : v.toFixed(0)).padStart(w)
 
 console.log(`\nCPU throttle ${CPU}x · ${BLOCKS} blocks × ${CLICKS} clicks/point`)
 console.log(
-  '\n rows  arm       navs  vtFire   p50    p75    p95    max   clickFrame  blocking',
+  `\nbuild ${requiredBuildId} · latency percentiles are upper bounds where a ` +
+    `navigation was faster than Event Timing's ${EVENT_TIMING_FLOOR_MS}ms ` +
+    'floor (the "<16" column counts those)',
+)
+console.log(
+  '\n rows  arm       navs  vtFire   <16   p50    p75    p95    max   clickFrame  blocking',
 )
 for (const point of sweep) {
   for (const label of ['control', 'patched']) {
@@ -295,6 +405,7 @@ for (const point of sweep) {
       `${String(point.rows).padStart(5)}  ${label.padEnd(8)}` +
         `${String(a.navigations).padStart(5)}` +
         `${String(a.viewTransitionsFired).padStart(8)}` +
+        `${String(a.navigationsCensoredAtFloor).padStart(6)}` +
         `${n(a.interactionLatencyMs.p50, 6)}` +
         `${n(a.interactionLatencyMs.p75, 7)}` +
         `${n(a.interactionLatencyMs.p95, 7)}` +

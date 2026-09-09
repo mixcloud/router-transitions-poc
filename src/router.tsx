@@ -22,8 +22,20 @@ export function getRouter() {
   // `scripts/benchmark-inp.mjs` reads the mode straight off the live router
   // rather than trusting which port it connected to. Nothing else in the
   // stack populates this global, so the benchmark's arm check depends on it.
+  //
+  // `__BUILD_ID__` is the other half of that check. The experiment's premise
+  // is that both arms are builds of *identical source*, and a `--strictPort`
+  // preview server that was already running serves whatever it was started
+  // with — a stale build the arm check would still accept, because the mode
+  // is right. Stamping the build lets the benchmark refuse two arms that did
+  // not come from the same source.
   if (typeof window !== "undefined") {
-    (window as unknown as { __TSR_ROUTER__?: unknown }).__TSR_ROUTER__ = router;
+    const win = window as unknown as {
+      __TSR_ROUTER__?: unknown;
+      __BUILD_ID__?: string | null;
+    };
+    win.__TSR_ROUTER__ = router;
+    win.__BUILD_ID__ = import.meta.env.VITE_BUILD_ID ?? null;
   }
 
   return router;

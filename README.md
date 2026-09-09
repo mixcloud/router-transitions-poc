@@ -91,8 +91,9 @@ so nothing but the router's publication path can account for a difference.
 ```bash
 pnpm exec playwright install chromium        # once
 
-VITE_CONCURRENT_FRAMES=0 pnpm build --outDir dist-control
-VITE_CONCURRENT_FRAMES=1 pnpm build --outDir dist-patched
+BUILD_ID=$(git rev-parse --short HEAD)
+VITE_BUILD_ID=$BUILD_ID VITE_CONCURRENT_FRAMES=0 pnpm build --outDir dist-control
+VITE_BUILD_ID=$BUILD_ID VITE_CONCURRENT_FRAMES=1 pnpm build --outDir dist-patched
 pnpm exec vite preview --outDir dist-control --port 4173 --strictPort &
 pnpm exec vite preview --outDir dist-patched --port 4174 --strictPort &
 
@@ -101,9 +102,11 @@ node scripts/benchmark-inp.mjs               # writes benchmark-results.json
 
 Restart both preview servers after any rebuild: each one loads a server bundle
 whose HTML references the previous build's hashed assets, so a stale server
-serves a page that never hydrates. Both witnesses catch it — the run fails on
-the arm check rather than measuring an unhydrated page — but the fix is the
-restart, not the script.
+serves a page that never hydrates. `--strictPort` also means a server left
+running from an earlier build keeps serving it. The run refuses both cases
+rather than measuring them — it waits for each server to answer, then requires
+every block to report the same `VITE_BUILD_ID` — but the fix is the restart,
+not the script.
 
 The demo's own routes render in well under a millisecond, far too little to show
 a scheduling difference, so `?rows=N` gives the destination route a controllable
@@ -120,7 +123,8 @@ is a claim about mechanism rather than a single number.
   view transitions and paint timing are real.
 - Interaction latency is computed the way INP defines it: group Event Timing
   entries by `interactionId`, take the maximum `duration` in each group.
-- Two independent witnesses confirm each block ran the build it claims: the mode
+- Three witnesses confirm each block ran the build it claims: the build stamp
+  must match across every block of both arms, the mode
   is read straight off the live router (`__TSR_ROUTER__.options`), and real
   `document.startViewTransition` calls are counted. The count is the
   application's own tally (`window.__vt`, kept by `src/TransitionCounter.tsx`);
@@ -128,9 +132,20 @@ is a claim about mechanism rather than a single number.
   rather than installing a second wrapper that would count each transition
   twice.
 
+- Every measured navigation must produce exactly the transitions its arm
+  requires — one on patched, none on control — or the run fails. A navigation
+  that painted without a transition is a different experiment, not a slower
+  sample of this one.
+
 Event Timing will not report an interaction shorter than 16ms, and rounds
 `duration` to 8ms. An absent entry is therefore a genuine measurement — faster
-than the API can see — not a missed sample.
+than the API can see — not a missed sample. Such a navigation is *left
+censored*: its latency is below the floor, so the floor is an upper bound for
+it, and that is the value it contributes. Dropping those samples instead would
+make each arm's distribution conditional on being slow enough to observe — the
+faster the arm, the more of its best navigations would vanish — so every
+percentile here is an upper bound on the real one, and the `<16` column says
+how many samples are bounded rather than observed.
 
 ### Results
 
