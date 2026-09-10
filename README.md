@@ -24,14 +24,17 @@ one synchronous commit and the image jumps.
 
 | | |
 | --- | --- |
-| `react` / `react-dom` | `19.3.0-canary-29d9d318-20260826` |
-| `@tanstack/react-router` | `1.170.34` |
+| `react` / `react-dom` | `19.3.0` |
+| `@tanstack/react-router` | `1.170.35` |
 | `@tanstack/react-start` | `1.168.49` |
 | `@tanstack/router-core` | `1.171.29` |
-| `@tanstack/react-store` | `0.9.3` |
+| `@tanstack/react-store` | `0.11.0` |
 | `vite` | `8.2.2` |
 
-React is pinned to a canary because that is where `<ViewTransition>` lives.
+React is on **19.3.0**, the stable release that ships `<ViewTransition>` — the
+package exports `ViewTransition` and `addTransitionType` from its production
+build, so this reproduction no longer needs a canary. It did until recently,
+and the pin here was a canary for exactly that reason.
 Note that pnpm is required, not incidental: TanStack's peer range
 (`>=18.0.0 || >=19.0.0`) does not match a prerelease under npm's semver rules,
 so `npm install` fails on it without `--legacy-peer-deps`. pnpm resolves it
@@ -287,7 +290,7 @@ plain `pnpm install` reproduces everything:
 
 | Patch | Package |
 | --- | --- |
-| `@tanstack__react-router@1.170.34.patch` | `@tanstack/react-router` |
+| `@tanstack__react-router@1.170.35.patch` | `@tanstack/react-router` |
 | `@tanstack__router-core@1.171.29.patch` | `@tanstack/router-core` |
 
 They replace `dist/` and `src/` with a build of
@@ -295,11 +298,14 @@ They replace `dist/` and `src/` with a build of
 Five caveats worth knowing:
 
 - That branch is now rebased onto TanStack Router `main` at
-  [`edeb199`](https://github.com/TanStack/router/commit/edeb199), the release
-  commit for `1.170.34` / `1.171.29` — the exact versions these patches target.
+  [`6494e753`](https://github.com/TanStack/router/commit/6494e753), the release
+  commit for `1.170.35` / `1.171.29` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `45f3bf2`. The published measurements are from `cc08459`, twenty-nine commits
+  is `ed86315`, which merges TanStack Router `main` at `6494e753` — the store
+  0.11 upgrade, which renames the React read hook to `useSelector` and moves
+  `compare` into an options object without changing what it does underneath.
+  The published measurements are from `cc08459`, thirty commits
   back: every commit since is correctness bookkeeping raised in review — a
   scope-keyed presentation identity, a head subscription for pending matchers,
   a per-router frame queue, weakly held owners, a structural-sharing cache
@@ -361,7 +367,7 @@ change `viewTransition: true`, which keeps working as before.
 src/routes/__root.tsx        shell + the view-transition counter badge
 src/routes/index.tsx         news list, both control buttons
 src/routes/article.$id.tsx   detail page, big hero image
-src/ViewTransition.tsx       typed re-export of the canary API
+src/ViewTransition.tsx       typed re-export of the React 19.3 API
 src/data/articles.ts         the five hard-coded articles
 src/router.tsx               where experimental_concurrentRenderFrames is set
 src/SyntheticRows.tsx        controllable render load for the benchmark
