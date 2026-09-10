@@ -312,28 +312,37 @@ const browser = await chromium.launch({
   args: ['--enable-experimental-web-platform-features'],
 })
 
-await Promise.all([waitForServer(CONTROL), waitForServer(PATCHED)])
-
 const blocks = []
-for (const rows of ROWS) {
-  for (let b = 0; b < BLOCKS; b++) {
-    const order =
-      b % 2 === 0
-        ? [
-            ['control', CONTROL],
-            ['patched', PATCHED],
-          ]
-        : [
-            ['patched', PATCHED],
-            ['control', CONTROL],
-          ]
-    for (const [label, base] of order) {
-      process.stderr.write(`rows=${rows} block ${b + 1}/${BLOCKS} ${label}\n`)
-      blocks.push(await runBlock(browser, label, base, rows))
+// Every validation in `runBlock` throws on purpose — a stale build stamp, the
+// wrong mode, a navigation with no transition — and a throw here is the run
+// reporting a problem rather than publishing a number it cannot stand behind.
+// Without the `finally`, that throw skipped `browser.close()`: the diagnostic
+// never reached the terminal because the process stayed alive holding an open
+// Chromium.
+try {
+  await Promise.all([waitForServer(CONTROL), waitForServer(PATCHED)])
+
+  for (const rows of ROWS) {
+    for (let b = 0; b < BLOCKS; b++) {
+      const order =
+        b % 2 === 0
+          ? [
+              ['control', CONTROL],
+              ['patched', PATCHED],
+            ]
+          : [
+              ['patched', PATCHED],
+              ['control', CONTROL],
+            ]
+      for (const [label, base] of order) {
+        process.stderr.write(`rows=${rows} block ${b + 1}/${BLOCKS} ${label}\n`)
+        blocks.push(await runBlock(browser, label, base, rows))
+      }
     }
   }
+} finally {
+  await browser.close()
 }
-await browser.close()
 
 const sweep = ROWS.map((rows) => {
   const arms = {}
