@@ -460,10 +460,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..def06435a256f95d6c0dbd121eb111578693d934
+index 0000000000000000000000000000000000000000..332ba2ffd1c818e588d8ddff38eaf94426a67861
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,327 @@
+@@ -0,0 +1,330 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -703,7 +703,9 @@ index 0000000000000000000000000000000000000000..def06435a256f95d6c0dbd121eb11157
 +	const presenting = rebase(stored);
 +	const presentingRef = react.useRef(presenting);
 +	const committed = react.useRef(void 0);
++	const cachedBeforeRender = selector.snapshotCache?.();
 +	const rendered = selector(resolveFrame(scope, presenting.frameId));
++	selector.restoreCache?.(cachedBeforeRender);
 +	require_utils.useLayoutEffect(() => {
 +		committed.current = {
 +			value: rendered,
@@ -711,6 +713,7 @@ index 0000000000000000000000000000000000000000..def06435a256f95d6c0dbd121eb11157
 +			compare
 +		};
 +		presentingRef.current = presenting;
++		selector.restoreCache?.(rendered);
 +	});
 +	const getPresentedFrame = react.useCallback(() => resolveFrame(scope, presentingRef.current.frameId), [scope]);
 +	require_utils.useLayoutEffect(() => {
@@ -1675,10 +1678,10 @@ index 0000000000000000000000000000000000000000..5eef5e6786aa682f74c9c3096ef7c1f7
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..7204df6bdbe577046b873ae391adb528288a391c
+index 0000000000000000000000000000000000000000..ee58c06ff27bf2d30d806c288a4fca900fb21455
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,320 @@
+@@ -0,0 +1,323 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -1916,7 +1919,9 @@ index 0000000000000000000000000000000000000000..7204df6bdbe577046b873ae391adb528
 +	const presenting = rebase(stored);
 +	const presentingRef = React$1.useRef(presenting);
 +	const committed = React$1.useRef(void 0);
++	const cachedBeforeRender = selector.snapshotCache?.();
 +	const rendered = selector(resolveFrame(scope, presenting.frameId));
++	selector.restoreCache?.(cachedBeforeRender);
 +	useLayoutEffect(() => {
 +		committed.current = {
 +			value: rendered,
@@ -1924,6 +1929,7 @@ index 0000000000000000000000000000000000000000..7204df6bdbe577046b873ae391adb528
 +			compare
 +		};
 +		presentingRef.current = presenting;
++		selector.restoreCache?.(rendered);
 +	});
 +	const getPresentedFrame = React$1.useCallback(() => resolveFrame(scope, presentingRef.current.frameId), [scope]);
 +	useLayoutEffect(() => {
@@ -2950,10 +2956,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..82049744ac9c3f9d3e3c8bc913e2e00953341637
+index 0000000000000000000000000000000000000000..314b5a25afd1807694736a6a22aa9b69d9873d4b
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,593 @@
+@@ -0,0 +1,608 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3403,12 +3409,27 @@ index 0000000000000000000000000000000000000000..82049744ac9c3f9d3e3c8bc913e2e009
 +  // earlier one commits, and the earlier tree's effect would then record a
 +  // selection that was never on its screen — enough to skip a re-render it
 +  // needed.
++  //
++  // A structural-sharing selector caches its last result to keep the selection
++  // referentially stable, and this render may be one of the discarded ones —
++  // so the cache is put back to what committed, and this render's value is
++  // published only once it commits, below. Left in place, a discarded render's
++  // write describes a selection nobody saw: the still-visible tree's next
++  // render would compare its own frame against that, find it different, and
++  // hand back a fresh object, taking every memoized child with it. The
++  // restore is a write-then-restore of the same ref, so it leaves render as
++  // pure as it found it.
++  const cachedBeforeRender = selector.snapshotCache?.()
 +  const rendered = selector(resolveFrame(scope, presenting.frameId))
++  selector.restoreCache?.(cachedBeforeRender)
 +
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
 +  useLayoutEffect(() => {
 +    committed.current = { value: rendered, selector, compare }
 +    presentingRef.current = presenting
++    // This render is on screen now, so its selection is the one the next
++    // render should keep stable.
++    selector.restoreCache?.(rendered)
 +  })
 +
 +  // eslint-disable-next-line react-hooks/rules-of-hooks
