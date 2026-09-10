@@ -96,7 +96,7 @@ index 1bc492c29f06575241b9928529556cf04ac48723..568f96f88890c31aa2e142abb2ae36c1
      match: AnyRouteMatch;
  }) => any>;
 diff --git a/dist/cjs/Matches.cjs b/dist/cjs/Matches.cjs
-index 09d60882fda470c287de14c39abdcd6d91a7024f..b739e7397aac091cc1e711756f0d06a58fccd5a8 100644
+index 09d60882fda470c287de14c39abdcd6d91a7024f..2b5bcb7a149bfe358c1b756d80df275d33fd2071 100644
 --- a/dist/cjs/Matches.cjs
 +++ b/dist/cjs/Matches.cjs
 @@ -4,6 +4,7 @@ const require_utils = require("./utils.cjs");
@@ -107,19 +107,21 @@ index 09d60882fda470c287de14c39abdcd6d91a7024f..b739e7397aac091cc1e711756f0d06a5
  const require_useMatch = require("./useMatch.cjs");
  const require_Transitioner = require("./Transitioner.cjs");
  const require_SafeFragment = require("./SafeFragment.cjs");
-@@ -21,24 +22,66 @@ let _tanstack_react_store = require("@tanstack/react-store");
+@@ -21,24 +22,68 @@ let _tanstack_react_store = require("@tanstack/react-store");
  */
  function Matches() {
  	const router = require_useRouter.useRouter();
 +	const routerStateOwner = require_routerStateContext.useRouterStateOwner();
 +	const [queuedFrames, setQueuedFrames] = react.useState(() => routerStateOwner?.pending ? new Map([[router, routerStateOwner.pending]]) : /* @__PURE__ */ new Map());
 +	const [adoptedRouter, setAdoptedRouter] = react.useState(router);
-+	if (adoptedRouter !== router) {
-+		setAdoptedRouter(router);
-+		if (!queuedFrames.get(router) && routerStateOwner?.pending) setQueuedFrames(new Map([[router, routerStateOwner.pending]]));
-+	}
-+	const renderFrame = queuedFrames.get(router);
-+	if (queuedFrames.size > (renderFrame ? 1 : 0)) setQueuedFrames(renderFrame ? new Map([[router, renderFrame]]) : /* @__PURE__ */ new Map());
++	const adopting = adoptedRouter !== router;
++	if (adopting) setAdoptedRouter(router);
++	let effectiveFrames = queuedFrames;
++	const queued = effectiveFrames.get(router);
++	if (adopting && !queued && routerStateOwner?.pending) effectiveFrames = new Map([[router, routerStateOwner.pending]]);
++	else if (effectiveFrames.size > (queued ? 1 : 0)) effectiveFrames = queued ? new Map([[router, queued]]) : /* @__PURE__ */ new Map();
++	if (effectiveFrames !== queuedFrames) setQueuedFrames(effectiveFrames);
++	const renderFrame = effectiveFrames.get(router);
 +	const setRenderFrame = react.useCallback((frame) => setQueuedFrames((previous) => {
 +		if (previous.get(router) === frame) return previous;
 +		const next = new Map(previous);
@@ -181,7 +183,7 @@ index 09d60882fda470c287de14c39abdcd6d91a7024f..b739e7397aac091cc1e711756f0d06a5
  	const matchComponent = routeId ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_Match.Match, { routeId }) : null;
  	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_matchContext.matchContext.Provider, {
  		value: routeId,
-@@ -79,6 +122,23 @@ function useMatchRoute() {
+@@ -79,6 +124,23 @@ function useMatchRoute() {
  			includeSearch
  		});
  	};
@@ -205,7 +207,7 @@ index 09d60882fda470c287de14c39abdcd6d91a7024f..b739e7397aac091cc1e711756f0d06a5
  	return react.useCallback((opts) => {
  		const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
  		return router.matchRoute(rest, {
-@@ -108,6 +168,10 @@ function MatchRoute(props) {
+@@ -108,6 +170,10 @@ function MatchRoute(props) {
  }
  function useMatches(opts) {
  	const router = require_useRouter.useRouter();
@@ -1388,7 +1390,7 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..98a640512b3ef625c1ddd0c46d77d115
  		children: nextMatch
  	});
 diff --git a/dist/esm/Matches.js b/dist/esm/Matches.js
-index 165886d6edb650b202f8e2b428aaab7c51d23bf7..a53fa9aa940a3e8c5873c6e4bf4e2930c52804cb 100644
+index 165886d6edb650b202f8e2b428aaab7c51d23bf7..f25fb3147f33bdaba3592942f180f24a2e59d2b7 100644
 --- a/dist/esm/Matches.js
 +++ b/dist/esm/Matches.js
 @@ -3,7 +3,8 @@ import { useLayoutEffect } from "./utils.js";
@@ -1401,19 +1403,21 @@ index 165886d6edb650b202f8e2b428aaab7c51d23bf7..a53fa9aa940a3e8c5873c6e4bf4e2930
  import { Transitioner, settleOwner } from "./Transitioner.js";
  import { SafeFragment } from "./SafeFragment.js";
  import { Match, renderPending } from "./Match.js";
-@@ -19,24 +20,66 @@ import { useStore } from "@tanstack/react-store";
+@@ -19,24 +20,68 @@ import { useStore } from "@tanstack/react-store";
  */
  function Matches() {
  	const router = useRouter();
 +	const routerStateOwner = useRouterStateOwner();
 +	const [queuedFrames, setQueuedFrames] = React$1.useState(() => routerStateOwner?.pending ? new Map([[router, routerStateOwner.pending]]) : /* @__PURE__ */ new Map());
 +	const [adoptedRouter, setAdoptedRouter] = React$1.useState(router);
-+	if (adoptedRouter !== router) {
-+		setAdoptedRouter(router);
-+		if (!queuedFrames.get(router) && routerStateOwner?.pending) setQueuedFrames(new Map([[router, routerStateOwner.pending]]));
-+	}
-+	const renderFrame = queuedFrames.get(router);
-+	if (queuedFrames.size > (renderFrame ? 1 : 0)) setQueuedFrames(renderFrame ? new Map([[router, renderFrame]]) : /* @__PURE__ */ new Map());
++	const adopting = adoptedRouter !== router;
++	if (adopting) setAdoptedRouter(router);
++	let effectiveFrames = queuedFrames;
++	const queued = effectiveFrames.get(router);
++	if (adopting && !queued && routerStateOwner?.pending) effectiveFrames = new Map([[router, routerStateOwner.pending]]);
++	else if (effectiveFrames.size > (queued ? 1 : 0)) effectiveFrames = queued ? new Map([[router, queued]]) : /* @__PURE__ */ new Map();
++	if (effectiveFrames !== queuedFrames) setQueuedFrames(effectiveFrames);
++	const renderFrame = effectiveFrames.get(router);
 +	const setRenderFrame = React$1.useCallback((frame) => setQueuedFrames((previous) => {
 +		if (previous.get(router) === frame) return previous;
 +		const next = new Map(previous);
@@ -1475,7 +1479,7 @@ index 165886d6edb650b202f8e2b428aaab7c51d23bf7..a53fa9aa940a3e8c5873c6e4bf4e2930
  	const matchComponent = routeId ? /* @__PURE__ */ jsx(Match, { routeId }) : null;
  	return /* @__PURE__ */ jsx(matchContext.Provider, {
  		value: routeId,
-@@ -77,6 +120,23 @@ function useMatchRoute() {
+@@ -77,6 +122,23 @@ function useMatchRoute() {
  			includeSearch
  		});
  	};
@@ -1499,7 +1503,7 @@ index 165886d6edb650b202f8e2b428aaab7c51d23bf7..a53fa9aa940a3e8c5873c6e4bf4e2930
  	return React$1.useCallback((opts) => {
  		const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
  		return router.matchRoute(rest, {
-@@ -106,6 +166,10 @@ function MatchRoute(props) {
+@@ -106,6 +168,10 @@ function MatchRoute(props) {
  }
  function useMatches(opts) {
  	const router = useRouter();
@@ -2707,7 +2711,7 @@ index 97b8f7958926aff039e63d90e4213a78e064fe2d..c5a943a3b42328657690fd9fc88f3e0b
        <React.Suspense fallback={renderPending(router)}>
          {nextMatch}
 diff --git a/src/Matches.tsx b/src/Matches.tsx
-index 576c40a16fee63e13794f0265d38a160e16d53bc..ca6a6beae85d37e95dc712ffad867ab5a7f93d40 100644
+index 576c40a16fee63e13794f0265d38a160e16d53bc..2fe643df95f646c3ff7e37c75ee6f7ae925501b9 100644
 --- a/src/Matches.tsx
 +++ b/src/Matches.tsx
 @@ -6,18 +6,27 @@ import { rootRouteId } from '@tanstack/router-core'
@@ -2747,7 +2751,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..ca6a6beae85d37e95dc712ffad867ab5
    ToSubOptionsProps,
  } from '@tanstack/router-core'
  
-@@ -47,13 +57,94 @@ declare module '@tanstack/router-core' {
+@@ -47,13 +57,104 @@ declare module '@tanstack/router-core' {
   */
  export function Matches() {
    const router = useRouter()
@@ -2791,24 +2795,34 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..ca6a6beae85d37e95dc712ffad867ab5
 +  // presenting and acknowledge it, which is the isolation this option exists
 +  // to provide.
 +  const [adoptedRouter, setAdoptedRouter] = React.useState(router)
-+  if (adoptedRouter !== router) {
++  const adopting = adoptedRouter !== router
++  if (adopting) {
 +    setAdoptedRouter(router)
-+    if (!queuedFrames.get(router) && routerStateOwner?.pending) {
-+      setQueuedFrames(new Map([[router, routerStateOwner.pending]]))
-+    }
 +  }
-+  const renderFrame = queuedFrames.get(router)
-+  // Keep only this router's slot. A dispatch that outlived its router can
-+  // insert one for a router this tree will never render again, and nothing
++
++  // Adoption and pruning decide the same value, so they are resolved together
++  // here rather than written separately. Two plain writes in one render do not
++  // compose — the second wins — so pruning against the pre-adoption map threw
++  // the adopted frame away, and the next render skipped adoption because the
++  // router had already been recorded.
++  //
++  // Pruning keeps only this router's slot. A dispatch that outlived its router
++  // can insert one for a router this tree will never render again, and nothing
 +  // else would remove it — every outgoing router and its route data would be
 +  // retained for the life of this component. Adjusting state during render is
 +  // React's own answer to this shape; the write below re-renders immediately,
 +  // so the map is bounded whatever a stale dispatch does.
-+  if (queuedFrames.size > (renderFrame ? 1 : 0)) {
-+    setQueuedFrames(
-+      renderFrame ? new Map([[router, renderFrame]]) : new Map(),
-+    )
++  let effectiveFrames = queuedFrames
++  const queued = effectiveFrames.get(router)
++  if (adopting && !queued && routerStateOwner?.pending) {
++    effectiveFrames = new Map([[router, routerStateOwner.pending]])
++  } else if (effectiveFrames.size > (queued ? 1 : 0)) {
++    effectiveFrames = queued ? new Map([[router, queued]]) : new Map()
 +  }
++  if (effectiveFrames !== queuedFrames) {
++    setQueuedFrames(effectiveFrames)
++  }
++  const renderFrame = effectiveFrames.get(router)
 +  const setRenderFrame = React.useCallback(
 +    (frame: RouterRenderFrame | undefined) =>
 +      setQueuedFrames((previous) => {
@@ -2844,7 +2858,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..ca6a6beae85d37e95dc712ffad867ab5
  
    const inner = (
      <>
-@@ -65,10 +156,21 @@ export function Matches() {
+@@ -65,10 +166,21 @@ export function Matches() {
            // router object, so React skips the update.
            // eslint-disable-next-line react-hooks/rules-of-hooks -- server only, condition is static
            t={React.useState<AnyRouter>()[1]}
@@ -2867,7 +2881,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..ca6a6beae85d37e95dc712ffad867ab5
        </ResolvedSuspense>
      </>
    )
-@@ -80,25 +182,55 @@ export function Matches() {
+@@ -80,25 +192,55 @@ export function Matches() {
    )
  }
  
@@ -2934,7 +2948,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..ca6a6beae85d37e95dc712ffad867ab5
  
    const matchComponent = routeId ? <Match routeId={routeId} /> : null
  
-@@ -177,6 +309,45 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
+@@ -177,6 +319,45 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
      }
    }
  
@@ -2980,7 +2994,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..ca6a6beae85d37e95dc712ffad867ab5
    // eslint-disable-next-line react-hooks/rules-of-hooks
    return React.useCallback(
      (opts) => {
-@@ -267,6 +438,19 @@ export function useMatches<
+@@ -267,6 +448,19 @@ export function useMatches<
  ): UseMatchesResult<TRouter, TSelected> {
    const router = useRouter<TRouter>()
  
