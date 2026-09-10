@@ -282,13 +282,13 @@ Four caveats worth knowing:
   commit for `1.170.34` / `1.171.29` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `a4b8383`. The published measurements are from `cc08459`, fifteen commits
+  is `5b1e5ff`. The published measurements are from `cc08459`, sixteen commits
   back: every commit since is correctness bookkeeping raised in review — a
   scope-keyed presentation identity, a head subscription for pending matchers,
   a per-router frame queue, weakly held owners, a structural-sharing cache
-  restored around a probe, a frozen frame-path decision, hydration not
-  remounting the route tree — and none of it changes the publication path the
-  experiment measures. Re-run the sweep if you want the numbers pinned to the
+  restored around a probe, a frame-path decision frozen per provider tree,
+  hydration not remounting the route tree — and none of it changes the
+  publication path the experiment measures. Re-run the sweep if you want the numbers pinned to the
   exact head; the commands are above and every witness is live.
 - Source maps are left untouched, so stepping through the patched packages in
   devtools will show stale mappings. The shipped code is correct; only the maps
