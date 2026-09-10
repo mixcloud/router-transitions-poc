@@ -96,7 +96,7 @@ index 1bc492c29f06575241b9928529556cf04ac48723..568f96f88890c31aa2e142abb2ae36c1
      match: AnyRouteMatch;
  }) => any>;
 diff --git a/dist/cjs/Matches.cjs b/dist/cjs/Matches.cjs
-index 09d60882fda470c287de14c39abdcd6d91a7024f..be339ea3466c91d4f250378bb7d93531954de42b 100644
+index 09d60882fda470c287de14c39abdcd6d91a7024f..a0b4dff576e508b44c7e4303a54a77ecb9abf9a1 100644
 --- a/dist/cjs/Matches.cjs
 +++ b/dist/cjs/Matches.cjs
 @@ -4,6 +4,7 @@ const require_utils = require("./utils.cjs");
@@ -112,7 +112,7 @@ index 09d60882fda470c287de14c39abdcd6d91a7024f..be339ea3466c91d4f250378bb7d93531
  function Matches() {
  	const router = require_useRouter.useRouter();
 +	const routerStateOwner = require_routerStateContext.useRouterStateOwner();
-+	const [queuedFrames, setQueuedFrames] = react.useState(() => /* @__PURE__ */ new Map());
++	const [queuedFrames, setQueuedFrames] = react.useState(() => routerStateOwner?.pending ? new Map([[router, routerStateOwner.pending]]) : /* @__PURE__ */ new Map());
 +	const renderFrame = queuedFrames.get(router);
 +	if (queuedFrames.size > (renderFrame ? 1 : 0)) setQueuedFrames(renderFrame ? new Map([[router, renderFrame]]) : /* @__PURE__ */ new Map());
 +	const setRenderFrame = react.useCallback((frame) => setQueuedFrames((previous) => {
@@ -464,10 +464,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ce07450fa311a1dfee196b11b307efe207cab467
+index 0000000000000000000000000000000000000000..53400e7e0ff2557baa985b74f78eb552d1aa0ef2
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,394 @@
+@@ -0,0 +1,397 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -573,6 +573,9 @@ index 0000000000000000000000000000000000000000..ce07450fa311a1dfee196b11b307efe2
 +		route,
 +		get frame() {
 +			return root.committed;
++		},
++		get pending() {
++			return pending;
 +		},
 +		begin: () => {
 +			staging = true;
@@ -865,10 +868,10 @@ index 0000000000000000000000000000000000000000..ce07450fa311a1dfee196b11b307efe2
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..97b67706fbf0214f82664e12eaef82e0ccf1a470
+index 0000000000000000000000000000000000000000..ce91c7f5ae5905ec21b9b1889c8be90e83c7316b
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,137 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.cjs';
 +import * as React from 'react';
@@ -916,6 +919,18 @@ index 0000000000000000000000000000000000000000..97b67706fbf0214f82664e12eaef82e0
 +    route: RouterStateScope;
 +    /** The committed frame. */
 +    frame: RouterRenderFrame;
++    /**
++     * The staged frame still waiting to be acknowledged, if any.
++     *
++     * An owner outlives the tree that was going to acknowledge its staged
++     * frame — the provider can unmount mid-navigation and mount again on the
++     * same router. A fresh `Matches` seeds its consumers from `staged`, so it
++     * renders that frame while acknowledging against the committed one, and
++     * nothing ever settles: the owner stays gated on `pending` and the router
++     * stays `pending` with it. Exposing it lets the new tree adopt the frame it
++     * is already rendering.
++     */
++    pending: RouterRenderFrame | undefined;
 +    begin: () => void;
 +    stage: (frame: RouterRenderFrame) => RouterRenderFrame;
 +    cancel: () => void;
@@ -1310,7 +1325,7 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..98a640512b3ef625c1ddd0c46d77d115
  		children: nextMatch
  	});
 diff --git a/dist/esm/Matches.js b/dist/esm/Matches.js
-index 165886d6edb650b202f8e2b428aaab7c51d23bf7..5aee5b7bc1d3d67b283355a9d57f6f5de5cdc3c8 100644
+index 165886d6edb650b202f8e2b428aaab7c51d23bf7..249ca6a252a0092ecbc254ad0d844f0d9dd630ff 100644
 --- a/dist/esm/Matches.js
 +++ b/dist/esm/Matches.js
 @@ -3,7 +3,8 @@ import { useLayoutEffect } from "./utils.js";
@@ -1328,7 +1343,7 @@ index 165886d6edb650b202f8e2b428aaab7c51d23bf7..5aee5b7bc1d3d67b283355a9d57f6f5d
  function Matches() {
  	const router = useRouter();
 +	const routerStateOwner = useRouterStateOwner();
-+	const [queuedFrames, setQueuedFrames] = React$1.useState(() => /* @__PURE__ */ new Map());
++	const [queuedFrames, setQueuedFrames] = React$1.useState(() => routerStateOwner?.pending ? new Map([[router, routerStateOwner.pending]]) : /* @__PURE__ */ new Map());
 +	const renderFrame = queuedFrames.get(router);
 +	if (queuedFrames.size > (renderFrame ? 1 : 0)) setQueuedFrames(renderFrame ? new Map([[router, renderFrame]]) : /* @__PURE__ */ new Map());
 +	const setRenderFrame = React$1.useCallback((frame) => setQueuedFrames((previous) => {
@@ -1677,10 +1692,10 @@ index a75a6159942121bcf30ef34d67733867d51d47b7..6ab2577dfa0a5b579b4088622e35f37d
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..1ef962bdf65839b850199425f447826efa37e3eb
+index 0000000000000000000000000000000000000000..3141e66713238b6a7f21ea2a82d4201c7840bad7
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,137 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.js';
 +import * as React from 'react';
@@ -1728,6 +1743,18 @@ index 0000000000000000000000000000000000000000..1ef962bdf65839b850199425f447826e
 +    route: RouterStateScope;
 +    /** The committed frame. */
 +    frame: RouterRenderFrame;
++    /**
++     * The staged frame still waiting to be acknowledged, if any.
++     *
++     * An owner outlives the tree that was going to acknowledge its staged
++     * frame — the provider can unmount mid-navigation and mount again on the
++     * same router. A fresh `Matches` seeds its consumers from `staged`, so it
++     * renders that frame while acknowledging against the committed one, and
++     * nothing ever settles: the owner stays gated on `pending` and the router
++     * stays `pending` with it. Exposing it lets the new tree adopt the frame it
++     * is already rendering.
++     */
++    pending: RouterRenderFrame | undefined;
 +    begin: () => void;
 +    stage: (frame: RouterRenderFrame) => RouterRenderFrame;
 +    cancel: () => void;
@@ -1808,10 +1835,10 @@ index 0000000000000000000000000000000000000000..1ef962bdf65839b850199425f447826e
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..6d1f5fdc6275902363bec1a7ff16e0463ad4e51f
+index 0000000000000000000000000000000000000000..c9f3c6b0a4f5c263ed6e8c54577818bf4282fa2c
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,386 @@
+@@ -0,0 +1,389 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -1915,6 +1942,9 @@ index 0000000000000000000000000000000000000000..6d1f5fdc6275902363bec1a7ff16e046
 +		route,
 +		get frame() {
 +			return root.committed;
++		},
++		get pending() {
++			return pending;
 +		},
 +		begin: () => {
 +			staging = true;
@@ -2552,7 +2582,7 @@ index 97b8f7958926aff039e63d90e4213a78e064fe2d..c5a943a3b42328657690fd9fc88f3e0b
        <React.Suspense fallback={renderPending(router)}>
          {nextMatch}
 diff --git a/src/Matches.tsx b/src/Matches.tsx
-index 576c40a16fee63e13794f0265d38a160e16d53bc..4fac50ff74ee7958fd1f19b9f64f5344de952662 100644
+index 576c40a16fee63e13794f0265d38a160e16d53bc..b2da02609023aa5697a30c65d80c8b674f10f8ea 100644
 --- a/src/Matches.tsx
 +++ b/src/Matches.tsx
 @@ -6,18 +6,27 @@ import { rootRouteId } from '@tanstack/router-core'
@@ -2592,7 +2622,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..4fac50ff74ee7958fd1f19b9f64f5344
    ToSubOptionsProps,
  } from '@tanstack/router-core'
  
-@@ -47,13 +57,64 @@ declare module '@tanstack/router-core' {
+@@ -47,13 +57,76 @@ declare module '@tanstack/router-core' {
   */
  export function Matches() {
    const router = useRouter()
@@ -2609,9 +2639,21 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..4fac50ff74ee7958fd1f19b9f64f5344
 +  // clobber the other, and reading only this router's slot keeps a foreign
 +  // frame out of the tree — `frameId` counts per router, so a collision could
 +  // otherwise commit the wrong router's snapshot outright.
++  //
++  // Seeded from the owner's in-flight frame, for the case where this tree is
++  // not the one that was offered it: a provider that unmounts mid-navigation
++  // and mounts again on the same router hands its cached owner to a fresh
++  // `Matches`, whose consumers seed from the staged publication. Without
++  // adopting it here, this tree renders that frame while acknowledging
++  // against the committed one, so the acknowledgement never settles and the
++  // navigation stays pending for good.
 +  const [queuedFrames, setQueuedFrames] = React.useState<
 +    ReadonlyMap<AnyRouter, RouterRenderFrame>
-+  >(() => new Map())
++  >(() =>
++    routerStateOwner?.pending
++      ? new Map([[router, routerStateOwner.pending]])
++      : new Map(),
++  )
 +  const renderFrame = queuedFrames.get(router)
 +  // Keep only this router's slot. A dispatch that outlived its router can
 +  // insert one for a router this tree will never render again, and nothing
@@ -2659,7 +2701,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..4fac50ff74ee7958fd1f19b9f64f5344
  
    const inner = (
      <>
-@@ -65,10 +126,21 @@ export function Matches() {
+@@ -65,10 +138,21 @@ export function Matches() {
            // router object, so React skips the update.
            // eslint-disable-next-line react-hooks/rules-of-hooks -- server only, condition is static
            t={React.useState<AnyRouter>()[1]}
@@ -2682,7 +2724,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..4fac50ff74ee7958fd1f19b9f64f5344
        </ResolvedSuspense>
      </>
    )
-@@ -80,25 +152,55 @@ export function Matches() {
+@@ -80,25 +164,55 @@ export function Matches() {
    )
  }
  
@@ -2749,7 +2791,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..4fac50ff74ee7958fd1f19b9f64f5344
  
    const matchComponent = routeId ? <Match routeId={routeId} /> : null
  
-@@ -177,6 +279,45 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
+@@ -177,6 +291,45 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
      }
    }
  
@@ -2795,7 +2837,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..4fac50ff74ee7958fd1f19b9f64f5344
    // eslint-disable-next-line react-hooks/rules-of-hooks
    return React.useCallback(
      (opts) => {
-@@ -267,6 +408,19 @@ export function useMatches<
+@@ -267,6 +420,19 @@ export function useMatches<
  ): UseMatchesResult<TRouter, TSelected> {
    const router = useRouter<TRouter>()
  
@@ -3208,10 +3250,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..7c2e0ac15ca49183fd41bd820207792daac4c6b6
+index 0000000000000000000000000000000000000000..c3795c4237389ab7b7032a16c4ea6b8db723e406
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,690 @@
+@@ -0,0 +1,705 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3267,6 +3309,18 @@ index 0000000000000000000000000000000000000000..7c2e0ac15ca49183fd41bd820207792d
 +  route: RouterStateScope
 +  /** The committed frame. */
 +  frame: RouterRenderFrame
++  /**
++   * The staged frame still waiting to be acknowledged, if any.
++   *
++   * An owner outlives the tree that was going to acknowledge its staged
++   * frame — the provider can unmount mid-navigation and mount again on the
++   * same router. A fresh `Matches` seeds its consumers from `staged`, so it
++   * renders that frame while acknowledging against the committed one, and
++   * nothing ever settles: the owner stays gated on `pending` and the router
++   * stays `pending` with it. Exposing it lets the new tree adopt the frame it
++   * is already rendering.
++   */
++  pending: RouterRenderFrame | undefined
 +  begin: () => void
 +  stage: (frame: RouterRenderFrame) => RouterRenderFrame
 +  cancel: () => void
@@ -3409,6 +3463,9 @@ index 0000000000000000000000000000000000000000..7c2e0ac15ca49183fd41bd820207792d
 +    route,
 +    get frame() {
 +      return root.committed
++    },
++    get pending() {
++      return pending
 +    },
 +    begin: () => {
 +      staging = true
