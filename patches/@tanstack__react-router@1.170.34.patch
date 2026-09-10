@@ -475,10 +475,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..48f4ef6393eae72c1afa092aa4033cd8eba28dd6
+index 0000000000000000000000000000000000000000..a8ca32cd9d8d89e91d3f12ed8c18252255beffca
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,417 @@
+@@ -0,0 +1,431 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -503,6 +503,19 @@ index 0000000000000000000000000000000000000000..48f4ef6393eae72c1afa092aa4033cd8
 +function resolveFrame(scope, frameId) {
 +	const staged = scope.staged;
 +	return staged && staged.frameId === frameId ? staged : scope.committed;
++}
++/**
++* Whether the head has moved away from a staged publication.
++*
++* The history key is compared as well as the href, because a replacement can
++* target the same URL with different state — same href, different entry — and
++* the frame staged before it is just as stale. The location decides this
++* rather than the frame identity: a publication that changes matches without
++* moving the location, a background refresh say, is not a supersession, and
++* treating it as one would wedge the navigation it belongs to.
++*/
++function isSuperseded(frame, head) {
++	return head.location.href !== frame.location.href || head.location.state.__TSR_key !== frame.location.state.__TSR_key;
 +}
 +/**
 +* Overlay navigation progress onto a publication without changing its content.
@@ -601,7 +614,8 @@ index 0000000000000000000000000000000000000000..48f4ef6393eae72c1afa092aa4033cd8
 +			return root.committed;
 +		},
 +		get pending() {
-+			return pending;
++			if (!pending) return;
++			return isSuperseded(pending, router.stores.__store.get()) ? void 0 : pending;
 +		},
 +		begin: () => {
 +			staging = true;
@@ -633,7 +647,7 @@ index 0000000000000000000000000000000000000000..48f4ef6393eae72c1afa092aa4033cd8
 +		},
 +		publish: () => {
 +			const head = router.stores.__store.get();
-+			if (pending !== void 0 && !staging && (head.location.href !== pending.location.href || head.location.state.__TSR_key !== pending.location.state.__TSR_key)) {
++			if (pending !== void 0 && !staging && isSuperseded(pending, head)) {
 +				owner.cancel();
 +				return;
 +			}
@@ -1928,10 +1942,10 @@ index 0000000000000000000000000000000000000000..1f0c35e0c715ddca4c6e0f98b7ad428a
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..de3d24be9fe24227c4164d4cddd8152c542dd7ae
+index 0000000000000000000000000000000000000000..9706d1ec315a9c04c8eb484cc10ee5444fd37486
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,408 @@
+@@ -0,0 +1,422 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -1954,6 +1968,19 @@ index 0000000000000000000000000000000000000000..de3d24be9fe24227c4164d4cddd8152c
 +function resolveFrame(scope, frameId) {
 +	const staged = scope.staged;
 +	return staged && staged.frameId === frameId ? staged : scope.committed;
++}
++/**
++* Whether the head has moved away from a staged publication.
++*
++* The history key is compared as well as the href, because a replacement can
++* target the same URL with different state — same href, different entry — and
++* the frame staged before it is just as stale. The location decides this
++* rather than the frame identity: a publication that changes matches without
++* moving the location, a background refresh say, is not a supersession, and
++* treating it as one would wedge the navigation it belongs to.
++*/
++function isSuperseded(frame, head) {
++	return head.location.href !== frame.location.href || head.location.state.__TSR_key !== frame.location.state.__TSR_key;
 +}
 +/**
 +* Overlay navigation progress onto a publication without changing its content.
@@ -2052,7 +2079,8 @@ index 0000000000000000000000000000000000000000..de3d24be9fe24227c4164d4cddd8152c
 +			return root.committed;
 +		},
 +		get pending() {
-+			return pending;
++			if (!pending) return;
++			return isSuperseded(pending, router.stores.__store.get()) ? void 0 : pending;
 +		},
 +		begin: () => {
 +			staging = true;
@@ -2084,7 +2112,7 @@ index 0000000000000000000000000000000000000000..de3d24be9fe24227c4164d4cddd8152c
 +		},
 +		publish: () => {
 +			const head = router.stores.__store.get();
-+			if (pending !== void 0 && !staging && (head.location.href !== pending.location.href || head.location.state.__TSR_key !== pending.location.state.__TSR_key)) {
++			if (pending !== void 0 && !staging && isSuperseded(pending, head)) {
 +				owner.cancel();
 +				return;
 +			}
@@ -3420,10 +3448,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..e97902ec30f3db2d407e85d5b3097d88f3bc113d
+index 0000000000000000000000000000000000000000..26003f54cc7fad3f8678dc75028d2340a67ac0ef
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,774 @@
+@@ -0,0 +1,793 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3519,6 +3547,26 @@ index 0000000000000000000000000000000000000000..e97902ec30f3db2d407e85d5b3097d88
 +): RouterRenderFrame {
 +  const staged = scope.staged
 +  return staged && staged.frameId === frameId ? staged : scope.committed
++}
++
++/**
++ * Whether the head has moved away from a staged publication.
++ *
++ * The history key is compared as well as the href, because a replacement can
++ * target the same URL with different state — same href, different entry — and
++ * the frame staged before it is just as stale. The location decides this
++ * rather than the frame identity: a publication that changes matches without
++ * moving the location, a background refresh say, is not a supersession, and
++ * treating it as one would wedge the navigation it belongs to.
++ */
++function isSuperseded(
++  frame: RouterRenderFrame,
++  head: RouterRenderFrame,
++): boolean {
++  return (
++    head.location.href !== frame.location.href ||
++    head.location.state.__TSR_key !== frame.location.state.__TSR_key
++  )
 +}
 +
 +/**
@@ -3678,7 +3726,19 @@ index 0000000000000000000000000000000000000000..e97902ec30f3db2d407e85d5b3097d88
 +      return root.committed
 +    },
 +    get pending() {
-+      return pending
++      // Only while the head still names it. A tree adopting this frame is one
++      // that was never offered it — it mounted, or returned to this router —
++      // and nothing cancelled it in between, because cancelling happens from
++      // the store subscription a provider holds and there may have been no
++      // provider to hold one. Adopting it then would acknowledge and commit a
++      // route the head has already left, and `publish` could no longer
++      // recognise it as pending in order to drop it.
++      if (!pending) {
++        return undefined
++      }
++      return isSuperseded(pending, router.stores.__store.get())
++        ? undefined
++        : pending
 +    },
 +    begin: () => {
 +      staging = true
@@ -3728,12 +3788,7 @@ index 0000000000000000000000000000000000000000..e97902ec30f3db2d407e85d5b3097d88
 +    },
 +    publish: () => {
 +      const head = router.stores.__store.get()
-+      const superseded =
-+        pending !== undefined &&
-+        !staging &&
-+        (head.location.href !== pending.location.href ||
-+          head.location.state.__TSR_key !== pending.location.state.__TSR_key)
-+      if (superseded) {
++      if (pending !== undefined && !staging && isSuperseded(pending, head)) {
 +        // Superseded before anything rendered it. A staged frame is offered
 +        // to a tree that may be suspended, and a replacement navigation moves
 +        // the head without publishing anything of its own until its own load
@@ -3744,14 +3799,6 @@ index 0000000000000000000000000000000000000000..e97902ec30f3db2d407e85d5b3097d88
 +        // fall back to the publication they are already presenting, which is
 +        // the route still on screen, and the successor stages its own frame
 +        // when it is ready.
-+        //
-+        // The history key is compared as well as the href, because a
-+        // replacement can target the same URL with different state — same
-+        // href, different entry — and that frame is just as stale. Comparing
-+        // the location rather than the frame identity is deliberate: a
-+        // publication that changes matches without moving the location, a
-+        // background refresh say, is not a supersession, and cancelling on it
-+        // would wedge the navigation it belongs to.
 +        owner.cancel()
 +        return
 +      }
