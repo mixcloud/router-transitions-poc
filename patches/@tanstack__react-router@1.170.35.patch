@@ -475,10 +475,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c25d8c8f433831216536caff9765ac8fa4d69ce5
+index 0000000000000000000000000000000000000000..e31965b044eaad3c441aa721e04a4cced2b2a3e2
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,445 @@
+@@ -0,0 +1,451 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -595,6 +595,7 @@ index 0000000000000000000000000000000000000000..c25d8c8f433831216536caff9765ac8f
 +	const route = createScope(router, initial);
 +	let staging = false;
 +	let pending;
++	let publicationTx;
 +	const syncProgress = (head) => {
 +		let changed = false;
 +		for (const scope of [root, route]) {
@@ -629,9 +630,14 @@ index 0000000000000000000000000000000000000000..c25d8c8f433831216536caff9765ac8f
 +		},
 +		begin: () => {
 +			staging = true;
++			publicationTx = router._tx;
 +		},
 +		stage: (nextFrame) => {
 +			staging = false;
++			if (router._tx !== publicationTx) {
++				owner.cancel();
++				return;
++			}
 +			pending = nextFrame;
 +			route.staged = nextFrame;
 +			route.notify(nextFrame);
@@ -927,10 +933,10 @@ index 0000000000000000000000000000000000000000..c25d8c8f433831216536caff9765ac8f
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..68f35aaa75aaa46a957de70237c8e5e38529535a
+index 0000000000000000000000000000000000000000..da6c701bde6767dad99467f80c6b12b0ec0f9f8b
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,154 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.cjs';
 +import * as React from 'react';
@@ -991,7 +997,11 @@ index 0000000000000000000000000000000000000000..68f35aaa75aaa46a957de70237c8e5e3
 +     */
 +    pending: RouterRenderFrame | undefined;
 +    begin: () => void;
-+    stage: (frame: RouterRenderFrame) => RouterRenderFrame;
++    /**
++     * Offer a frame for this publication, or `undefined` when the publication
++     * was re-entered and the aggregate no longer describes one of them.
++     */
++    stage: (frame: RouterRenderFrame) => RouterRenderFrame | undefined;
 +    cancel: () => void;
 +    commit: (frame: RouterRenderFrame) => boolean;
 +    publish: () => void;
@@ -1800,10 +1810,10 @@ index a75a6159942121bcf30ef34d67733867d51d47b7..6ab2577dfa0a5b579b4088622e35f37d
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..1f0c35e0c715ddca4c6e0f98b7ad428a39bcd5c9
+index 0000000000000000000000000000000000000000..629bae522cab1c2e0615bf014031ef68f9b4407b
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,154 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.js';
 +import * as React from 'react';
@@ -1864,7 +1874,11 @@ index 0000000000000000000000000000000000000000..1f0c35e0c715ddca4c6e0f98b7ad428a
 +     */
 +    pending: RouterRenderFrame | undefined;
 +    begin: () => void;
-+    stage: (frame: RouterRenderFrame) => RouterRenderFrame;
++    /**
++     * Offer a frame for this publication, or `undefined` when the publication
++     * was re-entered and the aggregate no longer describes one of them.
++     */
++    stage: (frame: RouterRenderFrame) => RouterRenderFrame | undefined;
 +    cancel: () => void;
 +    commit: (frame: RouterRenderFrame) => boolean;
 +    publish: () => void;
@@ -1956,10 +1970,10 @@ index 0000000000000000000000000000000000000000..1f0c35e0c715ddca4c6e0f98b7ad428a
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..1d17a25c7d2947785bed918ccc44330a0410bef8
+index 0000000000000000000000000000000000000000..6501cddd51011fb29df15b8b7bbbb9638c526863
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,436 @@
+@@ -0,0 +1,442 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2074,6 +2088,7 @@ index 0000000000000000000000000000000000000000..1d17a25c7d2947785bed918ccc44330a
 +	const route = createScope(router, initial);
 +	let staging = false;
 +	let pending;
++	let publicationTx;
 +	const syncProgress = (head) => {
 +		let changed = false;
 +		for (const scope of [root, route]) {
@@ -2108,9 +2123,14 @@ index 0000000000000000000000000000000000000000..1d17a25c7d2947785bed918ccc44330a
 +		},
 +		begin: () => {
 +			staging = true;
++			publicationTx = router._tx;
 +		},
 +		stage: (nextFrame) => {
 +			staging = false;
++			if (router._tx !== publicationTx) {
++				owner.cancel();
++				return;
++			}
 +			pending = nextFrame;
 +			route.staged = nextFrame;
 +			route.notify(nextFrame);
@@ -3489,10 +3509,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..2942b6edadfbeb45c7e334c88d8065f4e70b78a0
+index 0000000000000000000000000000000000000000..c40ffa5b30b0eb747e05ae01c25462c0f177b0ea
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,823 @@
+@@ -0,0 +1,847 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3561,7 +3581,11 @@ index 0000000000000000000000000000000000000000..2942b6edadfbeb45c7e334c88d8065f4
 +   */
 +  pending: RouterRenderFrame | undefined
 +  begin: () => void
-+  stage: (frame: RouterRenderFrame) => RouterRenderFrame
++  /**
++   * Offer a frame for this publication, or `undefined` when the publication
++   * was re-entered and the aggregate no longer describes one of them.
++   */
++  stage: (frame: RouterRenderFrame) => RouterRenderFrame | undefined
 +  cancel: () => void
 +  commit: (frame: RouterRenderFrame) => boolean
 +  publish: () => void
@@ -3739,6 +3763,7 @@ index 0000000000000000000000000000000000000000..2942b6edadfbeb45c7e334c88d8065f4
 +  const route = createScope(router, initial)
 +  let staging = false
 +  let pending: RouterRenderFrame | undefined
++  let publicationTx: AnyRouter['_tx']
 +
 +  // Navigation progress is not route content. Both scopes stay on the route
 +  // they are presenting, but their status tracks the head, so progress UI —
@@ -3797,9 +3822,28 @@ index 0000000000000000000000000000000000000000..2942b6edadfbeb45c7e334c88d8065f4
 +    },
 +    begin: () => {
 +      staging = true
++      // The load transaction this publication belongs to. A frame is only
++      // assembled after the publication callback returns, and the callback
++      // ends by emitting `onLoad` and `onBeforeRouteMount` — user code, which
++      // may navigate. Such a navigation moves the location synchronously
++      // while the matches this publication just committed are still in the
++      // store, so the aggregate read afterwards is not a snapshot of any one
++      // publication: it pairs this route's matches with the successor's URL.
++      // The transaction identity is what tells them apart, and is the same
++      // thing `load-client` itself checks between those two emits.
++      publicationTx = router._tx
 +    },
 +    stage: (nextFrame) => {
 +      staging = false
++      if (router._tx !== publicationTx) {
++        // Re-entered. The aggregate belongs to no single publication, and
++        // `isSuperseded` cannot reject it later because its location *is*
++        // the head — that is precisely what the successor moved it to. Drop
++        // it: consumers keep the last coherent publication, and the
++        // successor stages its own frame when its load resolves.
++        owner.cancel()
++        return undefined
++      }
 +      pending = nextFrame
 +      // Only the route subtree is offered a staged publication, and only the
 +      // render that accepts it presents it. Readers outside that subtree, and
