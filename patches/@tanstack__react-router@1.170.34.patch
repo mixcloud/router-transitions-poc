@@ -1010,21 +1010,46 @@ index 0000000000000000000000000000000000000000..ce91c7f5ae5905ec21b9b1889c8be90e
 +export declare function useFrameRootBoundary(router: AnyRouter, isServerRender: boolean): boolean;
 +export {};
 diff --git a/dist/cjs/useCanGoBack.cjs b/dist/cjs/useCanGoBack.cjs
-index 42e5fb8bce9c3101b83534bcd089e669e31bf99a..66ff359ceb710a1ac4c43d57a3b42389a720cd76 100644
+index 42e5fb8bce9c3101b83534bcd089e669e31bf99a..b136ba6521c8a11e2279071d2bcce56571939287 100644
 --- a/dist/cjs/useCanGoBack.cjs
 +++ b/dist/cjs/useCanGoBack.cjs
-@@ -1,9 +1,11 @@
- const require_useRouter = require("./useRouter.cjs");
-+const require_routerStateContext = require("./routerStateContext.cjs");
+@@ -2,6 +2,18 @@ const require_useRouter = require("./useRouter.cjs");
  let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
  let _tanstack_react_store = require("@tanstack/react-store");
  //#region src/useCanGoBack.ts
++/**
++* Whether the browser can go back, which is not presented route content.
++*
++* Deliberately reads the head rather than the publication this position is
++* presenting, and so is an exception to the rule the rest of this adapter
++* follows. `history.back()` acts on the browser's history, not on the frame
++* on screen, so the answer has to describe the history the button would
++* actually move. During a staged navigation the two disagree: a push from
++* index 0 leaves the presented frame at 0 while the entry is already there to
++* pop, and a pending pop to index 0 leaves it at 1 — where a back control
++* would fire a second pop and leave the application.
++*/
  function useCanGoBack() {
  	const router = require_useRouter.useRouter();
-+	if (require_routerStateContext.useFrameMode(router)) return require_routerStateContext.useRouterStateSelector(router, (state) => state.location.state.__TSR_index !== 0);
  	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return router.stores.location.get().state.__TSR_index !== 0;
- 	return (0, _tanstack_react_store.useStore)(router.stores.location, (location) => location.state.__TSR_index !== 0);
- }
+diff --git a/dist/cjs/useCanGoBack.d.cts b/dist/cjs/useCanGoBack.d.cts
+index a6fdc13bcf727a650d8f1d4ad2456a3a27390a40..8bedc2348873916cceeac8562e0d2a7c7e950faf 100644
+--- a/dist/cjs/useCanGoBack.d.cts
++++ b/dist/cjs/useCanGoBack.d.cts
+@@ -1 +1,13 @@
++/**
++ * Whether the browser can go back, which is not presented route content.
++ *
++ * Deliberately reads the head rather than the publication this position is
++ * presenting, and so is an exception to the rule the rest of this adapter
++ * follows. `history.back()` acts on the browser's history, not on the frame
++ * on screen, so the answer has to describe the history the button would
++ * actually move. During a staged navigation the two disagree: a push from
++ * index 0 leaves the presented frame at 0 while the entry is already there to
++ * pop, and a pending pop to index 0 leaves it at 1 — where a back control
++ * would fire a second pop and leave the application.
++ */
+ export declare function useCanGoBack(): boolean;
 diff --git a/dist/cjs/useLocation.cjs b/dist/cjs/useLocation.cjs
 index 298ca58600c50aafbdea22de49de99cddfe53817..ae0c140da48259bfbc45ef0c1a533e2894bcd224 100644
 --- a/dist/cjs/useLocation.cjs
@@ -2229,22 +2254,47 @@ index 0000000000000000000000000000000000000000..c9f3c6b0a4f5c263ed6e8c54577818bf
 +
 +//# sourceMappingURL=routerStateContext.js.map
 \ No newline at end of file
+diff --git a/dist/esm/useCanGoBack.d.ts b/dist/esm/useCanGoBack.d.ts
+index a6fdc13bcf727a650d8f1d4ad2456a3a27390a40..8bedc2348873916cceeac8562e0d2a7c7e950faf 100644
+--- a/dist/esm/useCanGoBack.d.ts
++++ b/dist/esm/useCanGoBack.d.ts
+@@ -1 +1,13 @@
++/**
++ * Whether the browser can go back, which is not presented route content.
++ *
++ * Deliberately reads the head rather than the publication this position is
++ * presenting, and so is an exception to the rule the rest of this adapter
++ * follows. `history.back()` acts on the browser's history, not on the frame
++ * on screen, so the answer has to describe the history the button would
++ * actually move. During a staged navigation the two disagree: a push from
++ * index 0 leaves the presented frame at 0 while the entry is already there to
++ * pop, and a pending pop to index 0 leaves it at 1 — where a back control
++ * would fire a second pop and leave the application.
++ */
+ export declare function useCanGoBack(): boolean;
 diff --git a/dist/esm/useCanGoBack.js b/dist/esm/useCanGoBack.js
-index edd68923c55ee831b53da0278a99fa2db82b378e..6a1cca21c1eaaf598f91dbd8f37bcf618b89757e 100644
+index edd68923c55ee831b53da0278a99fa2db82b378e..8b5009610c5c3f068448e6c1f3bf3c23e9372b63 100644
 --- a/dist/esm/useCanGoBack.js
 +++ b/dist/esm/useCanGoBack.js
-@@ -1,9 +1,11 @@
- import { useRouter } from "./useRouter.js";
-+import { useFrameMode, useRouterStateSelector } from "./routerStateContext.js";
+@@ -2,6 +2,18 @@ import { useRouter } from "./useRouter.js";
  import { isServer } from "@tanstack/router-core/isServer";
  import { useStore } from "@tanstack/react-store";
  //#region src/useCanGoBack.ts
++/**
++* Whether the browser can go back, which is not presented route content.
++*
++* Deliberately reads the head rather than the publication this position is
++* presenting, and so is an exception to the rule the rest of this adapter
++* follows. `history.back()` acts on the browser's history, not on the frame
++* on screen, so the answer has to describe the history the button would
++* actually move. During a staged navigation the two disagree: a push from
++* index 0 leaves the presented frame at 0 while the entry is already there to
++* pop, and a pending pop to index 0 leaves it at 1 — where a back control
++* would fire a second pop and leave the application.
++*/
  function useCanGoBack() {
  	const router = useRouter();
-+	if (useFrameMode(router)) return useRouterStateSelector(router, (state) => state.location.state.__TSR_index !== 0);
  	if (isServer ?? router.isServer) return router.stores.location.get().state.__TSR_index !== 0;
- 	return useStore(router.stores.location, (location) => location.state.__TSR_index !== 0);
- }
 diff --git a/dist/esm/useLocation.js b/dist/esm/useLocation.js
 index f0956ede1c6d3fd463201b281f4cd73073e5e9d7..516c543820f9e84dc74b5e3bed331db4bed085c1 100644
 --- a/dist/esm/useLocation.js
@@ -3960,32 +4010,28 @@ index 0000000000000000000000000000000000000000..c3795c4237389ab7b7032a16c4ea6b8d
 +  return useFrameMode(router) && !isServerRender && !router.ssr
 +}
 diff --git a/src/useCanGoBack.ts b/src/useCanGoBack.ts
-index a20f947f438b0c9170284a3f751a98d1feeddb44..a0afae298f156d0a0fd5d959db281b116be49984 100644
+index a20f947f438b0c9170284a3f751a98d1feeddb44..fced04f13202f495dba0a40bb715d2d3ef7e6359 100644
 --- a/src/useCanGoBack.ts
 +++ b/src/useCanGoBack.ts
-@@ -1,10 +1,22 @@
- import { useStore } from '@tanstack/react-store'
+@@ -2,6 +2,18 @@ import { useStore } from '@tanstack/react-store'
  import { isServer } from '@tanstack/router-core/isServer'
  import { useRouter } from './useRouter'
-+import {
-+  useFrameMode,
-+  useRouterStateSelector,
-+} from './routerStateContext'
  
++/**
++ * Whether the browser can go back, which is not presented route content.
++ *
++ * Deliberately reads the head rather than the publication this position is
++ * presenting, and so is an exception to the rule the rest of this adapter
++ * follows. `history.back()` acts on the browser's history, not on the frame
++ * on screen, so the answer has to describe the history the button would
++ * actually move. During a staged navigation the two disagree: a push from
++ * index 0 leaves the presented frame at 0 while the entry is already there to
++ * pop, and a pending pop to index 0 leaves it at 1 — where a back control
++ * would fire a second pop and leave the application.
++ */
  export function useCanGoBack() {
    const router = useRouter()
  
-+  if (useFrameMode(router)) {
-+    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
-+    return useRouterStateSelector(
-+      router,
-+      (state) => state.location.state.__TSR_index !== 0,
-+    )
-+  }
-+
-   if (isServer ?? router.isServer) {
-     return router.stores.location.get().state.__TSR_index !== 0
-   }
 diff --git a/src/useLocation.tsx b/src/useLocation.tsx
 index 5c8c7c8d7e6c17d229ca10f4d6d7022987ec6d07..21bd07ce4f34772c2e7c10c202c3bc74d375774c 100644
 --- a/src/useLocation.tsx
