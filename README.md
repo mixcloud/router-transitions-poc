@@ -275,7 +275,7 @@ plain `pnpm install` reproduces everything:
 
 They replace `dist/` and `src/` with a build of
 [`mixcloud/router@concurrent-router-render-frames`](https://github.com/mixcloud/router/tree/concurrent-router-render-frames).
-Three caveats worth knowing:
+Four caveats worth knowing:
 
 - That branch is now rebased onto TanStack Router `main` at
   [`edeb199`](https://github.com/TanStack/router/commit/edeb199), the release
@@ -294,6 +294,18 @@ Three caveats worth knowing:
   router build over the edit directory, `pnpm patch-commit`, then drop the
   `*.map` sections — they add an order of magnitude to the patch and tell a
   reviewer nothing.
+- This demo is **server-rendered** (`@tanstack/react-start`, so `router.ssr`
+  is set), which since
+  [`262c61e`](https://github.com/mixcloud/router/commit/262c61e) puts it on the
+  side of the option that keeps route-level Suspense boundaries rather than
+  consolidating at the frame root. The commit that rebuilt these patches says
+  the opposite in its message — that was wrong, and read off the layout of the
+  build output rather than checked. Checked properly:
+  `__TSR_ROUTER__.ssr` is set on the running app. The published table above
+  predates that commit, so it was measured with the consolidating boundary;
+  transitions and the latency shape were re-checked on this side afterwards and
+  are unchanged, which stands to reason — consolidation decides where
+  suspension resolves, and these routes do not suspend.
 - [mixcloud/Mixcloud#25470](https://github.com/mixcloud/Mixcloud/pull/25470)
   carries patches of the same branch, but no longer of the same commit: these
   are ahead of it. Refresh that PR's patches before comparing behaviour between
