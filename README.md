@@ -302,10 +302,12 @@ Four caveats worth knowing:
   the opposite in its message — that was wrong, and read off the layout of the
   build output rather than checked. Checked properly:
   `__TSR_ROUTER__.ssr` is set on the running app. The published table above
-  predates that commit, so it was measured with the consolidating boundary;
-  transitions and the latency shape were re-checked on this side afterwards and
-  are unchanged, which stands to reason — consolidation decides where
-  suspension resolves, and these routes do not suspend.
+  predates that commit, so it was measured with the consolidating boundary. Both
+  were re-checked on this side afterwards rather than argued: `pnpm verify`
+  still gives 1/0/0 and 1/1/1, and a 3-block sweep at `?rows=0` and `?rows=2000`
+  gives control p50 72ms and 848ms against a flat patched 40ms — the same shape
+  as the table. Consolidation decides where suspension resolves, and these
+  routes do not suspend, so the publication path is doing the work either way.
 - [mixcloud/Mixcloud#25470](https://github.com/mixcloud/Mixcloud/pull/25470)
   carries patches of the same branch, but no longer of the same commit: these
   are ahead of it. Refresh that PR's patches before comparing behaviour between
