@@ -28,7 +28,7 @@ one synchronous commit and the image jumps.
 | `@tanstack/react-router` | `1.170.35` |
 | `@tanstack/react-start` | `1.168.49` |
 | `@tanstack/router-core` | `1.171.29` |
-| `@tanstack/react-store` | `0.11.0` |
+| `@tanstack/react-store` | `0.11.1` |
 | `vite` | `8.2.2` |
 
 React is on **19.3.0**, the stable release that ships `<ViewTransition>` — the
@@ -302,10 +302,10 @@ Five caveats worth knowing:
   commit for `1.170.35` / `1.171.29` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `ab5c693`, on top of a merge of TanStack Router `main` at `6494e753` — the
+  is `a911dfa`, on top of a merge of TanStack Router `main` at `6494e753` — the
   store 0.11 upgrade, which renames the React read hook to `useSelector` and
   moves `compare` into an options object without changing what it does
-  underneath. The published measurements are from `cc08459`, thirty-three commits
+  underneath. The published measurements are from `cc08459`, thirty-five commits
   back: every commit since is correctness bookkeeping raised in review — a
   scope-keyed presentation identity, a head subscription for pending matchers,
   a per-router frame queue, weakly held owners, a structural-sharing cache
