@@ -464,10 +464,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e5db6b721b6b5484e0e893ae80d5ea4dd96188fa
+index 0000000000000000000000000000000000000000..35a40acdb4ce59bd70b5919d4f0b9ad285bf31ac
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,376 @@
+@@ -0,0 +1,379 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -529,6 +529,7 @@ index 0000000000000000000000000000000000000000..e5db6b721b6b5484e0e893ae80d5ea4d
 +* than keep publishing through the old router's scopes.
 +*/
 +function createOwner(router) {
++	const frameMode = Boolean(router.options.experimental_concurrentRenderFrames);
 +	const initial = router.stores.__store.get();
 +	const root = createScope(router, initial);
 +	const route = createScope(router, initial);
@@ -557,6 +558,7 @@ index 0000000000000000000000000000000000000000..e5db6b721b6b5484e0e893ae80d5ea4d
 +	};
 +	const owner = {
 +		router,
++		frameMode,
 +		root,
 +		route,
 +		get frame() {
@@ -732,8 +734,9 @@ index 0000000000000000000000000000000000000000..e5db6b721b6b5484e0e893ae80d5ea4d
 +* keeps the isolation behaviour it mounted with.
 +*/
 +function useFrameMode(router) {
++	const owner = react.useContext(routerStateOwnerContext);
 +	const [mode] = react.useState(() => Boolean(router.options.experimental_concurrentRenderFrames));
-+	return mode;
++	return owner?.router === router ? owner.frameMode : mode;
 +}
 +function useRouterStateSelector(router, selector, compare = defaultCompare, presentedFrame) {
 +	const ownerScope = react.useContext(routerStateScopeContext);
@@ -847,10 +850,10 @@ index 0000000000000000000000000000000000000000..e5db6b721b6b5484e0e893ae80d5ea4d
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..97b67706fbf0214f82664e12eaef82e0ccf1a470
+index 0000000000000000000000000000000000000000..f36326bbd3b28f70bdd8ca56fca4276f3063c7cf
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,134 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.cjs';
 +import * as React from 'react';
@@ -892,6 +895,15 @@ index 0000000000000000000000000000000000000000..97b67706fbf0214f82664e12eaef82e0
 +};
 +type RouterStateOwner = {
 +    router: AnyRouter;
++    /**
++     * Whether this router's tree reads through the frame path, decided when the
++     * owner is built and never revisited. The option is mutable —
++     * `RouterContextProvider` forwards prop updates through `router.update` —
++     * so a component mounting later could otherwise freeze a different answer
++     * than the tree around it, and read the head synchronously inside a route
++     * that is still presenting the committed publication.
++     */
++    frameMode: boolean;
 +    /** The committed scope, for readers outside the route tree. */
 +    root: RouterStateScope;
 +    /** The presentation scope, for the route subtree. */
@@ -1659,10 +1671,10 @@ index a75a6159942121bcf30ef34d67733867d51d47b7..6ab2577dfa0a5b579b4088622e35f37d
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..1ef962bdf65839b850199425f447826efa37e3eb
+index 0000000000000000000000000000000000000000..688f70a0b625a2e84a2c8f953b49129cbc80ca70
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,134 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.js';
 +import * as React from 'react';
@@ -1704,6 +1716,15 @@ index 0000000000000000000000000000000000000000..1ef962bdf65839b850199425f447826e
 +};
 +type RouterStateOwner = {
 +    router: AnyRouter;
++    /**
++     * Whether this router's tree reads through the frame path, decided when the
++     * owner is built and never revisited. The option is mutable —
++     * `RouterContextProvider` forwards prop updates through `router.update` —
++     * so a component mounting later could otherwise freeze a different answer
++     * than the tree around it, and read the head synchronously inside a route
++     * that is still presenting the committed publication.
++     */
++    frameMode: boolean;
 +    /** The committed scope, for readers outside the route tree. */
 +    root: RouterStateScope;
 +    /** The presentation scope, for the route subtree. */
@@ -1790,10 +1811,10 @@ index 0000000000000000000000000000000000000000..1ef962bdf65839b850199425f447826e
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..3d49cafaac4e2da572bae34f063967e49b9d5534
+index 0000000000000000000000000000000000000000..47b4051f5a3adeed831316a36d51d27351687594
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,368 @@
+@@ -0,0 +1,371 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -1853,6 +1874,7 @@ index 0000000000000000000000000000000000000000..3d49cafaac4e2da572bae34f063967e4
 +* than keep publishing through the old router's scopes.
 +*/
 +function createOwner(router) {
++	const frameMode = Boolean(router.options.experimental_concurrentRenderFrames);
 +	const initial = router.stores.__store.get();
 +	const root = createScope(router, initial);
 +	const route = createScope(router, initial);
@@ -1881,6 +1903,7 @@ index 0000000000000000000000000000000000000000..3d49cafaac4e2da572bae34f063967e4
 +	};
 +	const owner = {
 +		router,
++		frameMode,
 +		root,
 +		route,
 +		get frame() {
@@ -2056,8 +2079,9 @@ index 0000000000000000000000000000000000000000..3d49cafaac4e2da572bae34f063967e4
 +* keeps the isolation behaviour it mounted with.
 +*/
 +function useFrameMode(router) {
++	const owner = React$1.useContext(routerStateOwnerContext);
 +	const [mode] = React$1.useState(() => Boolean(router.options.experimental_concurrentRenderFrames));
-+	return mode;
++	return owner?.router === router ? owner.frameMode : mode;
 +}
 +function useRouterStateSelector(router, selector, compare = defaultCompare, presentedFrame) {
 +	const ownerScope = React$1.useContext(routerStateScopeContext);
@@ -3172,10 +3196,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..92d46001d6a3b87f532c078057166191a8da4ead
+index 0000000000000000000000000000000000000000..2cd6b0ad380c632c89fbd9a7ef439fc96c6e0c8f
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,655 @@
+@@ -0,0 +1,670 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3225,6 +3249,15 @@ index 0000000000000000000000000000000000000000..92d46001d6a3b87f532c078057166191
 +
 +type RouterStateOwner = {
 +  router: AnyRouter
++  /**
++   * Whether this router's tree reads through the frame path, decided when the
++   * owner is built and never revisited. The option is mutable —
++   * `RouterContextProvider` forwards prop updates through `router.update` —
++   * so a component mounting later could otherwise freeze a different answer
++   * than the tree around it, and read the head synchronously inside a route
++   * that is still presenting the committed publication.
++   */
++  frameMode: boolean
 +  /** The committed scope, for readers outside the route tree. */
 +  root: RouterStateScope
 +  /** The presentation scope, for the route subtree. */
@@ -3313,6 +3346,7 @@ index 0000000000000000000000000000000000000000..92d46001d6a3b87f532c078057166191
 + * than keep publishing through the old router's scopes.
 + */
 +function createOwner(router: AnyRouter): RouterStateOwner {
++  const frameMode = Boolean(router.options.experimental_concurrentRenderFrames)
 +  const initial = router.stores.__store.get()
 +  const root = createScope(router, initial)
 +  const route = createScope(router, initial)
@@ -3354,6 +3388,7 @@ index 0000000000000000000000000000000000000000..92d46001d6a3b87f532c078057166191
 +
 +  const owner: RouterStateOwner = {
 +    router,
++    frameMode,
 +    root,
 +    route,
 +    get frame() {
@@ -3576,10 +3611,14 @@ index 0000000000000000000000000000000000000000..92d46001d6a3b87f532c078057166191
 + * keeps the isolation behaviour it mounted with.
 + */
 +export function useFrameMode(router: AnyRouter): boolean {
++  // The tree's own answer wins where there is one, so every reader under a
++  // provider agrees with it however the option moves afterwards. Both hooks
++  // run unconditionally; only the choice between their values is conditional.
++  const owner = React.useContext(routerStateOwnerContext)
 +  const [mode] = React.useState(() =>
 +    Boolean(router.options.experimental_concurrentRenderFrames),
 +  )
-+  return mode
++  return owner?.router === router ? owner.frameMode : mode
 +}
 +
 +export function useRouterStateSelector<TSelected>(
