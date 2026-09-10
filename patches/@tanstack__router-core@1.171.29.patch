@@ -1,5 +1,5 @@
 diff --git a/dist/cjs/router.cjs b/dist/cjs/router.cjs
-index 9e19e01e42eb811254fedd6698429d1904fe789d..da11f59bd5fea1a3c42fe3345e344bdfe38be52e 100644
+index 9e19e01e42eb811254fedd6698429d1904fe789d..e49624368abd6f41f5a16c14ad7a9dc0100da183 100644
 --- a/dist/cjs/router.cjs
 +++ b/dist/cjs/router.cjs
 @@ -597,16 +597,19 @@ var RouterCore = class {
@@ -10,7 +10,7 @@ index 9e19e01e42eb811254fedd6698429d1904fe789d..da11f59bd5fea1a3c42fe3345e344bdf
 +			const isPending = (opts?.pending ? this.stores.status.get() : presentedState?.status ?? this.stores.status.get()) === "pending";
 +			if (opts?.pending && !isPending) return false;
 +			const pending = opts?.pending ?? !isPending;
-+			const baseLocation = presentedState && !opts?.pending ? pending ? presentedState.location : presentedState.resolvedLocation || presentedState.location : pending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
++			const baseLocation = presentedState && !opts?.pending ? presentedState.location : pending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
  			const matchLocation = {
  				...location,
  				to: location.to ? this.resolvePathWithBase(location.from || "", location.to) : void 0,
@@ -35,19 +35,27 @@ index 9e19e01e42eb811254fedd6698429d1904fe789d..da11f59bd5fea1a3c42fe3345e344bdf
  		status: "idle",
  		resolvedLocation: void 0,
 diff --git a/dist/cjs/router.d.cts b/dist/cjs/router.d.cts
-index a1b8ee08e6abfb1b6e68735c504eff51f38a9f03..e9b5ea7694f5b1aecaa3bc86de8daa027e007e09 100644
+index a1b8ee08e6abfb1b6e68735c504eff51f38a9f03..8eb721c04af505a620179aa70178a90d17f6f9e9 100644
 --- a/dist/cjs/router.d.cts
 +++ b/dist/cjs/router.d.cts
-@@ -395,6 +395,8 @@ export type LocationRewriteFunction = ({ url, }: {
+@@ -395,6 +395,16 @@ export type LocationRewriteFunction = ({ url, }: {
      url: URL;
  }) => undefined | string | URL;
  export interface RouterState<in out TRouteTree extends AnyRoute = AnyRoute, in out TRouteMatch = MakeRouteMatchUnion> {
-+    /** Monotonic identity for one atomically assembled render snapshot. */
++    /**
++     * Monotonic identity for one atomically assembled snapshot of route content
++     * — `location`, `matches`, `resolvedLocation`.
++     *
++     * Not a change token for the whole state: `status` and `isLoading` are
++     * progress, and an adapter may overlay them onto a snapshot a component is
++     * already presenting while keeping this identity, since it is what an
++     * acknowledgement is matched against.
++     */
 +    frameId: number;
      status: 'pending' | 'idle';
      isLoading: boolean;
      matches: Array<TRouteMatch>;
-@@ -624,7 +626,7 @@ export interface RouterCore<in out TRouteTree extends AnyRoute, in out TTrailing
+@@ -624,7 +634,7 @@ export interface RouterCore<in out TRouteTree extends AnyRoute, in out TTrailing
      _serverResult?: ServerLoadResult;
      /** Framework publication waiting for an exact render acknowledgement. */
      _rendered?: [
@@ -77,19 +85,27 @@ index c22bc4d735a45279c91616f9a2f3ba9e488f502f..687342f0b1a97aa8c0109922eee86c24
  		isLoading: status.get() === "pending",
  		matches: matches.get(),
 diff --git a/dist/esm/router.d.ts b/dist/esm/router.d.ts
-index e741fa61a585887ca0ccf969b52132611245d089..bda4e7e5688807b6e5633ce59fe94f53f24e5540 100644
+index e741fa61a585887ca0ccf969b52132611245d089..3b0d56293a5659148a1248e2ff0129e8c25471a1 100644
 --- a/dist/esm/router.d.ts
 +++ b/dist/esm/router.d.ts
-@@ -395,6 +395,8 @@ export type LocationRewriteFunction = ({ url, }: {
+@@ -395,6 +395,16 @@ export type LocationRewriteFunction = ({ url, }: {
      url: URL;
  }) => undefined | string | URL;
  export interface RouterState<in out TRouteTree extends AnyRoute = AnyRoute, in out TRouteMatch = MakeRouteMatchUnion> {
-+    /** Monotonic identity for one atomically assembled render snapshot. */
++    /**
++     * Monotonic identity for one atomically assembled snapshot of route content
++     * — `location`, `matches`, `resolvedLocation`.
++     *
++     * Not a change token for the whole state: `status` and `isLoading` are
++     * progress, and an adapter may overlay them onto a snapshot a component is
++     * already presenting while keeping this identity, since it is what an
++     * acknowledgement is matched against.
++     */
 +    frameId: number;
      status: 'pending' | 'idle';
      isLoading: boolean;
      matches: Array<TRouteMatch>;
-@@ -624,7 +626,7 @@ export interface RouterCore<in out TRouteTree extends AnyRoute, in out TTrailing
+@@ -624,7 +634,7 @@ export interface RouterCore<in out TRouteTree extends AnyRoute, in out TTrailing
      _serverResult?: ServerLoadResult;
      /** Framework publication waiting for an exact render acknowledgement. */
      _rendered?: [
@@ -99,7 +115,7 @@ index e741fa61a585887ca0ccf969b52132611245d089..bda4e7e5688807b6e5633ce59fe94f53
      ];
      /** Development-only HMR reload for a route and its descendants. */
 diff --git a/dist/esm/router.js b/dist/esm/router.js
-index 50a7b0868dbf162aafb51a25abd129cf3afcd993..5f7547c55270f631a126fa3e6193b31a8a0baea6 100644
+index 50a7b0868dbf162aafb51a25abd129cf3afcd993..48e2d6c660eb6d683b7f0694f6bc0dd6a15951b5 100644
 --- a/dist/esm/router.js
 +++ b/dist/esm/router.js
 @@ -597,16 +597,19 @@ var RouterCore = class {
@@ -110,7 +126,7 @@ index 50a7b0868dbf162aafb51a25abd129cf3afcd993..5f7547c55270f631a126fa3e6193b31a
 +			const isPending = (opts?.pending ? this.stores.status.get() : presentedState?.status ?? this.stores.status.get()) === "pending";
 +			if (opts?.pending && !isPending) return false;
 +			const pending = opts?.pending ?? !isPending;
-+			const baseLocation = presentedState && !opts?.pending ? pending ? presentedState.location : presentedState.resolvedLocation || presentedState.location : pending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
++			const baseLocation = presentedState && !opts?.pending ? presentedState.location : pending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
  			const matchLocation = {
  				...location,
  				to: location.to ? this.resolvePathWithBase(location.from || "", location.to) : void 0,
@@ -155,19 +171,27 @@ index 803b74b59ff23fbf3247b5130c26d17e14ca766f..1ee162103309c3dc6e00566d1c6ce9e2
  		isLoading: status.get() === "pending",
  		matches: matches.get(),
 diff --git a/src/router.ts b/src/router.ts
-index 4ae7554d2cd8e6a281319c2854cee04c5b8af4da..8e108f6ccd20c8e511e049b02e8777469d016707 100644
+index 4ae7554d2cd8e6a281319c2854cee04c5b8af4da..1edfdb0bb39870ff08bfd60cd60f994631ba2f78 100644
 --- a/src/router.ts
 +++ b/src/router.ts
-@@ -574,6 +574,8 @@ export interface RouterState<
+@@ -574,6 +574,16 @@ export interface RouterState<
    in out TRouteTree extends AnyRoute = AnyRoute,
    in out TRouteMatch = MakeRouteMatchUnion,
  > {
-+  /** Monotonic identity for one atomically assembled render snapshot. */
++  /**
++   * Monotonic identity for one atomically assembled snapshot of route content
++   * — `location`, `matches`, `resolvedLocation`.
++   *
++   * Not a change token for the whole state: `status` and `isLoading` are
++   * progress, and an adapter may overlay them onto a snapshot a component is
++   * already presenting while keeping this identity, since it is what an
++   * acknowledgement is matched against.
++   */
 +  frameId: number
    status: 'pending' | 'idle'
    isLoading: boolean
    matches: Array<TRouteMatch>
-@@ -1079,7 +1081,7 @@ export interface RouterCore<
+@@ -1079,7 +1089,7 @@ export interface RouterCore<
    _serverResult?: ServerLoadResult
    /** Framework publication waiting for an exact render acknowledgement. */
    _rendered?: [
@@ -176,7 +200,7 @@ index 4ae7554d2cd8e6a281319c2854cee04c5b8af4da..8e108f6ccd20c8e511e049b02e877746
      settle?: (rendered: boolean) => void,
    ]
    /** Development-only HMR reload for a route and its descendants. */
-@@ -2618,6 +2620,33 @@ export class RouterCore<
+@@ -2618,6 +2628,36 @@ export class RouterCore<
      TDefaultStructuralSharingOption,
      TRouterHistory
    > = (location, opts) => {
@@ -198,11 +222,14 @@ index 4ae7554d2cd8e6a281319c2854cee04c5b8af4da..8e108f6ccd20c8e511e049b02e877746
 +
 +    const pending = opts?.pending ?? !isPending
 +
++    // A presented frame is matched against its own `location`: that is the
++    // route the calling render is showing, which is the whole point of passing
++    // a frame. Its `resolvedLocation` still names the previous route while a
++    // successor is staged but unacknowledged, so consulting it would report the
++    // destination inactive for exactly the render that is presenting it.
 +    const baseLocation =
 +      presentedState && !opts?.pending
-+        ? pending
-+          ? presentedState.location
-+          : presentedState.resolvedLocation || presentedState.location
++        ? presentedState.location
 +        : pending
 +          ? this.latestLocation
 +          : this.stores.resolvedLocation.get() || this.stores.location.get()
@@ -210,7 +237,7 @@ index 4ae7554d2cd8e6a281319c2854cee04c5b8af4da..8e108f6ccd20c8e511e049b02e877746
      const matchLocation = {
        ...location,
        to: location.to
-@@ -2625,20 +2654,16 @@ export class RouterCore<
+@@ -2625,20 +2665,16 @@ export class RouterCore<
          : undefined,
        params: location.params || {},
        leaveParams: true,
@@ -238,7 +265,7 @@ index 4ae7554d2cd8e6a281319c2854cee04c5b8af4da..8e108f6ccd20c8e511e049b02e877746
      const match = findSingleMatch(
        next.pathname,
        opts?.caseSensitive ?? false,
-@@ -2767,6 +2792,7 @@ export function getInitialRouterState(
+@@ -2767,6 +2803,7 @@ export function getInitialRouterState(
    location: ParsedLocation,
  ): RouterState<any> {
    return {

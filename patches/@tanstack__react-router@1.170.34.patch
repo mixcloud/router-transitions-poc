@@ -473,10 +473,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..032d8f34eef6d0793d11048631226efde092818e
+index 0000000000000000000000000000000000000000..07254941c1ac8100efd4525469f9fc3a01fd08f5
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,405 @@
+@@ -0,0 +1,413 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -502,7 +502,15 @@ index 0000000000000000000000000000000000000000..032d8f34eef6d0793d11048631226efd
 +	const staged = scope.staged;
 +	return staged && staged.frameId === frameId ? staged : scope.committed;
 +}
-+/** Overlay navigation progress onto a publication without changing its content. */
++/**
++* Overlay navigation progress onto a publication without changing its content.
++*
++* Deliberately keeps the publication's `frameId`. That identity is what an
++* acknowledgement is matched against, so a new one here would orphan the
++* render presenting this publication — and it identifies route content, which
++* progress is not. Two states can therefore share a `frameId` and differ in
++* `status`, which the `RouterState` docs state as part of the contract.
++*/
 +function withProgress(frame, head) {
 +	if (frame.status === head.status && frame.isLoading === head.isLoading) return frame;
 +	return {
@@ -1912,10 +1920,10 @@ index 0000000000000000000000000000000000000000..1f0c35e0c715ddca4c6e0f98b7ad428a
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..880b3085622a51c86c80ebacedb4339e180d8ddf
+index 0000000000000000000000000000000000000000..9064eec85d1513f809d7876d4e40167f13510650
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,396 @@
+@@ -0,0 +1,404 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -1939,7 +1947,15 @@ index 0000000000000000000000000000000000000000..880b3085622a51c86c80ebacedb4339e
 +	const staged = scope.staged;
 +	return staged && staged.frameId === frameId ? staged : scope.committed;
 +}
-+/** Overlay navigation progress onto a publication without changing its content. */
++/**
++* Overlay navigation progress onto a publication without changing its content.
++*
++* Deliberately keeps the publication's `frameId`. That identity is what an
++* acknowledgement is matched against, so a new one here would orphan the
++* render presenting this publication — and it identifies route content, which
++* progress is not. Two states can therefore share a `frameId` and differ in
++* `status`, which the `RouterState` docs state as part of the contract.
++*/
 +function withProgress(frame, head) {
 +	if (frame.status === head.status && frame.isLoading === head.isLoading) return frame;
 +	return {
@@ -3382,10 +3398,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..e7b3fdf351ca62672f2d8deab874fa131e7e2253
+index 0000000000000000000000000000000000000000..b71b24a18deb280cd3421450b070db2efdbb4792
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,739 @@
+@@ -0,0 +1,747 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3483,7 +3499,15 @@ index 0000000000000000000000000000000000000000..e7b3fdf351ca62672f2d8deab874fa13
 +  return staged && staged.frameId === frameId ? staged : scope.committed
 +}
 +
-+/** Overlay navigation progress onto a publication without changing its content. */
++/**
++ * Overlay navigation progress onto a publication without changing its content.
++ *
++ * Deliberately keeps the publication's `frameId`. That identity is what an
++ * acknowledgement is matched against, so a new one here would orphan the
++ * render presenting this publication — and it identifies route content, which
++ * progress is not. Two states can therefore share a `frameId` and differ in
++ * `status`, which the `RouterState` docs state as part of the contract.
++ */
 +function withProgress(
 +  frame: RouterRenderFrame,
 +  head: RouterRenderFrame,

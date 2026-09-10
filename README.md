@@ -275,14 +275,14 @@ plain `pnpm install` reproduces everything:
 
 They replace `dist/` and `src/` with a build of
 [`mixcloud/router@concurrent-router-render-frames`](https://github.com/mixcloud/router/tree/concurrent-router-render-frames).
-Four caveats worth knowing:
+Five caveats worth knowing:
 
 - That branch is now rebased onto TanStack Router `main` at
   [`edeb199`](https://github.com/TanStack/router/commit/edeb199), the release
   commit for `1.170.34` / `1.171.29` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `ac22387`. The published measurements are from `cc08459`, twenty-one commits
+  is `369156a`. The published measurements are from `cc08459`, twenty-two commits
   back: every commit since is correctness bookkeeping raised in review — a
   scope-keyed presentation identity, a head subscription for pending matchers,
   a per-router frame queue, weakly held owners, a structural-sharing cache
@@ -290,6 +290,16 @@ Four caveats worth knowing:
   hydration not remounting the route tree — and none of it changes the
   publication path the experiment measures. Re-run the sweep if you want the numbers pinned to the
   exact head; the commands are above and every witness is live.
+- Until now only the `@tanstack/react-router` patch was regenerated on each
+  rebuild, so the `@tanstack/router-core` patch had carried its original build
+  since the first commit here — one revision behind
+  [`9af6f37`](https://github.com/mixcloud/router/commit/9af6f37), which changed
+  how `matchRoute` resolves a presented frame's base location. Both patches are
+  now rebuilt together from the same router commit. It does not touch the
+  publication path the benchmark measures, only active-state matching during a
+  staged navigation, so the published numbers stand — but the provenance claim
+  was wrong for one of the two patches and is worth recording rather than
+  quietly correcting.
 - Source maps are left untouched, so stepping through the patched packages in
   devtools will show stale mappings. The shipped code is correct; only the maps
   are. Regenerate with `pnpm patch <pkg>`, copy `dist/` and `src/` from the
