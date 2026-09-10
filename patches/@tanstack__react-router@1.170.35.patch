@@ -474,10 +474,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ac1f83a13728ab3bf0b9b6210145b5e3c9a697bb
+index 0000000000000000000000000000000000000000..1b421e5e02f744fc054693227b2a731da877d0bf
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,476 @@
+@@ -0,0 +1,502 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -613,8 +613,34 @@ index 0000000000000000000000000000000000000000..ac1f83a13728ab3bf0b9b6210145b5e3
 +* mount: a provider handed a different router has to build a new one rather
 +* than keep publishing through the old router's scopes.
 +*/
++/**
++* The publication a brand-new owner starts from.
++*
++* An owner can be built while a navigation is already in flight — a provider
++* mounted mid-navigation, or a router that committed its matches on the store
++* path before the option was turned on. The head is not a snapshot of one
++* publication at that moment: `location` is already the destination while
++* `matches` are still the ones on screen, which is the second half of what
++* this option exists to fix. Seeding both scopes from it presents the
++* successor's URL beside the previous route's content for the whole load.
++*
++* `resolvedLocation` is the location the committed matches were resolved for,
++* so pairing the two gives back a coherent publication. That is also exactly
++* what a tree that stayed mounted through the same navigation presents: the
++* route and URL it is showing, until the navigation commits. Mounting midway
++* should not be a different experience from having been there.
++*/
++function initialFrame(router) {
++	const head = router.stores.__store.get();
++	const resolved = router.stores.resolvedLocation.get();
++	if (!resolved || resolved.href === head.location.href) return head;
++	return {
++		...head,
++		location: resolved
++	};
++}
 +function createOwner(router) {
-+	const initial = router.stores.__store.get();
++	const initial = initialFrame(router);
 +	const root = createScope(router, initial);
 +	const route = createScope(router, initial);
 +	let staging = false;
@@ -2025,10 +2051,10 @@ index 0000000000000000000000000000000000000000..403d76bbb3f222f4aa604a2210968bf3
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..395c414ae54fa2e2d23f24c8cd0ee67c09a948d4
+index 0000000000000000000000000000000000000000..b3bb52b30924358c516114c6f387746cd838cda3
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,467 @@
+@@ -0,0 +1,493 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2162,8 +2188,34 @@ index 0000000000000000000000000000000000000000..395c414ae54fa2e2d23f24c8cd0ee67c
 +* mount: a provider handed a different router has to build a new one rather
 +* than keep publishing through the old router's scopes.
 +*/
++/**
++* The publication a brand-new owner starts from.
++*
++* An owner can be built while a navigation is already in flight — a provider
++* mounted mid-navigation, or a router that committed its matches on the store
++* path before the option was turned on. The head is not a snapshot of one
++* publication at that moment: `location` is already the destination while
++* `matches` are still the ones on screen, which is the second half of what
++* this option exists to fix. Seeding both scopes from it presents the
++* successor's URL beside the previous route's content for the whole load.
++*
++* `resolvedLocation` is the location the committed matches were resolved for,
++* so pairing the two gives back a coherent publication. That is also exactly
++* what a tree that stayed mounted through the same navigation presents: the
++* route and URL it is showing, until the navigation commits. Mounting midway
++* should not be a different experience from having been there.
++*/
++function initialFrame(router) {
++	const head = router.stores.__store.get();
++	const resolved = router.stores.resolvedLocation.get();
++	if (!resolved || resolved.href === head.location.href) return head;
++	return {
++		...head,
++		location: resolved
++	};
++}
 +function createOwner(router) {
-+	const initial = router.stores.__store.get();
++	const initial = initialFrame(router);
 +	const root = createScope(router, initial);
 +	const route = createScope(router, initial);
 +	let staging = false;
@@ -3589,10 +3641,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..248d12cb37708ee946be512ee0fe20137195d06a
+index 0000000000000000000000000000000000000000..8d6bdc3ab5c0e52a8329bae822466779a9691deb
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,877 @@
+@@ -0,0 +1,905 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3867,8 +3919,36 @@ index 0000000000000000000000000000000000000000..248d12cb37708ee946be512ee0fe2013
 + * mount: a provider handed a different router has to build a new one rather
 + * than keep publishing through the old router's scopes.
 + */
++/**
++ * The publication a brand-new owner starts from.
++ *
++ * An owner can be built while a navigation is already in flight — a provider
++ * mounted mid-navigation, or a router that committed its matches on the store
++ * path before the option was turned on. The head is not a snapshot of one
++ * publication at that moment: `location` is already the destination while
++ * `matches` are still the ones on screen, which is the second half of what
++ * this option exists to fix. Seeding both scopes from it presents the
++ * successor's URL beside the previous route's content for the whole load.
++ *
++ * `resolvedLocation` is the location the committed matches were resolved for,
++ * so pairing the two gives back a coherent publication. That is also exactly
++ * what a tree that stayed mounted through the same navigation presents: the
++ * route and URL it is showing, until the navigation commits. Mounting midway
++ * should not be a different experience from having been there.
++ */
++function initialFrame(router: AnyRouter): RouterRenderFrame {
++  const head = router.stores.__store.get()
++  const resolved = router.stores.resolvedLocation.get()
++  if (!resolved || resolved.href === head.location.href) {
++    return head
++  }
++  // Same matches, so the same route content and the same identity — only the
++  // location is put back to the one those matches belong to.
++  return { ...head, location: resolved }
++}
++
 +function createOwner(router: AnyRouter): RouterStateOwner {
-+  const initial = router.stores.__store.get()
++  const initial = initialFrame(router)
 +  const root = createScope(router, initial)
 +  const route = createScope(router, initial)
 +  let staging = false

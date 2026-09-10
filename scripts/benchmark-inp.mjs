@@ -65,8 +65,31 @@ const EXPECT_BUILD_ID = (() => {
  */
 const EVENT_TIMING_FLOOR_MS = 16
 
-const observers = (FLOOR) => {
-  window.__perf = { events: [], loafs: [] }
+/**
+ * The Event Timing entry type. A constant in every real run; overridable only
+ * so the support check below can be exercised against a browser that does
+ * support Event Timing, by asking for a type that nothing supports.
+ */
+const EVENT_ENTRY_TYPE = process.env.EVENT_ENTRY_TYPE ?? 'event'
+
+const observers = ({ FLOOR, EVENT_TYPE }) => {
+  // `supported` is recorded rather than assumed. A browser without Event
+  // Timing throws from `observe()`, and because that happens after `__perf`
+  // is assigned the page still looks instrumented: `events` stays empty, every
+  // navigation is then classified as faster than the floor, and the run
+  // publishes percentiles that were never measured. The same throw would also
+  // abort this script before the long-animation-frame observer registers.
+  const supported = PerformanceObserver.supportedEntryTypes ?? []
+  window.__perf = {
+    events: [],
+    loafs: [],
+    eventTiming: supported.includes(EVENT_TYPE),
+    longAnimationFrame: supported.includes('long-animation-frame'),
+  }
+
+  if (!window.__perf.eventTiming) {
+    return
+  }
 
   new PerformanceObserver((list) => {
     for (const e of list.getEntries()) {
@@ -82,10 +105,14 @@ const observers = (FLOOR) => {
       }
     }
   }).observe({
-    type: 'event',
+    type: EVENT_TYPE,
     durationThreshold: FLOOR,
     buffered: true,
   })
+
+  if (!window.__perf.longAnimationFrame) {
+    return
+  }
 
   new PerformanceObserver((list) => {
     for (const e of list.getEntries()) {
@@ -234,7 +261,11 @@ async function runBlock(browser, label, base, rows) {
 }
 
 async function measureBlock(context, label, base, rows) {
-  await context.addInitScript(observers, EVENT_TIMING_FLOOR_MS)
+  // One argument only: Playwright's `addInitScript` refuses more.
+  await context.addInitScript(observers, {
+    FLOOR: EVENT_TIMING_FLOOR_MS,
+    EVENT_TYPE: EVENT_ENTRY_TYPE,
+  })
   const page = await context.newPage()
 
   const cdp = await context.newCDPSession(page)
@@ -270,6 +301,29 @@ async function measureBlock(context, label, base, rows) {
         : `${base} serves build ${buildId}, but this run started against ` +
           `${requiredBuildId}. Both arms must be builds of the same source — ` +
           'rebuild and restart both preview servers.',
+    )
+  }
+
+  // Every latency in this run rests on Event Timing being live. Without it
+  // the observer registers nothing, `armLatencies` reads every navigation as
+  // faster than the floor, and the transition witnesses still pass — so the
+  // run would publish a table of numbers that were never measured.
+  const instrumented = await page.evaluate(() => ({
+    eventTiming: window.__perf?.eventTiming ?? false,
+    longAnimationFrame: window.__perf?.longAnimationFrame ?? false,
+  }))
+  if (!instrumented.eventTiming) {
+    throw new Error(
+      `${base} has no Event Timing support ('${EVENT_ENTRY_TYPE}' is not in ` +
+        'PerformanceObserver.supportedEntryTypes), so no interaction latency ' +
+        'can be measured. Use a full Chromium build — CHROME_PATH may be ' +
+        'pointing at one without it.',
+    )
+  }
+  if (!instrumented.longAnimationFrame) {
+    console.warn(
+      `${base} has no long-animation-frame support; the clickFrame and ` +
+        'blocking columns will be empty. Interaction latency is unaffected.',
     )
   }
 
