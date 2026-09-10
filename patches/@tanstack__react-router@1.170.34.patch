@@ -460,14 +460,13 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0c3ae68a437984b60da88ef91320fa4234047ea8
+index 0000000000000000000000000000000000000000..def06435a256f95d6c0dbd121eb111578693d934
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,321 @@
+@@ -0,0 +1,327 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
-+const require_ClientOnly = require("./ClientOnly.cjs");
 +let react = require("react");
 +react = require_runtime.__toESM(react, 1);
 +let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
@@ -765,16 +764,23 @@ index 0000000000000000000000000000000000000000..0c3ae68a437984b60da88ef91320fa42
 +/**
 +* Whether this render should consolidate route suspension at the frame root.
 +*
-+* Only the frame path asks, so `useHydrated` is never subscribed to on the
-+* default path. Within the frame branch the hook is unconditional, and the
-+* branch itself depends only on the option, which is fixed when the router is
-+* created.
++* Answered from the option and whether the app renders on the server, both
++* fixed for the tree's lifetime — deliberately, because this decides an
++* element *type*. It first followed hydration, which meant the wrapper at the
++* root of the route tree changed from a fragment to a `Suspense` boundary the
++* moment hydration finished: React reads a changed type as a replacement, so
++* the whole route subtree unmounted and remounted, re-running mount effects
++* and discarding anything a component had set up while hydrating.
++*
++* A server-rendered app therefore does not consolidate at all. It keeps
++* upstream's route-level boundaries, which is what its streamed HTML already
++* describes, and gives up atomic acknowledgement: a child that suspends
++* resolves at its own boundary, so a frame can be acknowledged while part of
++* the tree is still pending. That is upstream's behaviour today, and a far
++* better trade than remounting the route tree once per page load.
 +*/
 +function useFrameRootBoundary(router, isServerRender) {
-+	if (!useFrameMode(router)) return false;
-+	const hydrated = require_ClientOnly.useHydrated();
-+	const isHydrating = Boolean(router.ssr) && !hydrated;
-+	return !isServerRender && !isHydrating;
++	return useFrameMode(router) && !isServerRender && !router.ssr;
 +}
 +//#endregion
 +exports.RouterStateFrame = RouterStateFrame;
@@ -788,10 +794,10 @@ index 0000000000000000000000000000000000000000..0c3ae68a437984b60da88ef91320fa42
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..8252cc7e5ae5d6346a2ff409602087e35b49b637
+index 0000000000000000000000000000000000000000..1d66050845bc6f957974b08713facaeefb7534c3
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,112 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.cjs';
 +import * as React from 'react';
@@ -887,10 +893,20 @@ index 0000000000000000000000000000000000000000..8252cc7e5ae5d6346a2ff409602087e3
 +/**
 + * Whether this render should consolidate route suspension at the frame root.
 + *
-+ * Only the frame path asks, so `useHydrated` is never subscribed to on the
-+ * default path. Within the frame branch the hook is unconditional, and the
-+ * branch itself depends only on the option, which is fixed when the router is
-+ * created.
++ * Answered from the option and whether the app renders on the server, both
++ * fixed for the tree's lifetime — deliberately, because this decides an
++ * element *type*. It first followed hydration, which meant the wrapper at the
++ * root of the route tree changed from a fragment to a `Suspense` boundary the
++ * moment hydration finished: React reads a changed type as a replacement, so
++ * the whole route subtree unmounted and remounted, re-running mount effects
++ * and discarding anything a component had set up while hydrating.
++ *
++ * A server-rendered app therefore does not consolidate at all. It keeps
++ * upstream's route-level boundaries, which is what its streamed HTML already
++ * describes, and gives up atomic acknowledgement: a child that suspends
++ * resolves at its own boundary, so a frame can be acknowledged while part of
++ * the tree is still pending. That is upstream's behaviour today, and a far
++ * better trade than remounting the route tree once per page load.
 + */
 +export declare function useFrameRootBoundary(router: AnyRouter, isServerRender: boolean): boolean;
 +export {};
@@ -1541,10 +1557,10 @@ index a75a6159942121bcf30ef34d67733867d51d47b7..6ab2577dfa0a5b579b4088622e35f37d
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..f97a74b8809de13edb77665c290406721af7a37a
+index 0000000000000000000000000000000000000000..5eef5e6786aa682f74c9c3096ef7c1f75efa0018
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,112 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.js';
 +import * as React from 'react';
@@ -1640,22 +1656,31 @@ index 0000000000000000000000000000000000000000..f97a74b8809de13edb77665c29040672
 +/**
 + * Whether this render should consolidate route suspension at the frame root.
 + *
-+ * Only the frame path asks, so `useHydrated` is never subscribed to on the
-+ * default path. Within the frame branch the hook is unconditional, and the
-+ * branch itself depends only on the option, which is fixed when the router is
-+ * created.
++ * Answered from the option and whether the app renders on the server, both
++ * fixed for the tree's lifetime — deliberately, because this decides an
++ * element *type*. It first followed hydration, which meant the wrapper at the
++ * root of the route tree changed from a fragment to a `Suspense` boundary the
++ * moment hydration finished: React reads a changed type as a replacement, so
++ * the whole route subtree unmounted and remounted, re-running mount effects
++ * and discarding anything a component had set up while hydrating.
++ *
++ * A server-rendered app therefore does not consolidate at all. It keeps
++ * upstream's route-level boundaries, which is what its streamed HTML already
++ * describes, and gives up atomic acknowledgement: a child that suspends
++ * resolves at its own boundary, so a frame can be acknowledged while part of
++ * the tree is still pending. That is upstream's behaviour today, and a far
++ * better trade than remounting the route tree once per page load.
 + */
 +export declare function useFrameRootBoundary(router: AnyRouter, isServerRender: boolean): boolean;
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..b21b46fe9440166f940aca0c189d5adabe5c3d5b
+index 0000000000000000000000000000000000000000..7204df6bdbe577046b873ae391adb528288a391c
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,314 @@
+@@ -0,0 +1,320 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
-+import { useHydrated } from "./ClientOnly.js";
 +import * as React$1 from "react";
 +import { isServer } from "@tanstack/router-core/isServer";
 +import { jsx } from "react/jsx-runtime";
@@ -1952,16 +1977,23 @@ index 0000000000000000000000000000000000000000..b21b46fe9440166f940aca0c189d5ada
 +/**
 +* Whether this render should consolidate route suspension at the frame root.
 +*
-+* Only the frame path asks, so `useHydrated` is never subscribed to on the
-+* default path. Within the frame branch the hook is unconditional, and the
-+* branch itself depends only on the option, which is fixed when the router is
-+* created.
++* Answered from the option and whether the app renders on the server, both
++* fixed for the tree's lifetime — deliberately, because this decides an
++* element *type*. It first followed hydration, which meant the wrapper at the
++* root of the route tree changed from a fragment to a `Suspense` boundary the
++* moment hydration finished: React reads a changed type as a replacement, so
++* the whole route subtree unmounted and remounted, re-running mount effects
++* and discarding anything a component had set up while hydrating.
++*
++* A server-rendered app therefore does not consolidate at all. It keeps
++* upstream's route-level boundaries, which is what its streamed HTML already
++* describes, and gives up atomic acknowledgement: a child that suspends
++* resolves at its own boundary, so a frame can be acknowledged while part of
++* the tree is still pending. That is upstream's behaviour today, and a far
++* better trade than remounting the route tree once per page load.
 +*/
 +function useFrameRootBoundary(router, isServerRender) {
-+	if (!useFrameMode(router)) return false;
-+	const hydrated = useHydrated();
-+	const isHydrating = Boolean(router.ssr) && !hydrated;
-+	return !isServerRender && !isHydrating;
++	return useFrameMode(router) && !isServerRender && !router.ssr;
 +}
 +//#endregion
 +export { RouterStateFrame, RouterStateProvider, useFrameMode, useFrameRootBoundary, useRouterStateOwner, useRouterStateSelector };
@@ -2918,16 +2950,15 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..7889daf79ef0225998b4496d3cb35e435af92f5e
+index 0000000000000000000000000000000000000000..82049744ac9c3f9d3e3c8bc913e2e00953341637
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,590 @@
+@@ -0,0 +1,593 @@
 +'use client'
 +
 +import * as React from 'react'
 +import { isServer } from '@tanstack/router-core/isServer'
 +import { useLayoutEffect } from './utils'
-+import { useHydrated } from './ClientOnly'
 +import type { AnyRouter, RouterState } from '@tanstack/router-core'
 +import type { CacheableSelector } from './useMatch'
 +
@@ -3495,22 +3526,26 @@ index 0000000000000000000000000000000000000000..7889daf79ef0225998b4496d3cb35e43
 +/**
 + * Whether this render should consolidate route suspension at the frame root.
 + *
-+ * Only the frame path asks, so `useHydrated` is never subscribed to on the
-+ * default path. Within the frame branch the hook is unconditional, and the
-+ * branch itself depends only on the option, which is fixed when the router is
-+ * created.
++ * Answered from the option and whether the app renders on the server, both
++ * fixed for the tree's lifetime — deliberately, because this decides an
++ * element *type*. It first followed hydration, which meant the wrapper at the
++ * root of the route tree changed from a fragment to a `Suspense` boundary the
++ * moment hydration finished: React reads a changed type as a replacement, so
++ * the whole route subtree unmounted and remounted, re-running mount effects
++ * and discarding anything a component had set up while hydrating.
++ *
++ * A server-rendered app therefore does not consolidate at all. It keeps
++ * upstream's route-level boundaries, which is what its streamed HTML already
++ * describes, and gives up atomic acknowledgement: a child that suspends
++ * resolves at its own boundary, so a frame can be acknowledged while part of
++ * the tree is still pending. That is upstream's behaviour today, and a far
++ * better trade than remounting the route tree once per page load.
 + */
 +export function useFrameRootBoundary(
 +  router: AnyRouter,
 +  isServerRender: boolean,
 +): boolean {
-+  if (!useFrameMode(router)) {
-+    return false
-+  }
-+  // eslint-disable-next-line react-hooks/rules-of-hooks
-+  const hydrated = useHydrated()
-+  const isHydrating = Boolean(router.ssr) && !hydrated
-+  return !isServerRender && !isHydrating
++  return useFrameMode(router) && !isServerRender && !router.ssr
 +}
 diff --git a/src/useCanGoBack.ts b/src/useCanGoBack.ts
 index a20f947f438b0c9170284a3f751a98d1feeddb44..a0afae298f156d0a0fd5d959db281b116be49984 100644
