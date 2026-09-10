@@ -96,7 +96,7 @@ index 1bc492c29f06575241b9928529556cf04ac48723..568f96f88890c31aa2e142abb2ae36c1
      match: AnyRouteMatch;
  }) => any>;
 diff --git a/dist/cjs/Matches.cjs b/dist/cjs/Matches.cjs
-index 09d60882fda470c287de14c39abdcd6d91a7024f..20d1092e0132415da5b1719c7135b8e552fcbe85 100644
+index 09d60882fda470c287de14c39abdcd6d91a7024f..be339ea3466c91d4f250378bb7d93531954de42b 100644
 --- a/dist/cjs/Matches.cjs
 +++ b/dist/cjs/Matches.cjs
 @@ -4,6 +4,7 @@ const require_utils = require("./utils.cjs");
@@ -107,13 +107,14 @@ index 09d60882fda470c287de14c39abdcd6d91a7024f..20d1092e0132415da5b1719c7135b8e5
  const require_useMatch = require("./useMatch.cjs");
  const require_Transitioner = require("./Transitioner.cjs");
  const require_SafeFragment = require("./SafeFragment.cjs");
-@@ -21,24 +22,60 @@ let _tanstack_react_store = require("@tanstack/react-store");
+@@ -21,24 +22,61 @@ let _tanstack_react_store = require("@tanstack/react-store");
  */
  function Matches() {
  	const router = require_useRouter.useRouter();
 +	const routerStateOwner = require_routerStateContext.useRouterStateOwner();
 +	const [queuedFrames, setQueuedFrames] = react.useState(() => /* @__PURE__ */ new Map());
 +	const renderFrame = queuedFrames.get(router);
++	if (queuedFrames.size > (renderFrame ? 1 : 0)) setQueuedFrames(renderFrame ? new Map([[router, renderFrame]]) : /* @__PURE__ */ new Map());
 +	const setRenderFrame = react.useCallback((frame) => setQueuedFrames((previous) => {
 +		if (previous.get(router) === frame) return previous;
 +		const next = new Map(previous);
@@ -175,7 +176,7 @@ index 09d60882fda470c287de14c39abdcd6d91a7024f..20d1092e0132415da5b1719c7135b8e5
  	const matchComponent = routeId ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_Match.Match, { routeId }) : null;
  	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_matchContext.matchContext.Provider, {
  		value: routeId,
-@@ -79,6 +116,23 @@ function useMatchRoute() {
+@@ -79,6 +117,23 @@ function useMatchRoute() {
  			includeSearch
  		});
  	};
@@ -199,7 +200,7 @@ index 09d60882fda470c287de14c39abdcd6d91a7024f..20d1092e0132415da5b1719c7135b8e5
  	return react.useCallback((opts) => {
  		const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
  		return router.matchRoute(rest, {
-@@ -108,6 +162,10 @@ function MatchRoute(props) {
+@@ -108,6 +163,10 @@ function MatchRoute(props) {
  }
  function useMatches(opts) {
  	const router = require_useRouter.useRouter();
@@ -463,10 +464,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c4e9320267bcb8fcce3dbe7032d9e6901fc59963
+index 0000000000000000000000000000000000000000..e5db6b721b6b5484e0e893ae80d5ea4dd96188fa
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,355 @@
+@@ -0,0 +1,376 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -610,10 +611,31 @@ index 0000000000000000000000000000000000000000..c4e9320267bcb8fcce3dbe7032d9e690
 +	};
 +	return owner;
 +}
++/**
++* One owner per router, for the router's lifetime.
++*
++* Not a ref on the provider: a ref is shared by every tree rendering it, so a
++* render for another router — one that may be discarded — would replace the
++* owner belonging to the tree still on screen. A later render for the
++* original router would then build a *new* owner, seeded from that router's
++* current store head, which during a staged navigation is the destination:
++* the tree would expose the route being prepared and orphan the
++* acknowledgement the first owner is still waiting on.
++*
++* Keyed weakly, so an owner lives exactly as long as its router. Building one
++* is idempotent per router, so a discarded render costs nothing and a
++* surviving one finds the same owner.
++*/
++var ownersByRouter = /* @__PURE__ */ new WeakMap();
++function ownerFor(router) {
++	const existing = ownersByRouter.get(router);
++	if (existing) return existing;
++	const owner = createOwner(router);
++	ownersByRouter.set(router, owner);
++	return owner;
++}
 +function RouterStateProvider({ router, children }) {
-+	const ownerRef = react.useRef(void 0);
-+	if (!ownerRef.current || ownerRef.current.router !== router) ownerRef.current = createOwner(router);
-+	const owner = ownerRef.current;
++	const owner = ownerFor(router);
 +	require_utils.useLayoutEffect(() => {
 +		const subscription = router.stores.__store.subscribe(() => owner.publish());
 +		owner.publish();
@@ -1270,7 +1292,7 @@ index 7dffc446e563ea4f5826c5714ef011a391114635..98a640512b3ef625c1ddd0c46d77d115
  		children: nextMatch
  	});
 diff --git a/dist/esm/Matches.js b/dist/esm/Matches.js
-index 165886d6edb650b202f8e2b428aaab7c51d23bf7..e39e15dc8dbed7428369676f80fb5d2c37f52736 100644
+index 165886d6edb650b202f8e2b428aaab7c51d23bf7..5aee5b7bc1d3d67b283355a9d57f6f5de5cdc3c8 100644
 --- a/dist/esm/Matches.js
 +++ b/dist/esm/Matches.js
 @@ -3,7 +3,8 @@ import { useLayoutEffect } from "./utils.js";
@@ -1283,13 +1305,14 @@ index 165886d6edb650b202f8e2b428aaab7c51d23bf7..e39e15dc8dbed7428369676f80fb5d2c
  import { Transitioner, settleOwner } from "./Transitioner.js";
  import { SafeFragment } from "./SafeFragment.js";
  import { Match, renderPending } from "./Match.js";
-@@ -19,24 +20,60 @@ import { useStore } from "@tanstack/react-store";
+@@ -19,24 +20,61 @@ import { useStore } from "@tanstack/react-store";
  */
  function Matches() {
  	const router = useRouter();
 +	const routerStateOwner = useRouterStateOwner();
 +	const [queuedFrames, setQueuedFrames] = React$1.useState(() => /* @__PURE__ */ new Map());
 +	const renderFrame = queuedFrames.get(router);
++	if (queuedFrames.size > (renderFrame ? 1 : 0)) setQueuedFrames(renderFrame ? new Map([[router, renderFrame]]) : /* @__PURE__ */ new Map());
 +	const setRenderFrame = React$1.useCallback((frame) => setQueuedFrames((previous) => {
 +		if (previous.get(router) === frame) return previous;
 +		const next = new Map(previous);
@@ -1351,7 +1374,7 @@ index 165886d6edb650b202f8e2b428aaab7c51d23bf7..e39e15dc8dbed7428369676f80fb5d2c
  	const matchComponent = routeId ? /* @__PURE__ */ jsx(Match, { routeId }) : null;
  	return /* @__PURE__ */ jsx(matchContext.Provider, {
  		value: routeId,
-@@ -77,6 +114,23 @@ function useMatchRoute() {
+@@ -77,6 +115,23 @@ function useMatchRoute() {
  			includeSearch
  		});
  	};
@@ -1375,7 +1398,7 @@ index 165886d6edb650b202f8e2b428aaab7c51d23bf7..e39e15dc8dbed7428369676f80fb5d2c
  	return React$1.useCallback((opts) => {
  		const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
  		return router.matchRoute(rest, {
-@@ -106,6 +160,10 @@ function MatchRoute(props) {
+@@ -106,6 +161,10 @@ function MatchRoute(props) {
  }
  function useMatches(opts) {
  	const router = useRouter();
@@ -1767,10 +1790,10 @@ index 0000000000000000000000000000000000000000..1ef962bdf65839b850199425f447826e
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..57fe031b2abb5da3030674fad6612f6d26f24dbc
+index 0000000000000000000000000000000000000000..3d49cafaac4e2da572bae34f063967e49b9d5534
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,347 @@
+@@ -0,0 +1,368 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -1912,10 +1935,31 @@ index 0000000000000000000000000000000000000000..57fe031b2abb5da3030674fad6612f6d
 +	};
 +	return owner;
 +}
++/**
++* One owner per router, for the router's lifetime.
++*
++* Not a ref on the provider: a ref is shared by every tree rendering it, so a
++* render for another router — one that may be discarded — would replace the
++* owner belonging to the tree still on screen. A later render for the
++* original router would then build a *new* owner, seeded from that router's
++* current store head, which during a staged navigation is the destination:
++* the tree would expose the route being prepared and orphan the
++* acknowledgement the first owner is still waiting on.
++*
++* Keyed weakly, so an owner lives exactly as long as its router. Building one
++* is idempotent per router, so a discarded render costs nothing and a
++* surviving one finds the same owner.
++*/
++var ownersByRouter = /* @__PURE__ */ new WeakMap();
++function ownerFor(router) {
++	const existing = ownersByRouter.get(router);
++	if (existing) return existing;
++	const owner = createOwner(router);
++	ownersByRouter.set(router, owner);
++	return owner;
++}
 +function RouterStateProvider({ router, children }) {
-+	const ownerRef = React$1.useRef(void 0);
-+	if (!ownerRef.current || ownerRef.current.router !== router) ownerRef.current = createOwner(router);
-+	const owner = ownerRef.current;
++	const owner = ownerFor(router);
 +	useLayoutEffect(() => {
 +		const subscription = router.stores.__store.subscribe(() => owner.publish());
 +		owner.publish();
@@ -2472,7 +2516,7 @@ index 97b8f7958926aff039e63d90e4213a78e064fe2d..c5a943a3b42328657690fd9fc88f3e0b
        <React.Suspense fallback={renderPending(router)}>
          {nextMatch}
 diff --git a/src/Matches.tsx b/src/Matches.tsx
-index 576c40a16fee63e13794f0265d38a160e16d53bc..8e34dad28e08704be39dbcbf2732b7072493eaa2 100644
+index 576c40a16fee63e13794f0265d38a160e16d53bc..4fac50ff74ee7958fd1f19b9f64f5344de952662 100644
 --- a/src/Matches.tsx
 +++ b/src/Matches.tsx
 @@ -6,18 +6,27 @@ import { rootRouteId } from '@tanstack/router-core'
@@ -2512,7 +2556,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..8e34dad28e08704be39dbcbf2732b707
    ToSubOptionsProps,
  } from '@tanstack/router-core'
  
-@@ -47,13 +57,53 @@ declare module '@tanstack/router-core' {
+@@ -47,13 +57,64 @@ declare module '@tanstack/router-core' {
   */
  export function Matches() {
    const router = useRouter()
@@ -2533,6 +2577,17 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..8e34dad28e08704be39dbcbf2732b707
 +    ReadonlyMap<AnyRouter, RouterRenderFrame>
 +  >(() => new Map())
 +  const renderFrame = queuedFrames.get(router)
++  // Keep only this router's slot. A dispatch that outlived its router can
++  // insert one for a router this tree will never render again, and nothing
++  // else would remove it — every outgoing router and its route data would be
++  // retained for the life of this component. Adjusting state during render is
++  // React's own answer to this shape; the write below re-renders immediately,
++  // so the map is bounded whatever a stale dispatch does.
++  if (queuedFrames.size > (renderFrame ? 1 : 0)) {
++    setQueuedFrames(
++      renderFrame ? new Map([[router, renderFrame]]) : new Map(),
++    )
++  }
 +  const setRenderFrame = React.useCallback(
 +    (frame: RouterRenderFrame | undefined) =>
 +      setQueuedFrames((previous) => {
@@ -2568,7 +2623,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..8e34dad28e08704be39dbcbf2732b707
  
    const inner = (
      <>
-@@ -65,10 +115,21 @@ export function Matches() {
+@@ -65,10 +126,21 @@ export function Matches() {
            // router object, so React skips the update.
            // eslint-disable-next-line react-hooks/rules-of-hooks -- server only, condition is static
            t={React.useState<AnyRouter>()[1]}
@@ -2591,7 +2646,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..8e34dad28e08704be39dbcbf2732b707
        </ResolvedSuspense>
      </>
    )
-@@ -80,25 +141,55 @@ export function Matches() {
+@@ -80,25 +152,55 @@ export function Matches() {
    )
  }
  
@@ -2658,7 +2713,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..8e34dad28e08704be39dbcbf2732b707
  
    const matchComponent = routeId ? <Match routeId={routeId} /> : null
  
-@@ -177,6 +268,45 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
+@@ -177,6 +279,45 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
      }
    }
  
@@ -2704,7 +2759,7 @@ index 576c40a16fee63e13794f0265d38a160e16d53bc..8e34dad28e08704be39dbcbf2732b707
    // eslint-disable-next-line react-hooks/rules-of-hooks
    return React.useCallback(
      (opts) => {
-@@ -267,6 +397,19 @@ export function useMatches<
+@@ -267,6 +408,19 @@ export function useMatches<
  ): UseMatchesResult<TRouter, TSelected> {
    const router = useRouter<TRouter>()
  
@@ -3117,10 +3172,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..715739a998996f6f9afa0b0d4acd93f675b5c4e2
+index 0000000000000000000000000000000000000000..92d46001d6a3b87f532c078057166191a8da4ead
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,633 @@
+@@ -0,0 +1,655 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3374,6 +3429,33 @@ index 0000000000000000000000000000000000000000..715739a998996f6f9afa0b0d4acd93f6
 +  return owner
 +}
 +
++/**
++ * One owner per router, for the router's lifetime.
++ *
++ * Not a ref on the provider: a ref is shared by every tree rendering it, so a
++ * render for another router — one that may be discarded — would replace the
++ * owner belonging to the tree still on screen. A later render for the
++ * original router would then build a *new* owner, seeded from that router's
++ * current store head, which during a staged navigation is the destination:
++ * the tree would expose the route being prepared and orphan the
++ * acknowledgement the first owner is still waiting on.
++ *
++ * Keyed weakly, so an owner lives exactly as long as its router. Building one
++ * is idempotent per router, so a discarded render costs nothing and a
++ * surviving one finds the same owner.
++ */
++const ownersByRouter = new WeakMap<AnyRouter, RouterStateOwner>()
++
++function ownerFor(router: AnyRouter): RouterStateOwner {
++  const existing = ownersByRouter.get(router)
++  if (existing) {
++    return existing
++  }
++  const owner = createOwner(router)
++  ownersByRouter.set(router, owner)
++  return owner
++}
++
 +export function RouterStateProvider({
 +  router,
 +  children,
@@ -3384,12 +3466,7 @@ index 0000000000000000000000000000000000000000..715739a998996f6f9afa0b0d4acd93f6
 +  // Keyed by router identity. A mounted provider can be handed a different
 +  // router — a test rerender, HMR, switching tenant — and an owner built for
 +  // the previous one would keep reading and staging that router's state.
-+  const ownerRef = React.useRef<RouterStateOwner | undefined>(undefined)
-+  if (!ownerRef.current || ownerRef.current.router !== router) {
-+    ownerRef.current = createOwner(router)
-+  }
-+
-+  const owner = ownerRef.current
++  const owner = ownerFor(router)
 +
 +  useLayoutEffect(() => {
 +    const subscription = router.stores.__store.subscribe(() => owner.publish())
