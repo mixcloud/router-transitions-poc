@@ -460,10 +460,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..332ba2ffd1c818e588d8ddff38eaf94426a67861
+index 0000000000000000000000000000000000000000..c4e9320267bcb8fcce3dbe7032d9e6901fc59963
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,330 @@
+@@ -0,0 +1,355 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -632,6 +632,30 @@ index 0000000000000000000000000000000000000000..332ba2ffd1c818e588d8ddff38eaf944
 +		children
 +	});
 +}
++/**
++* The publication this position is presenting, for code that runs outside
++* render — an event handler resolving a navigation against the route the user
++* is looking at, say.
++*
++* Returns a getter, and subscribes to nothing: a scope's identity is stable
++* for the router's lifetime, so reading it costs no re-renders, and an
++* imperative caller wants the answer at call time anyway. It gives the
++* publication on screen: an event is delivered to the committed tree, so that
++* is the one it should resolve against. `undefined` off the frame path, where
++* the router's own head is the right source and already fresh.
++*/
++function usePresentedLocation(router) {
++	const scope = react.useContext(routerStateScopeContext);
++	const frameMode = useFrameMode(router);
++	return react.useMemo(() => {
++		if (!frameMode || !scope || scope.router !== router) return;
++		return () => scope.committed.location;
++	}, [
++		frameMode,
++		router,
++		scope
++	]);
++}
 +function useRouterStateOwner() {
 +	return react.useContext(routerStateOwnerContext);
 +}
@@ -790,6 +814,7 @@ index 0000000000000000000000000000000000000000..332ba2ffd1c818e588d8ddff38eaf944
 +exports.RouterStateProvider = RouterStateProvider;
 +exports.useFrameMode = useFrameMode;
 +exports.useFrameRootBoundary = useFrameRootBoundary;
++exports.usePresentedLocation = usePresentedLocation;
 +exports.useRouterStateOwner = useRouterStateOwner;
 +exports.useRouterStateSelector = useRouterStateSelector;
 +
@@ -797,10 +822,10 @@ index 0000000000000000000000000000000000000000..332ba2ffd1c818e588d8ddff38eaf944
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..1d66050845bc6f957974b08713facaeefb7534c3
+index 0000000000000000000000000000000000000000..97b67706fbf0214f82664e12eaef82e0ccf1a470
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,125 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.cjs';
 +import * as React from 'react';
@@ -862,6 +887,19 @@ index 0000000000000000000000000000000000000000..1d66050845bc6f957974b08713facaee
 +export declare function RouterStateFrame({ children }: {
 +    children: React.ReactNode;
 +}): import("react/jsx-runtime").JSX.Element;
++/**
++ * The publication this position is presenting, for code that runs outside
++ * render — an event handler resolving a navigation against the route the user
++ * is looking at, say.
++ *
++ * Returns a getter, and subscribes to nothing: a scope's identity is stable
++ * for the router's lifetime, so reading it costs no re-renders, and an
++ * imperative caller wants the answer at call time anyway. It gives the
++ * publication on screen: an event is delivered to the committed tree, so that
++ * is the one it should resolve against. `undefined` off the frame path, where
++ * the router's own head is the right source and already fresh.
++ */
++export declare function usePresentedLocation(router: AnyRouter): (() => RouterRenderFrame['location'] | undefined) | undefined;
 +export declare function useRouterStateOwner(): RouterStateOwner | undefined;
 +/**
 + * Whether this component reads through the frame path, decided once.
@@ -1080,6 +1118,38 @@ index bc32be4fc07754780db3246bcea571fcad4f0cdd..155007a42b5888fb4616a7d0df846885
  export interface UseMatchBaseOptions<TRouter extends AnyRouter, TFrom, TStrict extends boolean, TThrow extends boolean, TSelected, TStructuralSharing extends boolean> {
      select?: (match: MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict>) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
      shouldThrow?: TThrow;
+diff --git a/dist/cjs/useNavigate.cjs b/dist/cjs/useNavigate.cjs
+index acfc91708d94633c0b636ac9366882fd55c79b09..6e8f5116382de331fe9772b141cf22044bf68b6f 100644
+--- a/dist/cjs/useNavigate.cjs
++++ b/dist/cjs/useNavigate.cjs
+@@ -2,6 +2,7 @@
+ const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
+ const require_utils = require("./utils.cjs");
+ const require_useRouter = require("./useRouter.cjs");
++const require_routerStateContext = require("./routerStateContext.cjs");
+ let react = require("react");
+ react = require_runtime.__toESM(react, 1);
+ //#region src/useNavigate.tsx
+@@ -21,12 +22,18 @@ react = require_runtime.__toESM(react, 1);
+ */
+ function useNavigate(_defaultOpts) {
+ 	const router = require_useRouter.useRouter();
++	const presentedLocation = require_routerStateContext.usePresentedLocation(router);
+ 	return react.useCallback((options) => {
+ 		return router.navigate({
++			_fromLocation: presentedLocation?.(),
+ 			...options,
+ 			from: options.from ?? _defaultOpts?.from
+ 		});
+-	}, [_defaultOpts?.from, router]);
++	}, [
++		_defaultOpts?.from,
++		presentedLocation,
++		router
++	]);
+ }
+ /**
+ * Component that triggers a navigation when rendered. Navigation executes
 diff --git a/dist/cjs/useRouterState.cjs b/dist/cjs/useRouterState.cjs
 index 678f71e93dd9d9dda1097dc2ccc2a1916b5ea9fd..e56eda94a66c23cdea44a1ac89bd921175bab284 100644
 --- a/dist/cjs/useRouterState.cjs
@@ -1560,10 +1630,10 @@ index a75a6159942121bcf30ef34d67733867d51d47b7..6ab2577dfa0a5b579b4088622e35f37d
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..5eef5e6786aa682f74c9c3096ef7c1f75efa0018
+index 0000000000000000000000000000000000000000..1ef962bdf65839b850199425f447826efa37e3eb
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,125 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.js';
 +import * as React from 'react';
@@ -1625,6 +1695,19 @@ index 0000000000000000000000000000000000000000..5eef5e6786aa682f74c9c3096ef7c1f7
 +export declare function RouterStateFrame({ children }: {
 +    children: React.ReactNode;
 +}): import("react/jsx-runtime").JSX.Element;
++/**
++ * The publication this position is presenting, for code that runs outside
++ * render — an event handler resolving a navigation against the route the user
++ * is looking at, say.
++ *
++ * Returns a getter, and subscribes to nothing: a scope's identity is stable
++ * for the router's lifetime, so reading it costs no re-renders, and an
++ * imperative caller wants the answer at call time anyway. It gives the
++ * publication on screen: an event is delivered to the committed tree, so that
++ * is the one it should resolve against. `undefined` off the frame path, where
++ * the router's own head is the right source and already fresh.
++ */
++export declare function usePresentedLocation(router: AnyRouter): (() => RouterRenderFrame['location'] | undefined) | undefined;
 +export declare function useRouterStateOwner(): RouterStateOwner | undefined;
 +/**
 + * Whether this component reads through the frame path, decided once.
@@ -1678,10 +1761,10 @@ index 0000000000000000000000000000000000000000..5eef5e6786aa682f74c9c3096ef7c1f7
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..ee58c06ff27bf2d30d806c288a4fca900fb21455
+index 0000000000000000000000000000000000000000..57fe031b2abb5da3030674fad6612f6d26f24dbc
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,323 @@
+@@ -0,0 +1,347 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -1848,6 +1931,30 @@ index 0000000000000000000000000000000000000000..ee58c06ff27bf2d30d806c288a4fca90
 +		children
 +	});
 +}
++/**
++* The publication this position is presenting, for code that runs outside
++* render — an event handler resolving a navigation against the route the user
++* is looking at, say.
++*
++* Returns a getter, and subscribes to nothing: a scope's identity is stable
++* for the router's lifetime, so reading it costs no re-renders, and an
++* imperative caller wants the answer at call time anyway. It gives the
++* publication on screen: an event is delivered to the committed tree, so that
++* is the one it should resolve against. `undefined` off the frame path, where
++* the router's own head is the right source and already fresh.
++*/
++function usePresentedLocation(router) {
++	const scope = React$1.useContext(routerStateScopeContext);
++	const frameMode = useFrameMode(router);
++	return React$1.useMemo(() => {
++		if (!frameMode || !scope || scope.router !== router) return;
++		return () => scope.committed.location;
++	}, [
++		frameMode,
++		router,
++		scope
++	]);
++}
 +function useRouterStateOwner() {
 +	return React$1.useContext(routerStateOwnerContext);
 +}
@@ -2002,7 +2109,7 @@ index 0000000000000000000000000000000000000000..ee58c06ff27bf2d30d806c288a4fca90
 +	return useFrameMode(router) && !isServerRender && !router.ssr;
 +}
 +//#endregion
-+export { RouterStateFrame, RouterStateProvider, useFrameMode, useFrameRootBoundary, useRouterStateOwner, useRouterStateSelector };
++export { RouterStateFrame, RouterStateProvider, useFrameMode, useFrameRootBoundary, usePresentedLocation, useRouterStateOwner, useRouterStateSelector };
 +
 +//# sourceMappingURL=routerStateContext.js.map
 \ No newline at end of file
@@ -2174,6 +2281,38 @@ index 5d0c7a6a044c18341f101b8f5d5485cd06326c0d..4c3265a6c51f93617e0bbb07621b2f9d
  
  //# sourceMappingURL=useMatch.js.map
 \ No newline at end of file
+diff --git a/dist/esm/useNavigate.js b/dist/esm/useNavigate.js
+index b15db38cce348acc255507c3e5fed9db6968f331..99fae4daac6ff6dfcd95098e40537efd3b5f12e1 100644
+--- a/dist/esm/useNavigate.js
++++ b/dist/esm/useNavigate.js
+@@ -1,6 +1,7 @@
+ "use client";
+ import { useLayoutEffect } from "./utils.js";
+ import { useRouter } from "./useRouter.js";
++import { usePresentedLocation } from "./routerStateContext.js";
+ import * as React$1 from "react";
+ //#region src/useNavigate.tsx
+ /**
+@@ -19,12 +20,18 @@ import * as React$1 from "react";
+ */
+ function useNavigate(_defaultOpts) {
+ 	const router = useRouter();
++	const presentedLocation = usePresentedLocation(router);
+ 	return React$1.useCallback((options) => {
+ 		return router.navigate({
++			_fromLocation: presentedLocation?.(),
+ 			...options,
+ 			from: options.from ?? _defaultOpts?.from
+ 		});
+-	}, [_defaultOpts?.from, router]);
++	}, [
++		_defaultOpts?.from,
++		presentedLocation,
++		router
++	]);
+ }
+ /**
+ * Component that triggers a navigation when rendered. Navigation executes
 diff --git a/dist/esm/useRouterState.js b/dist/esm/useRouterState.js
 index d82afeead0daa8ccb8756ad3376a20015c4b7427..0dd3fe001ea55add8b34450d224d7a97842a6819 100644
 --- a/dist/esm/useRouterState.js
@@ -2956,10 +3095,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..314b5a25afd1807694736a6a22aa9b69d9873d4b
+index 0000000000000000000000000000000000000000..715739a998996f6f9afa0b0d4acd93f675b5c4e2
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,608 @@
+@@ -0,0 +1,633 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3253,6 +3392,31 @@ index 0000000000000000000000000000000000000000..314b5a25afd1807694736a6a22aa9b69
 +      {children}
 +    </routerStateScopeContext.Provider>
 +  )
++}
++
++/**
++ * The publication this position is presenting, for code that runs outside
++ * render — an event handler resolving a navigation against the route the user
++ * is looking at, say.
++ *
++ * Returns a getter, and subscribes to nothing: a scope's identity is stable
++ * for the router's lifetime, so reading it costs no re-renders, and an
++ * imperative caller wants the answer at call time anyway. It gives the
++ * publication on screen: an event is delivered to the committed tree, so that
++ * is the one it should resolve against. `undefined` off the frame path, where
++ * the router's own head is the right source and already fresh.
++ */
++export function usePresentedLocation(
++  router: AnyRouter,
++): (() => RouterRenderFrame['location'] | undefined) | undefined {
++  const scope = React.useContext(routerStateScopeContext)
++  const frameMode = useFrameMode(router)
++  return React.useMemo(() => {
++    if (!frameMode || !scope || scope.router !== router) {
++      return undefined
++    }
++    return () => scope.committed.location
++  }, [frameMode, router, scope])
 +}
 +
 +export function useRouterStateOwner() {
@@ -3808,6 +3972,43 @@ index d66a69f640514fee47dcdb48e6507549074696d5..e97dadbe221ba5d482938cb7c4613d3f
    }
  
    if (opts.shouldThrow ?? true) {
+diff --git a/src/useNavigate.tsx b/src/useNavigate.tsx
+index ce95e5b4c1c647f37274a0d4b56c1caf95c11588..b3130a62e9b90e4b5ea3c9b0c21954f9ed24cd12 100644
+--- a/src/useNavigate.tsx
++++ b/src/useNavigate.tsx
+@@ -3,6 +3,7 @@
+ import * as React from 'react'
+ import { useLayoutEffect } from './utils'
+ import { useRouter } from './useRouter'
++import { usePresentedLocation } from './routerStateContext'
+ import type {
+   AnyRouter,
+   FromPathOption,
+@@ -32,15 +33,22 @@ export function useNavigate<
+   from?: FromPathOption<TRouter, TDefaultFrom>
+ }): UseNavigateResult<TDefaultFrom> {
+   const router = useRouter()
++  // Resolve against the route the caller is looking at, not the one the router
++  // is preparing. With concurrent render frames a handler still on the old
++  // route would otherwise inherit the pending navigation's search or params —
++  // the same reason `Link` resolves its click from the location it rendered
++  // against. Read at call time; an explicit `_fromLocation` still wins.
++  const presentedLocation = usePresentedLocation(router)
+ 
+   return React.useCallback(
+     (options: NavigateOptions) => {
+       return router.navigate({
++        _fromLocation: presentedLocation?.(),
+         ...options,
+         from: options.from ?? _defaultOpts?.from,
+-      })
++      } as NavigateOptions)
+     },
+-    [_defaultOpts?.from, router],
++    [_defaultOpts?.from, presentedLocation, router],
+   ) as UseNavigateResult<TDefaultFrom>
+ }
+ 
 diff --git a/src/useRouterState.tsx b/src/useRouterState.tsx
 index f3fbb2ad6e964587bcadd452c12ce639f4d8d92e..62f1e1b4cf364ca36f6e14f0a5175b5d2667b528 100644
 --- a/src/useRouterState.tsx

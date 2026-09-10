@@ -282,7 +282,7 @@ Four caveats worth knowing:
   commit for `1.170.34` / `1.171.29` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `2755585`. The published measurements are from `cc08459`, four commits
+  is `66de605`. The published measurements are from `cc08459`, four commits
   back: the difference is bookkeeping — a scope-keyed presentation identity, a
   head subscription for pending matchers, a router tag on the queued frame, a
   structural-sharing cache restored around a probe — not the publication path
