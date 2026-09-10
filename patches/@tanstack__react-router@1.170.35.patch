@@ -219,7 +219,7 @@ index b13f8aca089525915aa00f55f3f5456a3e30d3ef..77e078668c815356816107bde28d92f5
  		const matches = router.stores.matches.get();
  		return opts?.select ? opts.select(matches) : matches;
 diff --git a/dist/cjs/RouterProvider.cjs b/dist/cjs/RouterProvider.cjs
-index b656365a95110796038c0dc47160d210d196c7a8..e592e868256536d10e430a052d8cf714fe220cc2 100644
+index b656365a95110796038c0dc47160d210d196c7a8..d7f1d2393898a39a0bf2985f81501f6b0c4690d1 100644
 --- a/dist/cjs/RouterProvider.cjs
 +++ b/dist/cjs/RouterProvider.cjs
 @@ -1,6 +1,7 @@
@@ -230,16 +230,15 @@ index b656365a95110796038c0dc47160d210d196c7a8..e592e868256536d10e430a052d8cf714
  const require_Matches = require("./Matches.cjs");
  let _tanstack_router_core = require("@tanstack/router-core");
  let react = require("react");
-@@ -20,9 +21,17 @@ function RouterContextProvider({ router, children, ...rest }) {
+@@ -20,9 +21,16 @@ function RouterContextProvider({ router, children, ...rest }) {
  			...rest.context
  		}
  	});
 +	const childrenWithState = require_routerStateContext.useFrameMode(router) ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_routerStateContext.RouterStateProvider, {
 +		router,
 +		children
-+	}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_routerStateContext.RouterStateFrameMode, {
++	}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_routerStateContext.RouterStateStorePath, {
 +		router,
-+		frameMode: false,
 +		children
 +	});
  	const provider = /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_routerContext.routerContext.Provider, {
@@ -475,10 +474,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e31965b044eaad3c441aa721e04a4cced2b2a3e2
+index 0000000000000000000000000000000000000000..ac1f83a13728ab3bf0b9b6210145b5e3c9a697bb
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,451 @@
+@@ -0,0 +1,476 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -580,6 +579,31 @@ index 0000000000000000000000000000000000000000..e31965b044eaad3c441aa721e04a4cce
 +	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateFrameModeContext.Provider, {
 +		value,
 +		children
++	});
++}
++/**
++* The store-path arm of `RouterContextProvider`.
++*
++* Publishes the frozen decision the way the frame arm does, and clears any
++* owner and scope inherited from an ancestor provider. A store-path tree owns
++* no frames, and `Transitioner` takes its owner from context without
++* consulting the mode — so a store-path provider nested under a frame-path one
++* would drive *that* router's owner with this router's publications, writing a
++* `frameId` into this router's acknowledgement slot where its `Matches`
++* expects a set of matches. Its navigations then never settle and the outer
++* router's staged frame is replaced by one assembled from the wrong store.
++*/
++function RouterStateStorePath({ router, children }) {
++	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateOwnerContext.Provider, {
++		value: void 0,
++		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateScopeContext.Provider, {
++			value: void 0,
++			children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(RouterStateFrameMode, {
++				router,
++				frameMode: false,
++				children
++			})
++		})
 +	});
 +}
 +/**
@@ -921,8 +945,8 @@ index 0000000000000000000000000000000000000000..e31965b044eaad3c441aa721e04a4cce
 +}
 +//#endregion
 +exports.RouterStateFrame = RouterStateFrame;
-+exports.RouterStateFrameMode = RouterStateFrameMode;
 +exports.RouterStateProvider = RouterStateProvider;
++exports.RouterStateStorePath = RouterStateStorePath;
 +exports.useFrameMode = useFrameMode;
 +exports.useFrameRootBoundary = useFrameRootBoundary;
 +exports.usePresentedLocation = usePresentedLocation;
@@ -933,10 +957,10 @@ index 0000000000000000000000000000000000000000..e31965b044eaad3c441aa721e04a4cce
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..da6c701bde6767dad99467f80c6b12b0ec0f9f8b
+index 0000000000000000000000000000000000000000..c56667d76d529e9897b6811b533698e45761ddc7
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,170 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.cjs';
 +import * as React from 'react';
@@ -1017,6 +1041,22 @@ index 0000000000000000000000000000000000000000..da6c701bde6767dad99467f80c6b12b0
 +export declare function RouterStateFrameMode({ router, frameMode, children, }: {
 +    router: AnyRouter;
 +    frameMode: boolean;
++    children: React.ReactNode;
++}): import("react/jsx-runtime").JSX.Element;
++/**
++ * The store-path arm of `RouterContextProvider`.
++ *
++ * Publishes the frozen decision the way the frame arm does, and clears any
++ * owner and scope inherited from an ancestor provider. A store-path tree owns
++ * no frames, and `Transitioner` takes its owner from context without
++ * consulting the mode — so a store-path provider nested under a frame-path one
++ * would drive *that* router's owner with this router's publications, writing a
++ * `frameId` into this router's acknowledgement slot where its `Matches`
++ * expects a set of matches. Its navigations then never settle and the outer
++ * router's staged frame is replaced by one assembled from the wrong store.
++ */
++export declare function RouterStateStorePath({ router, children, }: {
++    router: AnyRouter;
 +    children: React.ReactNode;
 +}): import("react/jsx-runtime").JSX.Element;
 +export declare function RouterStateProvider({ router, children, }: {
@@ -1557,26 +1597,25 @@ index c4d69f186bc0175f07bc2550f0ceb461e767a7e3..b13112bc565c9c6e46c98fcf3ba4a785
  		const matches = router.stores.matches.get();
  		return opts?.select ? opts.select(matches) : matches;
 diff --git a/dist/esm/RouterProvider.js b/dist/esm/RouterProvider.js
-index 572653edbeee98466ef60bb88bf0ce9c63bacc3f..5e9d5c310432c7c469afe2139892c89972dd127f 100644
+index 572653edbeee98466ef60bb88bf0ce9c63bacc3f..769347e21430a4b80c1897ecfe52958d7345eea1 100644
 --- a/dist/esm/RouterProvider.js
 +++ b/dist/esm/RouterProvider.js
 @@ -1,5 +1,6 @@
  "use client";
  import { routerContext } from "./routerContext.js";
-+import { RouterStateFrameMode, RouterStateProvider, useFrameMode } from "./routerStateContext.js";
++import { RouterStateProvider, RouterStateStorePath, useFrameMode } from "./routerStateContext.js";
  import { Matches } from "./Matches.js";
  import { hasKeys } from "@tanstack/router-core";
  import "react";
-@@ -18,9 +19,17 @@ function RouterContextProvider({ router, children, ...rest }) {
+@@ -18,9 +19,16 @@ function RouterContextProvider({ router, children, ...rest }) {
  			...rest.context
  		}
  	});
 +	const childrenWithState = useFrameMode(router) ? /* @__PURE__ */ jsx(RouterStateProvider, {
 +		router,
 +		children
-+	}) : /* @__PURE__ */ jsx(RouterStateFrameMode, {
++	}) : /* @__PURE__ */ jsx(RouterStateStorePath, {
 +		router,
-+		frameMode: false,
 +		children
 +	});
  	const provider = /* @__PURE__ */ jsx(routerContext.Provider, {
@@ -1810,10 +1849,10 @@ index a75a6159942121bcf30ef34d67733867d51d47b7..6ab2577dfa0a5b579b4088622e35f37d
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..629bae522cab1c2e0615bf014031ef68f9b4407b
+index 0000000000000000000000000000000000000000..403d76bbb3f222f4aa604a2210968bf3f4e3df56
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,170 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.js';
 +import * as React from 'react';
@@ -1896,6 +1935,22 @@ index 0000000000000000000000000000000000000000..629bae522cab1c2e0615bf014031ef68
 +    frameMode: boolean;
 +    children: React.ReactNode;
 +}): import("react/jsx-runtime").JSX.Element;
++/**
++ * The store-path arm of `RouterContextProvider`.
++ *
++ * Publishes the frozen decision the way the frame arm does, and clears any
++ * owner and scope inherited from an ancestor provider. A store-path tree owns
++ * no frames, and `Transitioner` takes its owner from context without
++ * consulting the mode — so a store-path provider nested under a frame-path one
++ * would drive *that* router's owner with this router's publications, writing a
++ * `frameId` into this router's acknowledgement slot where its `Matches`
++ * expects a set of matches. Its navigations then never settle and the outer
++ * router's staged frame is replaced by one assembled from the wrong store.
++ */
++export declare function RouterStateStorePath({ router, children, }: {
++    router: AnyRouter;
++    children: React.ReactNode;
++}): import("react/jsx-runtime").JSX.Element;
 +export declare function RouterStateProvider({ router, children, }: {
 +    router: AnyRouter;
 +    children: React.ReactNode;
@@ -1970,10 +2025,10 @@ index 0000000000000000000000000000000000000000..629bae522cab1c2e0615bf014031ef68
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..6501cddd51011fb29df15b8b7bbbb9638c526863
+index 0000000000000000000000000000000000000000..395c414ae54fa2e2d23f24c8cd0ee67c09a948d4
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,442 @@
+@@ -0,0 +1,467 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2073,6 +2128,31 @@ index 0000000000000000000000000000000000000000..6501cddd51011fb29df15b8b7bbbb963
 +	return /* @__PURE__ */ jsx(routerStateFrameModeContext.Provider, {
 +		value,
 +		children
++	});
++}
++/**
++* The store-path arm of `RouterContextProvider`.
++*
++* Publishes the frozen decision the way the frame arm does, and clears any
++* owner and scope inherited from an ancestor provider. A store-path tree owns
++* no frames, and `Transitioner` takes its owner from context without
++* consulting the mode — so a store-path provider nested under a frame-path one
++* would drive *that* router's owner with this router's publications, writing a
++* `frameId` into this router's acknowledgement slot where its `Matches`
++* expects a set of matches. Its navigations then never settle and the outer
++* router's staged frame is replaced by one assembled from the wrong store.
++*/
++function RouterStateStorePath({ router, children }) {
++	return /* @__PURE__ */ jsx(routerStateOwnerContext.Provider, {
++		value: void 0,
++		children: /* @__PURE__ */ jsx(routerStateScopeContext.Provider, {
++			value: void 0,
++			children: /* @__PURE__ */ jsx(RouterStateFrameMode, {
++				router,
++				frameMode: false,
++				children
++			})
++		})
 +	});
 +}
 +/**
@@ -2413,7 +2493,7 @@ index 0000000000000000000000000000000000000000..6501cddd51011fb29df15b8b7bbbb963
 +	return useFrameMode(router) && !isServerRender && !router.ssr;
 +}
 +//#endregion
-+export { RouterStateFrame, RouterStateFrameMode, RouterStateProvider, useFrameMode, useFrameRootBoundary, usePresentedLocation, useRouterStateOwner, useRouterStateSelector };
++export { RouterStateFrame, RouterStateProvider, RouterStateStorePath, useFrameMode, useFrameRootBoundary, usePresentedLocation, useRouterStateOwner, useRouterStateSelector };
 +
 +//# sourceMappingURL=routerStateContext.js.map
 \ No newline at end of file
@@ -3103,7 +3183,7 @@ index 6dea1032f22bb981067e5b3872b9d9f3880164e6..7fb500acd72e8ced2df0a472d3c6ea5e
      const matches = router.stores.matches.get() as Array<
        MakeRouteMatchUnion<TRouter>
 diff --git a/src/RouterProvider.tsx b/src/RouterProvider.tsx
-index 81c3fb4ece27ca0e8044f58a14677eb68628adb7..b86e9fa38c238fcd235ea131247bfa9625d5392f 100644
+index 81c3fb4ece27ca0e8044f58a14677eb68628adb7..a413d9cf7cc86ff3f8701ed085b99bacf4c27292 100644
 --- a/src/RouterProvider.tsx
 +++ b/src/RouterProvider.tsx
 @@ -4,6 +4,11 @@ import * as React from 'react'
@@ -3111,8 +3191,8 @@ index 81c3fb4ece27ca0e8044f58a14677eb68628adb7..b86e9fa38c238fcd235ea131247bfa96
  import { Matches } from './Matches'
  import { routerContext } from './routerContext'
 +import {
-+  RouterStateFrameMode,
 +  RouterStateProvider,
++  RouterStateStorePath,
 +  useFrameMode,
 +} from './routerStateContext'
  import type {
@@ -3129,9 +3209,9 @@ index 81c3fb4ece27ca0e8044f58a14677eb68628adb7..b86e9fa38c238fcd235ea131247bfa96
 +  const childrenWithState = useFrameMode(router as AnyRouter) ? (
 +    <RouterStateProvider router={router}>{children}</RouterStateProvider>
 +  ) : (
-+    <RouterStateFrameMode router={router as AnyRouter} frameMode={false}>
++    <RouterStateStorePath router={router as AnyRouter}>
 +      {children}
-+    </RouterStateFrameMode>
++    </RouterStateStorePath>
 +  )
 +
    const provider = (
@@ -3509,10 +3589,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..c40ffa5b30b0eb747e05ae01c25462c0f177b0ea
+index 0000000000000000000000000000000000000000..248d12cb37708ee946be512ee0fe20137195d06a
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,847 @@
+@@ -0,0 +1,877 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3747,6 +3827,36 @@ index 0000000000000000000000000000000000000000..c40ffa5b30b0eb747e05ae01c25462c0
 +    <routerStateFrameModeContext.Provider value={value}>
 +      {children}
 +    </routerStateFrameModeContext.Provider>
++  )
++}
++
++/**
++ * The store-path arm of `RouterContextProvider`.
++ *
++ * Publishes the frozen decision the way the frame arm does, and clears any
++ * owner and scope inherited from an ancestor provider. A store-path tree owns
++ * no frames, and `Transitioner` takes its owner from context without
++ * consulting the mode — so a store-path provider nested under a frame-path one
++ * would drive *that* router's owner with this router's publications, writing a
++ * `frameId` into this router's acknowledgement slot where its `Matches`
++ * expects a set of matches. Its navigations then never settle and the outer
++ * router's staged frame is replaced by one assembled from the wrong store.
++ */
++export function RouterStateStorePath({
++  router,
++  children,
++}: {
++  router: AnyRouter
++  children: React.ReactNode
++}) {
++  return (
++    <routerStateOwnerContext.Provider value={undefined}>
++      <routerStateScopeContext.Provider value={undefined}>
++        <RouterStateFrameMode router={router} frameMode={false}>
++          {children}
++        </RouterStateFrameMode>
++      </routerStateScopeContext.Provider>
++    </routerStateOwnerContext.Provider>
 +  )
 +}
 +
