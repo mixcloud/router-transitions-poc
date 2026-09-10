@@ -475,10 +475,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ed31b8fc37556b326b521ce1cf9f442fa95fc47d
+index 0000000000000000000000000000000000000000..d31516359dd7a35fd01a50da7f87267e34ab3073
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,441 @@
+@@ -0,0 +1,445 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -646,6 +646,10 @@ index 0000000000000000000000000000000000000000..ed31b8fc37556b326b521ce1cf9f442f
 +		},
 +		commit: (nextFrame) => {
 +			if (pending?.frameId !== nextFrame.frameId) return false;
++			if (isSuperseded(nextFrame, router.stores.__store.get())) {
++				owner.cancel();
++				return false;
++			}
 +			pending = void 0;
 +			const committedFrame = withProgress(nextFrame, router.stores.__store.get());
 +			root.committed = committedFrame;
@@ -1952,10 +1956,10 @@ index 0000000000000000000000000000000000000000..1f0c35e0c715ddca4c6e0f98b7ad428a
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..df06b28c078665e32f2980e77b69b72448348877
+index 0000000000000000000000000000000000000000..1bf16ca4eaeecfc3ad702687fe49f937779c00cb
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,432 @@
+@@ -0,0 +1,436 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2121,6 +2125,10 @@ index 0000000000000000000000000000000000000000..df06b28c078665e32f2980e77b69b724
 +		},
 +		commit: (nextFrame) => {
 +			if (pending?.frameId !== nextFrame.frameId) return false;
++			if (isSuperseded(nextFrame, router.stores.__store.get())) {
++				owner.cancel();
++				return false;
++			}
 +			pending = void 0;
 +			const committedFrame = withProgress(nextFrame, router.stores.__store.get());
 +			root.committed = committedFrame;
@@ -3468,10 +3476,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..4e1866657b4f55dcf110764fe4f0e3b51ec60af3
+index 0000000000000000000000000000000000000000..75c4d3a0da673b7e613fe48cd65944af332a43ac
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,807 @@
+@@ -0,0 +1,823 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3798,6 +3806,22 @@ index 0000000000000000000000000000000000000000..4e1866657b4f55dcf110764fe4f0e3b5
 +    },
 +    commit: (nextFrame) => {
 +      if (pending?.frameId !== nextFrame.frameId) {
++        return false
++      }
++      if (isSuperseded(nextFrame, router.stores.__store.get())) {
++        // The head left this frame and nothing dropped it. Cancelling runs
++        // from the store subscription the provider installs in a layout
++        // effect, and layout effects run bottom-up: a tree that adopted the
++        // frame during a render React then yielded out of reaches this
++        // acknowledgement before that subscription exists, so a navigation
++        // starting inside the gap moves the head unobserved.
++        //
++        // The frame identity alone cannot tell: it still matches `pending`,
++        // because the frame is genuinely the one that was staged. Committing
++        // it here would put the route the user has already left into both
++        // scopes, and clear `pending` so nothing could withdraw it
++        // afterwards. Cancel instead, exactly as `publish` would have.
++        owner.cancel()
 +        return false
 +      }
 +      pending = undefined

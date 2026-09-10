@@ -168,11 +168,16 @@ Timing's floor, so nothing here is censored.
 | 6000 | control | 0 | 2040ms | 2184ms | 2848ms | 3144ms |
 | 6000 | **patched** | 48 | **40ms** | **48ms** | **56ms** | **72ms** |
 
-Control tracks route render cost almost linearly, from 64ms to 2040ms. Patched
-is flat at 40ms at every weight, p50 through max, including the 6000-row route
-that costs the control arm two seconds. An earlier sweep on the same machine,
-one patch revision back, gave the same shape (64 / 208 / 688 / 2032 against a
-flat 40), so the effect is not an artefact of a single run.
+Control tracks route render cost almost linearly, from a 64ms median to
+2040ms. Patched does not track it at all: the median is 40ms at every weight,
+and the tail stays in a narrow band just above it — p75 40-48ms, p95 48-56ms,
+max 64-72ms — with no trend across the sweep, including the 6000-row route
+that costs the control arm two seconds. What the patch flattens is the
+*dependence on route weight*, not the spread within a cell: that spread is the
+same 40-72ms whether the route is empty or six thousand rows. An earlier sweep
+on the same machine, one patch revision back, gave the same shape (medians
+64 / 208 / 688 / 2032 against a flat 40), so the effect is not an artefact of
+a single run.
 
 The `clickFrame` and `blocking` columns the script also reports are left out
 deliberately. They come from whichever long animation frame carries the click,
@@ -282,12 +287,13 @@ Five caveats worth knowing:
   commit for `1.170.34` / `1.171.29` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `f2d49e6`. The published measurements are from `cc08459`, twenty-seven commits
+  is `6128277`. The published measurements are from `cc08459`, twenty-eight commits
   back: every commit since is correctness bookkeeping raised in review — a
   scope-keyed presentation identity, a head subscription for pending matchers,
   a per-router frame queue, weakly held owners, a structural-sharing cache
   restored around a probe, a frame-path decision frozen per provider tree,
-  hydration not remounting the route tree — and none of it changes the
+  hydration not remounting the route tree, the head revalidated at the
+  acknowledgement boundary — and none of it changes the
   publication path the experiment measures. Re-run the sweep if you want the numbers pinned to the
   exact head; the commands are above and every witness is live.
 - Until now only the `@tanstack/react-router` patch was regenerated on each
