@@ -105,8 +105,20 @@ whose HTML references the previous build's hashed assets, so a stale server
 serves a page that never hydrates. `--strictPort` also means a server left
 running from an earlier build keeps serving it. The run refuses both cases
 rather than measuring them — it waits for each server to answer, then requires
-every block to report the same `VITE_BUILD_ID` — but the fix is the restart,
-not the script.
+every block to report the stamp it *expects*, which defaults to the working
+tree's `HEAD` and can be named with `EXPECT_BUILD_ID` — but the fix is the
+restart, not the script.
+
+The expected stamp comes from outside the run on purpose. An earlier revision
+only required every block to report the *same* stamp, learning the reference
+value from the first server; if both ports were held by servers from one
+earlier build the two arms agreed with each other and the run published
+numbers for code that no longer existed. Agreement between arms is not
+freshness, and the first server is exactly the one that cannot establish it.
+`EXPECT_BUILD_ID=any` goes back to arms-agree-only, for measuring a build that
+deliberately is not `HEAD`; the run then says `(agreed by both arms, not
+required)` beside the build in its output, and records
+`meta.buildIdRequired: false`.
 
 The demo's own routes render in well under a millisecond, far too little to show
 a scheduling difference, so `?rows=N` gives the destination route a controllable

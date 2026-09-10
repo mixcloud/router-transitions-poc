@@ -14,6 +14,7 @@
  * browser context and discards warmup clicks.
  */
 import { chromium } from 'playwright'
+import { execFileSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 
 const CONTROL = process.env.CONTROL ?? 'http://localhost:4173'
@@ -24,6 +25,38 @@ const CLICKS = Number(process.env.CLICKS ?? 6)
 const WARMUP = Number(process.env.WARMUP ?? 2)
 const CPU = Number(process.env.CPU ?? 6)
 const OUT = process.env.OUT ?? 'benchmark-results.json'
+
+/**
+ * The build both arms are required to be.
+ *
+ * Cross-arm agreement is not freshness. `--strictPort` makes `vite preview`
+ * refuse an occupied port, so a server left running from an earlier build
+ * keeps serving that build — and if *both* ports are held that way, the two
+ * arms agree with each other while the run measures code that no longer
+ * exists. Learning the reference value from the first server cannot catch
+ * that, because the first server is the stale one.
+ *
+ * So the expected stamp comes from outside the run. `EXPECT_BUILD_ID` names
+ * it explicitly; otherwise it defaults to the working tree's `HEAD`, which is
+ * what the README's build commands stamp the arms with. `EXPECT_BUILD_ID=any`
+ * opts out, for measuring a build that deliberately is not `HEAD` — the run
+ * then falls back to cross-arm agreement alone and says so in its output.
+ */
+const EXPECT_BUILD_ID = (() => {
+  const configured = process.env.EXPECT_BUILD_ID
+  if (configured) {
+    return configured === 'any' ? undefined : configured
+  }
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    // No git, no answer, and no basis for a freshness claim.
+    return undefined
+  }
+})()
 
 /**
  * Event Timing refuses to report an interaction shorter than 16ms, so an
@@ -175,16 +208,16 @@ async function waitForServer(base) {
 }
 
 /**
- * The build both arms must have come from.
+ * The build every block has reported so far.
  *
- * Set by the first block to report one; every later block is checked against
- * it. `--strictPort` makes `vite preview` refuse an occupied port, so a
- * server left running from an earlier build keeps serving that build — and
- * the mode check would still accept it, because the mode is right. Comparing
+ * Seeded from `EXPECT_BUILD_ID` when there is one, so the first server is
+ * checked rather than believed; otherwise from the first block, which still
+ * catches two arms disagreeing with each other. Either way the mode check
+ * alone would accept a stale server, because the mode is right — comparing
  * the stamp is what makes "builds of identical source" a checked claim
  * instead of a trusted one.
  */
-let requiredBuildId
+let requiredBuildId = EXPECT_BUILD_ID
 
 async function runBlock(browser, label, base, rows) {
   const context = await browser.newContext({
@@ -229,9 +262,14 @@ async function measureBlock(context, label, base, rows) {
   requiredBuildId ??= buildId
   if (buildId !== requiredBuildId) {
     throw new Error(
-      `${base} serves build ${buildId}, but this run started against ` +
-        `${requiredBuildId}. Both arms must be builds of the same source — ` +
-        'rebuild and restart both preview servers.',
+      EXPECT_BUILD_ID
+        ? `${base} serves build ${buildId}, but this run expects ` +
+          `${EXPECT_BUILD_ID}. Rebuild both arms from it and restart both ` +
+          'preview servers — or set EXPECT_BUILD_ID to the build you mean ' +
+          "to measure, or 'any' to check the arms against each other only."
+        : `${base} serves build ${buildId}, but this run started against ` +
+          `${requiredBuildId}. Both arms must be builds of the same source — ` +
+          'rebuild and restart both preview servers.',
     )
   }
 
@@ -385,6 +423,9 @@ writeFileSync(
         warmupPerBlock: WARMUP,
         eventTimingFloorMs: EVENT_TIMING_FLOOR_MS,
         buildId: requiredBuildId,
+        // Whether that stamp was required from outside the run or merely
+        // agreed on by the two arms. Only the first is a freshness claim.
+        buildIdRequired: EXPECT_BUILD_ID !== undefined,
         control: CONTROL,
         patched: PATCHED,
       },
@@ -400,7 +441,9 @@ const n = (v, w) => (v === null ? '—' : v.toFixed(0)).padStart(w)
 
 console.log(`\nCPU throttle ${CPU}x · ${BLOCKS} blocks × ${CLICKS} clicks/point`)
 console.log(
-  `\nbuild ${requiredBuildId} · latency percentiles are upper bounds where a ` +
+  `\nbuild ${requiredBuildId} ${
+    EXPECT_BUILD_ID ? '(required)' : '(agreed by both arms, not required)'
+  } · latency percentiles are upper bounds where a ` +
     `navigation was faster than Event Timing's ${EVENT_TIMING_FLOOR_MS}ms ` +
     'floor (the "<16" column counts those)',
 )
