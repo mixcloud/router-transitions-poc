@@ -475,10 +475,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..07254941c1ac8100efd4525469f9fc3a01fd08f5
+index 0000000000000000000000000000000000000000..cbdedc2973916bb5fa4177c8ff938e395f0c6ff4
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,413 @@
+@@ -0,0 +1,417 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -633,6 +633,10 @@ index 0000000000000000000000000000000000000000..07254941c1ac8100efd4525469f9fc3a
 +		},
 +		publish: () => {
 +			const head = router.stores.__store.get();
++			if (pending && !staging && head.location.href !== pending.location.href) {
++				owner.cancel();
++				return;
++			}
 +			if (staging || pending) {
 +				syncProgress(head);
 +				return;
@@ -1924,10 +1928,10 @@ index 0000000000000000000000000000000000000000..1f0c35e0c715ddca4c6e0f98b7ad428a
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..9064eec85d1513f809d7876d4e40167f13510650
+index 0000000000000000000000000000000000000000..fbceca1b50a7c86c322665f519ed920078404dcd
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,404 @@
+@@ -0,0 +1,408 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2080,6 +2084,10 @@ index 0000000000000000000000000000000000000000..9064eec85d1513f809d7876d4e40167f
 +		},
 +		publish: () => {
 +			const head = router.stores.__store.get();
++			if (pending && !staging && head.location.href !== pending.location.href) {
++				owner.cancel();
++				return;
++			}
 +			if (staging || pending) {
 +				syncProgress(head);
 +				return;
@@ -3412,10 +3420,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..b71b24a18deb280cd3421450b070db2efdbb4792
+index 0000000000000000000000000000000000000000..a67164cf3d5825878b3f053efe869b74ebc69eec
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,747 @@
+@@ -0,0 +1,761 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3720,6 +3728,20 @@ index 0000000000000000000000000000000000000000..b71b24a18deb280cd3421450b070db2e
 +    },
 +    publish: () => {
 +      const head = router.stores.__store.get()
++      if (pending && !staging && head.location.href !== pending.location.href) {
++        // Superseded before anything rendered it. A staged frame is offered
++        // to a tree that may be suspended, and a replacement navigation moves
++        // the head without publishing anything of its own until its own load
++        // resolves — so the first tree could finish suspending inside that
++        // window and commit a destination the URL had already left.
++        //
++        // Nothing has committed it, so dropping it costs nothing: consumers
++        // fall back to the publication they are already presenting, which is
++        // the route still on screen, and the successor stages its own frame
++        // when it is ready.
++        owner.cancel()
++        return
++      }
 +      if (staging || pending) {
 +        syncProgress(head)
 +        return

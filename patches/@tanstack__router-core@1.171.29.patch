@@ -65,10 +65,10 @@ index a1b8ee08e6abfb1b6e68735c504eff51f38a9f03..8eb721c04af505a620179aa70178a90d
      ];
      /** Development-only HMR reload for a route and its descendants. */
 diff --git a/dist/cjs/stores.cjs b/dist/cjs/stores.cjs
-index c22bc4d735a45279c91616f9a2f3ba9e488f502f..687342f0b1a97aa8c0109922eee86c24cddc37a6 100644
+index c22bc4d735a45279c91616f9a2f3ba9e488f502f..f3a0ae731bd7b85e0de5262cd2e0a2d7f59e217e 100644
 --- a/dist/cjs/stores.cjs
 +++ b/dist/cjs/stores.cjs
-@@ -20,6 +20,7 @@ function createNonReactiveReadonlyStore(read) {
+@@ -20,19 +20,30 @@ function createNonReactiveReadonlyStore(read) {
  }
  function createRouterStores(initialLocation, config) {
  	const { createMutableStore, createReadonlyStore, batch } = config;
@@ -76,14 +76,36 @@ index c22bc4d735a45279c91616f9a2f3ba9e488f502f..687342f0b1a97aa8c0109922eee86c24
  	const byRoute = /* @__PURE__ */ new Map();
  	const status = createMutableStore("idle");
  	const location = createMutableStore(initialLocation);
-@@ -27,6 +28,7 @@ function createRouterStores(initialLocation, config) {
+ 	const resolvedLocation = createMutableStore(void 0);
  	const ids = createMutableStore([]);
  	const matches = createReadonlyStore(() => ids.get().map((id) => byRoute.get(id).get()));
- 	const __store = createReadonlyStore(() => ({
-+		frameId: nextFrameId++,
- 		status: status.get(),
- 		isLoading: status.get() === "pending",
- 		matches: matches.get(),
+-	const __store = createReadonlyStore(() => ({
+-		status: status.get(),
+-		isLoading: status.get() === "pending",
+-		matches: matches.get(),
+-		location: location.get(),
+-		resolvedLocation: resolvedLocation.get()
+-	}));
++	let previous;
++	const __store = createReadonlyStore(() => {
++		const nextMatches = matches.get();
++		const nextLocation = location.get();
++		const nextResolvedLocation = resolvedLocation.get();
++		const unchanged = previous !== void 0 && previous.location === nextLocation && previous.resolvedLocation === nextResolvedLocation && require_utils.arraysEqual(previous.matches, nextMatches) ? previous : void 0;
++		const next = {
++			frameId: unchanged ? unchanged.frameId : nextFrameId++,
++			status: status.get(),
++			isLoading: status.get() === "pending",
++			matches: nextMatches,
++			location: nextLocation,
++			resolvedLocation: nextResolvedLocation
++		};
++		previous = next;
++		return next;
++	});
+ 	function getMatchStore(routeId) {
+ 		let matchStore = byRoute.get(routeId);
+ 		if (!matchStore) {
 diff --git a/dist/esm/router.d.ts b/dist/esm/router.d.ts
 index e741fa61a585887ca0ccf969b52132611245d089..3b0d56293a5659148a1248e2ff0129e8c25471a1 100644
 --- a/dist/esm/router.d.ts
@@ -151,10 +173,10 @@ index 50a7b0868dbf162aafb51a25abd129cf3afcd993..48e2d6c660eb6d683b7f0694f6bc0dd6
  		status: "idle",
  		resolvedLocation: void 0,
 diff --git a/dist/esm/stores.js b/dist/esm/stores.js
-index 803b74b59ff23fbf3247b5130c26d17e14ca766f..1ee162103309c3dc6e00566d1c6ce9e2b4161f9f 100644
+index 803b74b59ff23fbf3247b5130c26d17e14ca766f..2268255384e6e18dda367697bf751b6c17cb9eb8 100644
 --- a/dist/esm/stores.js
 +++ b/dist/esm/stores.js
-@@ -20,6 +20,7 @@ function createNonReactiveReadonlyStore(read) {
+@@ -20,19 +20,30 @@ function createNonReactiveReadonlyStore(read) {
  }
  function createRouterStores(initialLocation, config) {
  	const { createMutableStore, createReadonlyStore, batch } = config;
@@ -162,14 +184,36 @@ index 803b74b59ff23fbf3247b5130c26d17e14ca766f..1ee162103309c3dc6e00566d1c6ce9e2
  	const byRoute = /* @__PURE__ */ new Map();
  	const status = createMutableStore("idle");
  	const location = createMutableStore(initialLocation);
-@@ -27,6 +28,7 @@ function createRouterStores(initialLocation, config) {
+ 	const resolvedLocation = createMutableStore(void 0);
  	const ids = createMutableStore([]);
  	const matches = createReadonlyStore(() => ids.get().map((id) => byRoute.get(id).get()));
- 	const __store = createReadonlyStore(() => ({
-+		frameId: nextFrameId++,
- 		status: status.get(),
- 		isLoading: status.get() === "pending",
- 		matches: matches.get(),
+-	const __store = createReadonlyStore(() => ({
+-		status: status.get(),
+-		isLoading: status.get() === "pending",
+-		matches: matches.get(),
+-		location: location.get(),
+-		resolvedLocation: resolvedLocation.get()
+-	}));
++	let previous;
++	const __store = createReadonlyStore(() => {
++		const nextMatches = matches.get();
++		const nextLocation = location.get();
++		const nextResolvedLocation = resolvedLocation.get();
++		const unchanged = previous !== void 0 && previous.location === nextLocation && previous.resolvedLocation === nextResolvedLocation && arraysEqual(previous.matches, nextMatches) ? previous : void 0;
++		const next = {
++			frameId: unchanged ? unchanged.frameId : nextFrameId++,
++			status: status.get(),
++			isLoading: status.get() === "pending",
++			matches: nextMatches,
++			location: nextLocation,
++			resolvedLocation: nextResolvedLocation
++		};
++		previous = next;
++		return next;
++	});
+ 	function getMatchStore(routeId) {
+ 		let matchStore = byRoute.get(routeId);
+ 		if (!matchStore) {
 diff --git a/src/router.ts b/src/router.ts
 index 4ae7554d2cd8e6a281319c2854cee04c5b8af4da..1edfdb0bb39870ff08bfd60cd60f994631ba2f78 100644
 --- a/src/router.ts
@@ -274,7 +318,7 @@ index 4ae7554d2cd8e6a281319c2854cee04c5b8af4da..1edfdb0bb39870ff08bfd60cd60f9946
      status: 'idle',
      resolvedLocation: undefined,
 diff --git a/src/stores.ts b/src/stores.ts
-index 8c2beeb2e72005c2bc500ee6070a2c0d396f8725..e1fe0e69dd0aacd2e371d40a27936415e8aeeaf8 100644
+index 8c2beeb2e72005c2bc500ee6070a2c0d396f8725..245e687fb157eb3b49599190e4a0dac02452e278 100644
 --- a/src/stores.ts
 +++ b/src/stores.ts
 @@ -92,6 +92,7 @@ export function createRouterStores<TRouteTree extends AnyRoute>(
@@ -285,11 +329,48 @@ index 8c2beeb2e72005c2bc500ee6070a2c0d396f8725..e1fe0e69dd0aacd2e371d40a27936415
  
    // non reactive utilities
    const byRoute = new Map<string, MatchStore>()
-@@ -110,6 +111,7 @@ export function createRouterStores<TRouteTree extends AnyRoute>(
+@@ -109,13 +110,37 @@ export function createRouterStores<TRouteTree extends AnyRoute>(
+   )
  
    // compatibility "big" state store
-   const __store = createReadonlyStore(() => ({
-+    frameId: nextFrameId++,
-     status: status.get(),
-     isLoading: status.get() === 'pending',
-     matches: matches.get(),
+-  const __store = createReadonlyStore(() => ({
+-    status: status.get(),
+-    isLoading: status.get() === 'pending',
+-    matches: matches.get(),
+-    location: location.get(),
+-    resolvedLocation: resolvedLocation.get(),
+-  }))
++  //
++  // `frameId` advances when route content does, not on every read. The SSR
++  // store is non-reactive — its getter runs again for each reader — so
++  // counting reads gave two consumers in one server render different ids for
++  // the same content, and anything derived from one would differ between the
++  // server and the client, whose store caches the assembly. Progress is
++  // deliberately not part of the comparison: the id identifies route content,
++  // which is the contract `RouterState` documents.
++  let previous: RouterState<TRouteTree> | undefined
++  const __store = createReadonlyStore(() => {
++    const nextMatches = matches.get()
++    const nextLocation = location.get()
++    const nextResolvedLocation = resolvedLocation.get()
++    const unchanged =
++      previous !== undefined &&
++      previous.location === nextLocation &&
++      previous.resolvedLocation === nextResolvedLocation &&
++      arraysEqual(previous.matches, nextMatches)
++        ? previous
++        : undefined
++    const next: RouterState<TRouteTree> = {
++      frameId: unchanged ? unchanged.frameId : nextFrameId++,
++      status: status.get(),
++      isLoading: status.get() === 'pending',
++      matches: nextMatches,
++      location: nextLocation,
++      resolvedLocation: nextResolvedLocation,
++    }
++    previous = next
++    return next
++  })
+ 
+   function getMatchStore(routeId: string): MatchStore {
+     let matchStore = byRoute.get(routeId)
