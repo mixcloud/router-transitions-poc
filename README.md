@@ -302,10 +302,10 @@ Five caveats worth knowing:
   commit for `1.170.35` / `1.171.29` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `a911dfa`, on top of a merge of TanStack Router `main` at `6494e753` — the
+  is `1e7f755`, on top of a merge of TanStack Router `main` at `6494e753` — the
   store 0.11 upgrade, which renames the React read hook to `useSelector` and
   moves `compare` into an options object without changing what it does
-  underneath. The published measurements are from `cc08459`, thirty-five commits
+  underneath. The published measurements are from `cc08459`, thirty-six commits
   back: every commit since is correctness bookkeeping raised in review — a
   scope-keyed presentation identity, a head subscription for pending matchers,
   a per-router frame queue, weakly held owners, a structural-sharing cache

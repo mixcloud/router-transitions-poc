@@ -471,10 +471,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1b421e5e02f744fc054693227b2a731da877d0bf
+index 0000000000000000000000000000000000000000..a9d3267eb10f848b3122c8438a45ecea05ba50de
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,502 @@
+@@ -0,0 +1,512 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -511,17 +511,27 @@ index 0000000000000000000000000000000000000000..1b421e5e02f744fc054693227b2a731d
 +	return staged && staged.frameId === frameId ? staged : scope.committed;
 +}
 +/**
-+* Whether the head has moved away from a staged publication.
++* Whether two locations are the same position in history.
 +*
 +* The history key is compared as well as the href, because a replacement can
-+* target the same URL with different state — same href, different entry — and
-+* the frame staged before it is just as stale. The location decides this
-+* rather than the frame identity: a publication that changes matches without
-+* moving the location, a background refresh say, is not a supersession, and
-+* treating it as one would wedge the navigation it belongs to.
++* target the same URL with different state — same href, different entry. Both
++* places that ask "has the location moved?" go through this, so neither can
++* drift into comparing less than the other: the supersession guard, and the
++* seed that decides whether a fresh owner's head is coherent.
++*/
++function sameLocation(a, b) {
++	return a.href === b.href && a.state.__TSR_key === b.state.__TSR_key;
++}
++/**
++* Whether the head has moved away from a staged publication.
++*
++* The location decides this rather than the frame identity: a publication that
++* changes matches without moving the location, a background refresh say, is
++* not a supersession, and treating it as one would wedge the navigation it
++* belongs to.
 +*/
 +function isSuperseded(frame, head) {
-+	return head.location.href !== frame.location.href || head.location.state.__TSR_key !== frame.location.state.__TSR_key;
++	return !sameLocation(head.location, frame.location);
 +}
 +/**
 +* Overlay navigation progress onto a publication without changing its content.
@@ -630,7 +640,7 @@ index 0000000000000000000000000000000000000000..1b421e5e02f744fc054693227b2a731d
 +function initialFrame(router) {
 +	const head = router.stores.__store.get();
 +	const resolved = router.stores.resolvedLocation.get();
-+	if (!resolved || resolved.href === head.location.href) return head;
++	if (!resolved || sameLocation(resolved, head.location)) return head;
 +	return {
 +		...head,
 +		location: resolved
@@ -2045,10 +2055,10 @@ index 0000000000000000000000000000000000000000..403d76bbb3f222f4aa604a2210968bf3
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..b3bb52b30924358c516114c6f387746cd838cda3
+index 0000000000000000000000000000000000000000..c3eaa5f514957b93919f1d08096e4782782f2f6e
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,493 @@
+@@ -0,0 +1,503 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2083,17 +2093,27 @@ index 0000000000000000000000000000000000000000..b3bb52b30924358c516114c6f387746c
 +	return staged && staged.frameId === frameId ? staged : scope.committed;
 +}
 +/**
-+* Whether the head has moved away from a staged publication.
++* Whether two locations are the same position in history.
 +*
 +* The history key is compared as well as the href, because a replacement can
-+* target the same URL with different state — same href, different entry — and
-+* the frame staged before it is just as stale. The location decides this
-+* rather than the frame identity: a publication that changes matches without
-+* moving the location, a background refresh say, is not a supersession, and
-+* treating it as one would wedge the navigation it belongs to.
++* target the same URL with different state — same href, different entry. Both
++* places that ask "has the location moved?" go through this, so neither can
++* drift into comparing less than the other: the supersession guard, and the
++* seed that decides whether a fresh owner's head is coherent.
++*/
++function sameLocation(a, b) {
++	return a.href === b.href && a.state.__TSR_key === b.state.__TSR_key;
++}
++/**
++* Whether the head has moved away from a staged publication.
++*
++* The location decides this rather than the frame identity: a publication that
++* changes matches without moving the location, a background refresh say, is
++* not a supersession, and treating it as one would wedge the navigation it
++* belongs to.
 +*/
 +function isSuperseded(frame, head) {
-+	return head.location.href !== frame.location.href || head.location.state.__TSR_key !== frame.location.state.__TSR_key;
++	return !sameLocation(head.location, frame.location);
 +}
 +/**
 +* Overlay navigation progress onto a publication without changing its content.
@@ -2202,7 +2222,7 @@ index 0000000000000000000000000000000000000000..b3bb52b30924358c516114c6f387746c
 +function initialFrame(router) {
 +	const head = router.stores.__store.get();
 +	const resolved = router.stores.resolvedLocation.get();
-+	if (!resolved || resolved.href === head.location.href) return head;
++	if (!resolved || sameLocation(resolved, head.location)) return head;
 +	return {
 +		...head,
 +		location: resolved
@@ -3640,10 +3660,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..8d6bdc3ab5c0e52a8329bae822466779a9691deb
+index 0000000000000000000000000000000000000000..5df4c50e1d3e1de4b5a7b94e7fad2aa5c266085b
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,905 @@
+@@ -0,0 +1,916 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3760,23 +3780,34 @@ index 0000000000000000000000000000000000000000..8d6bdc3ab5c0e52a8329bae822466779
 +}
 +
 +/**
-+ * Whether the head has moved away from a staged publication.
++ * Whether two locations are the same position in history.
 + *
 + * The history key is compared as well as the href, because a replacement can
-+ * target the same URL with different state — same href, different entry — and
-+ * the frame staged before it is just as stale. The location decides this
-+ * rather than the frame identity: a publication that changes matches without
-+ * moving the location, a background refresh say, is not a supersession, and
-+ * treating it as one would wedge the navigation it belongs to.
++ * target the same URL with different state — same href, different entry. Both
++ * places that ask "has the location moved?" go through this, so neither can
++ * drift into comparing less than the other: the supersession guard, and the
++ * seed that decides whether a fresh owner's head is coherent.
++ */
++function sameLocation(
++  a: RouterRenderFrame['location'],
++  b: RouterRenderFrame['location'],
++): boolean {
++  return a.href === b.href && a.state.__TSR_key === b.state.__TSR_key
++}
++
++/**
++ * Whether the head has moved away from a staged publication.
++ *
++ * The location decides this rather than the frame identity: a publication that
++ * changes matches without moving the location, a background refresh say, is
++ * not a supersession, and treating it as one would wedge the navigation it
++ * belongs to.
 + */
 +function isSuperseded(
 +  frame: RouterRenderFrame,
 +  head: RouterRenderFrame,
 +): boolean {
-+  return (
-+    head.location.href !== frame.location.href ||
-+    head.location.state.__TSR_key !== frame.location.state.__TSR_key
-+  )
++  return !sameLocation(head.location, frame.location)
 +}
 +
 +/**
@@ -3938,7 +3969,7 @@ index 0000000000000000000000000000000000000000..8d6bdc3ab5c0e52a8329bae822466779
 +function initialFrame(router: AnyRouter): RouterRenderFrame {
 +  const head = router.stores.__store.get()
 +  const resolved = router.stores.resolvedLocation.get()
-+  if (!resolved || resolved.href === head.location.href) {
++  if (!resolved || sameLocation(resolved, head.location)) {
 +    return head
 +  }
 +  // Same matches, so the same route content and the same identity — only the
