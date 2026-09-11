@@ -471,10 +471,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a9d3267eb10f848b3122c8438a45ecea05ba50de
+index 0000000000000000000000000000000000000000..70eff2b4b7a829fd5205a31670c04570a63443f5
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,512 @@
+@@ -0,0 +1,524 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -641,6 +641,8 @@ index 0000000000000000000000000000000000000000..a9d3267eb10f848b3122c8438a45ecea
 +	const head = router.stores.__store.get();
 +	const resolved = router.stores.resolvedLocation.get();
 +	if (!resolved || sameLocation(resolved, head.location)) return head;
++	const deepest = head.matches[head.matches.length - 1];
++	if (deepest && deepest.pathname !== resolved.pathname) return head;
 +	return {
 +		...head,
 +		location: resolved
@@ -684,6 +686,13 @@ index 0000000000000000000000000000000000000000..a9d3267eb10f848b3122c8438a45ecea
 +		get pending() {
 +			if (!pending) return;
 +			return isSuperseded(pending, router.stores.__store.get()) ? void 0 : pending;
++		},
++		resync: () => {
++			if (staging || pending || route.staged) return;
++			const next = initialFrame(router);
++			if (next.frameId === root.committed.frameId && sameLocation(next.location, root.committed.location)) return;
++			root.committed = next;
++			route.committed = next;
 +		},
 +		begin: () => {
 +			staging = true;
@@ -765,7 +774,10 @@ index 0000000000000000000000000000000000000000..a9d3267eb10f848b3122c8438a45ecea
 +var ownersByRouter = /* @__PURE__ */ new WeakMap();
 +function ownerFor(router) {
 +	const existing = ownersByRouter.get(router);
-+	if (existing) return existing;
++	if (existing) {
++		existing.resync();
++		return existing;
++	}
 +	const owner = createOwner(router);
 +	ownersByRouter.set(router, owner);
 +	return owner;
@@ -990,10 +1002,10 @@ index 0000000000000000000000000000000000000000..a9d3267eb10f848b3122c8438a45ecea
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..c56667d76d529e9897b6811b533698e45761ddc7
+index 0000000000000000000000000000000000000000..c29d325cd613026a956e6bf0e37d6f47770765c0
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,172 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.cjs';
 +import * as React from 'react';
@@ -1053,6 +1065,8 @@ index 0000000000000000000000000000000000000000..c56667d76d529e9897b6811b533698e4
 +     * is already rendering.
 +     */
 +    pending: RouterRenderFrame | undefined;
++    /** Bring a cached owner back in step with the router before it is read. */
++    resync: () => void;
 +    begin: () => void;
 +    /**
 +     * Offer a frame for this publication, or `undefined` when the publication
@@ -1879,10 +1893,10 @@ index a75a6159942121bcf30ef34d67733867d51d47b7..6ab2577dfa0a5b579b4088622e35f37d
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..403d76bbb3f222f4aa604a2210968bf3f4e3df56
+index 0000000000000000000000000000000000000000..d71880286fdc7a31aaf0b9367b58e5b2f3a5cfdd
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,172 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.js';
 +import * as React from 'react';
@@ -1942,6 +1956,8 @@ index 0000000000000000000000000000000000000000..403d76bbb3f222f4aa604a2210968bf3
 +     * is already rendering.
 +     */
 +    pending: RouterRenderFrame | undefined;
++    /** Bring a cached owner back in step with the router before it is read. */
++    resync: () => void;
 +    begin: () => void;
 +    /**
 +     * Offer a frame for this publication, or `undefined` when the publication
@@ -2055,10 +2071,10 @@ index 0000000000000000000000000000000000000000..403d76bbb3f222f4aa604a2210968bf3
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..c3eaa5f514957b93919f1d08096e4782782f2f6e
+index 0000000000000000000000000000000000000000..2cc66f040b1e47ceec85a70f4d042544f7eeff25
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,503 @@
+@@ -0,0 +1,515 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2223,6 +2239,8 @@ index 0000000000000000000000000000000000000000..c3eaa5f514957b93919f1d08096e4782
 +	const head = router.stores.__store.get();
 +	const resolved = router.stores.resolvedLocation.get();
 +	if (!resolved || sameLocation(resolved, head.location)) return head;
++	const deepest = head.matches[head.matches.length - 1];
++	if (deepest && deepest.pathname !== resolved.pathname) return head;
 +	return {
 +		...head,
 +		location: resolved
@@ -2266,6 +2284,13 @@ index 0000000000000000000000000000000000000000..c3eaa5f514957b93919f1d08096e4782
 +		get pending() {
 +			if (!pending) return;
 +			return isSuperseded(pending, router.stores.__store.get()) ? void 0 : pending;
++		},
++		resync: () => {
++			if (staging || pending || route.staged) return;
++			const next = initialFrame(router);
++			if (next.frameId === root.committed.frameId && sameLocation(next.location, root.committed.location)) return;
++			root.committed = next;
++			route.committed = next;
 +		},
 +		begin: () => {
 +			staging = true;
@@ -2347,7 +2372,10 @@ index 0000000000000000000000000000000000000000..c3eaa5f514957b93919f1d08096e4782
 +var ownersByRouter = /* @__PURE__ */ new WeakMap();
 +function ownerFor(router) {
 +	const existing = ownersByRouter.get(router);
-+	if (existing) return existing;
++	if (existing) {
++		existing.resync();
++		return existing;
++	}
 +	const owner = createOwner(router);
 +	ownersByRouter.set(router, owner);
 +	return owner;
@@ -3660,10 +3688,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..5df4c50e1d3e1de4b5a7b94e7fad2aa5c266085b
+index 0000000000000000000000000000000000000000..c4c79fa80f62d1be7cac170f09e6743253303f8f
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,916 @@
+@@ -0,0 +1,962 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3731,6 +3759,8 @@ index 0000000000000000000000000000000000000000..5df4c50e1d3e1de4b5a7b94e7fad2aa5
 +   * is already rendering.
 +   */
 +  pending: RouterRenderFrame | undefined
++  /** Bring a cached owner back in step with the router before it is read. */
++  resync: () => void
 +  begin: () => void
 +  /**
 +   * Offer a frame for this publication, or `undefined` when the publication
@@ -3972,6 +4002,21 @@ index 0000000000000000000000000000000000000000..5df4c50e1d3e1de4b5a7b94e7fad2aa5
 +  if (!resolved || sameLocation(resolved, head.location)) {
 +    return head
 +  }
++  // Which of the two locations do the head's matches belong to? Once a
++  // navigation publishes its pending lane — a route with a `pendingComponent`
++  // and `pendingMs` elapsed — `matches` is already the *destination's* while
++  // `resolvedLocation` still names the route being left. Pairing those with
++  // `resolvedLocation` would produce the opposite mixture to the one this
++  // function exists to avoid: the old URL wearing the destination's matches.
++  //
++  // The deepest match's pathname settles it, compared against `resolved`
++  // rather than against the head: on a same-URL navigation to a new history
++  // entry both pathnames are equal, and there the matches are the committed
++  // ones, so `resolved` is still the right partner.
++  const deepest = head.matches[head.matches.length - 1]
++  if (deepest && deepest.pathname !== resolved.pathname) {
++    return head
++  }
 +  // Same matches, so the same route content and the same identity — only the
 +  // location is put back to the one those matches belong to.
 +  return { ...head, location: resolved }
@@ -4039,6 +4084,33 @@ index 0000000000000000000000000000000000000000..5df4c50e1d3e1de4b5a7b94e7fad2aa5
 +      return isSuperseded(pending, router.stores.__store.get())
 +        ? undefined
 +        : pending
++    },
++    resync: () => {
++      // An owner outlives every tree that mounts on it, and only a mounted
++      // frame-path provider keeps it in step: its layout effect installs the
++      // store subscription that drives `publish`. A router mounted on the
++      // *store* path in between navigates with nothing driving this owner, so
++      // by the next frame-path mount the committed frame can be a whole route
++      // behind — and that route renders, and its effects run, before the
++      // provider's own effect can publish. A `<Navigate>` in the route the
++      // user has left would fire from it.
++      //
++      // Nothing is notified here. This runs during render, and only ever
++      // advances toward the publication `publish` would have reached anyway;
++      // where a tree is already mounted and subscribed, that tree has kept the
++      // owner current and this is a no-op.
++      if (staging || pending || route.staged) {
++        return
++      }
++      const next = initialFrame(router)
++      if (
++        next.frameId === root.committed.frameId &&
++        sameLocation(next.location, root.committed.location)
++      ) {
++        return
++      }
++      root.committed = next
++      route.committed = next
 +    },
 +    begin: () => {
 +      staging = true
@@ -4179,6 +4251,8 @@ index 0000000000000000000000000000000000000000..5df4c50e1d3e1de4b5a7b94e7fad2aa5
 +function ownerFor(router: AnyRouter): RouterStateOwner {
 +  const existing = ownersByRouter.get(router)
 +  if (existing) {
++    // Cached for the router's lifetime, which outlasts any one tree.
++    existing.resync()
 +    return existing
 +  }
 +  const owner = createOwner(router)
