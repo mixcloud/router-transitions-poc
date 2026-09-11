@@ -1,0 +1,547 @@
+diff --git a/dist/cjs/load-client.cjs b/dist/cjs/load-client.cjs
+index 6284b2353bd2acb96dc6a191f9b7bb6c8648f0e0..8567083940ddd49a4ce6fc09cdcef1e53bf982a6 100644
+--- a/dist/cjs/load-client.cjs
++++ b/dist/cjs/load-client.cjs
+@@ -943,6 +943,7 @@ async function runClientTransaction(router, tx, forceStaleReload, onReady, sync,
+ 		if (background?.length) runBackground(router, tx, matches, background, result[3]).catch(console.error);
+ 		router.batch(() => {
+ 			router.stores.resolvedLocation.set(toLocation);
++			router._resolvedMatches = router._committed;
+ 			router.stores.status.set("idle");
+ 			if (router._tx === tx) router.emit({
+ 				type: "onResolved",
+@@ -1287,7 +1288,10 @@ async function hydrate(router) {
+ 	router.batch(() => {
+ 		router.stores.setMatches(presented);
+ 		router.stores.status.set("idle");
+-		if (!needsClientLoad) router.stores.resolvedLocation.set(router.stores.location.get());
++		if (!needsClientLoad) {
++			router.stores.resolvedLocation.set(router.stores.location.get());
++			router._resolvedMatches = router._committed;
++		}
+ 	});
+ }
+ //#endregion
+diff --git a/dist/cjs/load-server.cjs b/dist/cjs/load-server.cjs
+index c10767da16cbf7989c88bdec10c6418e35e1574e..f409b31e6a4d323bf3d7d047ca8e99b16d3d361a 100644
+--- a/dist/cjs/load-server.cjs
++++ b/dist/cjs/load-server.cjs
+@@ -573,6 +573,7 @@ async function loadServerRoute(router, opts) {
+ 			nextEnd = router._lifecycleEnd = require_router.lifecycleEnd(result.matches);
+ 			router.stores.setMatches(result.matches);
+ 			router.stores.resolvedLocation.set(next);
++			router._resolvedMatches = router._committed;
+ 		}
+ 	});
+ 	if (result.type === "render") require_router.runRouteLifecycle(router, previous, result.matches, previousEnd, nextEnd);
+diff --git a/dist/cjs/router.cjs b/dist/cjs/router.cjs
+index 9e19e01e42eb811254fedd6698429d1904fe789d..0180a28facdf3b80a8ac2d4562a3514bdbbb6cbe 100644
+--- a/dist/cjs/router.cjs
++++ b/dist/cjs/router.cjs
+@@ -99,6 +99,7 @@ var RouterCore = class {
+ 		this.subscribers = /* @__PURE__ */ new Set();
+ 		this._cache = /* @__PURE__ */ new Map();
+ 		this._committed = [];
++		this._resolvedMatches = [];
+ 		this.routeBranchCache = /* @__PURE__ */ new WeakMap();
+ 		this.lightweightCache = /* @__PURE__ */ new WeakMap();
+ 		this.startTransition = async (fn) => {
+@@ -597,16 +598,19 @@ var RouterCore = class {
+ 		this.loadRouteChunk = require_load_client.loadRouteChunk;
+ 		this.preloadRoute = (opts) => require_load_client.preloadClientRoute(this, opts);
+ 		this.matchRoute = (location, opts) => {
++			const presentedState = opts?._state;
++			const isPending = (opts?.pending ? this.stores.status.get() : presentedState?.status ?? this.stores.status.get()) === "pending";
++			if (opts?.pending && !isPending) return false;
++			const pending = opts?.pending ?? !isPending;
++			const baseLocation = presentedState && !opts?.pending ? presentedState.location : pending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
+ 			const matchLocation = {
+ 				...location,
+ 				to: location.to ? this.resolvePathWithBase(location.from || "", location.to) : void 0,
+ 				params: location.params || {},
+-				leaveParams: true
++				leaveParams: true,
++				...presentedState && !opts?.pending ? { _fromLocation: baseLocation } : {}
+ 			};
+ 			const next = this.buildLocation(matchLocation);
+-			const isPending = this.stores.status.get() === "pending";
+-			if (opts?.pending && !isPending) return false;
+-			const baseLocation = opts?.pending ?? !isPending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
+ 			const match = require_new_process_route_tree.findSingleMatch(next.pathname, opts?.caseSensitive ?? false, opts?.fuzzy ?? false, baseLocation.pathname, this.processedTree);
+ 			if (!match) return false;
+ 			if (location.params) {
+@@ -861,6 +865,7 @@ function lazyFn(fn, key) {
+ /** Create an initial RouterState from a parsed location. */
+ function getInitialRouterState(location) {
+ 	return {
++		frameId: 0,
+ 		isLoading: false,
+ 		status: "idle",
+ 		resolvedLocation: void 0,
+diff --git a/dist/cjs/router.d.cts b/dist/cjs/router.d.cts
+index a1b8ee08e6abfb1b6e68735c504eff51f38a9f03..12ac89e0a63accf02067477e08e123471470a327 100644
+--- a/dist/cjs/router.d.cts
++++ b/dist/cjs/router.d.cts
+@@ -395,6 +395,16 @@ export type LocationRewriteFunction = ({ url, }: {
+     url: URL;
+ }) => undefined | string | URL;
+ export interface RouterState<in out TRouteTree extends AnyRoute = AnyRoute, in out TRouteMatch = MakeRouteMatchUnion> {
++    /**
++     * Monotonic identity for one atomically assembled snapshot of route content
++     * — `location`, `matches`, `resolvedLocation`.
++     *
++     * Not a change token for the whole state: `status` and `isLoading` are
++     * progress, and an adapter may overlay them onto a snapshot a component is
++     * already presenting while keeping this identity, since it is what an
++     * acknowledgement is matched against.
++     */
++    frameId: number;
+     status: 'pending' | 'idle';
+     isLoading: boolean;
+     matches: Array<TRouteMatch>;
+@@ -624,7 +634,7 @@ export interface RouterCore<in out TRouteTree extends AnyRoute, in out TTrailing
+     _serverResult?: ServerLoadResult;
+     /** Framework publication waiting for an exact render acknowledgement. */
+     _rendered?: [
+-        offered?: Array<AnyRouteMatch>,
++        offered?: Array<AnyRouteMatch> | number,
+         settle?: (rendered: boolean) => void
+     ];
+     /** Development-only HMR reload for a route and its descendants. */
+@@ -659,6 +669,16 @@ export declare class RouterCore<in out TRouteTree extends AnyRoute, in out TTrai
+     _cache: Map<string, AnyRouteMatch>;
+     /** Accepted semantic lane, excluding temporary pending presentation. */
+     _committed: Array<AnyRouteMatch>;
++    /**
++     * The matches `resolvedLocation` resolved for.
++     *
++     * `_committed` runs ahead of it: matches are published inside the
++     * framework's transition callback, and `resolvedLocation` only advances
++     * once that publication is acknowledged, so in between the two describe
++     * different navigations. This is the pair — the last publication the
++     * framework has acknowledged, and the location it belongs to.
++     */
++    _resolvedMatches: Array<AnyRouteMatch>;
+     stores: RouterStores<TRouteTree>;
+     private getStoreConfig;
+     batch: (fn: () => void) => void;
+diff --git a/dist/cjs/stores.cjs b/dist/cjs/stores.cjs
+index c22bc4d735a45279c91616f9a2f3ba9e488f502f..f3a0ae731bd7b85e0de5262cd2e0a2d7f59e217e 100644
+--- a/dist/cjs/stores.cjs
++++ b/dist/cjs/stores.cjs
+@@ -20,19 +20,30 @@ function createNonReactiveReadonlyStore(read) {
+ }
+ function createRouterStores(initialLocation, config) {
+ 	const { createMutableStore, createReadonlyStore, batch } = config;
++	let nextFrameId = 0;
+ 	const byRoute = /* @__PURE__ */ new Map();
+ 	const status = createMutableStore("idle");
+ 	const location = createMutableStore(initialLocation);
+ 	const resolvedLocation = createMutableStore(void 0);
+ 	const ids = createMutableStore([]);
+ 	const matches = createReadonlyStore(() => ids.get().map((id) => byRoute.get(id).get()));
+-	const __store = createReadonlyStore(() => ({
+-		status: status.get(),
+-		isLoading: status.get() === "pending",
+-		matches: matches.get(),
+-		location: location.get(),
+-		resolvedLocation: resolvedLocation.get()
+-	}));
++	let previous;
++	const __store = createReadonlyStore(() => {
++		const nextMatches = matches.get();
++		const nextLocation = location.get();
++		const nextResolvedLocation = resolvedLocation.get();
++		const unchanged = previous !== void 0 && previous.location === nextLocation && previous.resolvedLocation === nextResolvedLocation && require_utils.arraysEqual(previous.matches, nextMatches) ? previous : void 0;
++		const next = {
++			frameId: unchanged ? unchanged.frameId : nextFrameId++,
++			status: status.get(),
++			isLoading: status.get() === "pending",
++			matches: nextMatches,
++			location: nextLocation,
++			resolvedLocation: nextResolvedLocation
++		};
++		previous = next;
++		return next;
++	});
+ 	function getMatchStore(routeId) {
+ 		let matchStore = byRoute.get(routeId);
+ 		if (!matchStore) {
+diff --git a/dist/esm/load-client.js b/dist/esm/load-client.js
+index 3393414e381935d65e48efc9c681afabf05c4490..1e25011fe3e17ba3c6c694ecba094c2085df43db 100644
+--- a/dist/esm/load-client.js
++++ b/dist/esm/load-client.js
+@@ -943,6 +943,7 @@ async function runClientTransaction(router, tx, forceStaleReload, onReady, sync,
+ 		if (background?.length) runBackground(router, tx, matches, background, result[3]).catch(console.error);
+ 		router.batch(() => {
+ 			router.stores.resolvedLocation.set(toLocation);
++			router._resolvedMatches = router._committed;
+ 			router.stores.status.set("idle");
+ 			if (router._tx === tx) router.emit({
+ 				type: "onResolved",
+@@ -1287,7 +1288,10 @@ async function hydrate(router) {
+ 	router.batch(() => {
+ 		router.stores.setMatches(presented);
+ 		router.stores.status.set("idle");
+-		if (!needsClientLoad) router.stores.resolvedLocation.set(router.stores.location.get());
++		if (!needsClientLoad) {
++			router.stores.resolvedLocation.set(router.stores.location.get());
++			router._resolvedMatches = router._committed;
++		}
+ 	});
+ }
+ //#endregion
+diff --git a/dist/esm/load-server.js b/dist/esm/load-server.js
+index f1944083c8f0393b07f5c55da0f1143ec9d82cfe..3d62c3901d17053f21773401960240c8611ef03a 100644
+--- a/dist/esm/load-server.js
++++ b/dist/esm/load-server.js
+@@ -573,6 +573,7 @@ async function loadServerRoute(router, opts) {
+ 			nextEnd = router._lifecycleEnd = lifecycleEnd(result.matches);
+ 			router.stores.setMatches(result.matches);
+ 			router.stores.resolvedLocation.set(next);
++			router._resolvedMatches = router._committed;
+ 		}
+ 	});
+ 	if (result.type === "render") runRouteLifecycle(router, previous, result.matches, previousEnd, nextEnd);
+diff --git a/dist/esm/router.d.ts b/dist/esm/router.d.ts
+index e741fa61a585887ca0ccf969b52132611245d089..77a2452d8fbfba91ea6ed3b25b06481bd846b01f 100644
+--- a/dist/esm/router.d.ts
++++ b/dist/esm/router.d.ts
+@@ -395,6 +395,16 @@ export type LocationRewriteFunction = ({ url, }: {
+     url: URL;
+ }) => undefined | string | URL;
+ export interface RouterState<in out TRouteTree extends AnyRoute = AnyRoute, in out TRouteMatch = MakeRouteMatchUnion> {
++    /**
++     * Monotonic identity for one atomically assembled snapshot of route content
++     * — `location`, `matches`, `resolvedLocation`.
++     *
++     * Not a change token for the whole state: `status` and `isLoading` are
++     * progress, and an adapter may overlay them onto a snapshot a component is
++     * already presenting while keeping this identity, since it is what an
++     * acknowledgement is matched against.
++     */
++    frameId: number;
+     status: 'pending' | 'idle';
+     isLoading: boolean;
+     matches: Array<TRouteMatch>;
+@@ -624,7 +634,7 @@ export interface RouterCore<in out TRouteTree extends AnyRoute, in out TTrailing
+     _serverResult?: ServerLoadResult;
+     /** Framework publication waiting for an exact render acknowledgement. */
+     _rendered?: [
+-        offered?: Array<AnyRouteMatch>,
++        offered?: Array<AnyRouteMatch> | number,
+         settle?: (rendered: boolean) => void
+     ];
+     /** Development-only HMR reload for a route and its descendants. */
+@@ -659,6 +669,16 @@ export declare class RouterCore<in out TRouteTree extends AnyRoute, in out TTrai
+     _cache: Map<string, AnyRouteMatch>;
+     /** Accepted semantic lane, excluding temporary pending presentation. */
+     _committed: Array<AnyRouteMatch>;
++    /**
++     * The matches `resolvedLocation` resolved for.
++     *
++     * `_committed` runs ahead of it: matches are published inside the
++     * framework's transition callback, and `resolvedLocation` only advances
++     * once that publication is acknowledged, so in between the two describe
++     * different navigations. This is the pair — the last publication the
++     * framework has acknowledged, and the location it belongs to.
++     */
++    _resolvedMatches: Array<AnyRouteMatch>;
+     stores: RouterStores<TRouteTree>;
+     private getStoreConfig;
+     batch: (fn: () => void) => void;
+diff --git a/dist/esm/router.js b/dist/esm/router.js
+index 50a7b0868dbf162aafb51a25abd129cf3afcd993..a6871c0088dcc323ef9082a795c0f3d13769d35c 100644
+--- a/dist/esm/router.js
++++ b/dist/esm/router.js
+@@ -99,6 +99,7 @@ var RouterCore = class {
+ 		this.subscribers = /* @__PURE__ */ new Set();
+ 		this._cache = /* @__PURE__ */ new Map();
+ 		this._committed = [];
++		this._resolvedMatches = [];
+ 		this.routeBranchCache = /* @__PURE__ */ new WeakMap();
+ 		this.lightweightCache = /* @__PURE__ */ new WeakMap();
+ 		this.startTransition = async (fn) => {
+@@ -597,16 +598,19 @@ var RouterCore = class {
+ 		this.loadRouteChunk = loadRouteChunk;
+ 		this.preloadRoute = (opts) => preloadClientRoute(this, opts);
+ 		this.matchRoute = (location, opts) => {
++			const presentedState = opts?._state;
++			const isPending = (opts?.pending ? this.stores.status.get() : presentedState?.status ?? this.stores.status.get()) === "pending";
++			if (opts?.pending && !isPending) return false;
++			const pending = opts?.pending ?? !isPending;
++			const baseLocation = presentedState && !opts?.pending ? presentedState.location : pending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
+ 			const matchLocation = {
+ 				...location,
+ 				to: location.to ? this.resolvePathWithBase(location.from || "", location.to) : void 0,
+ 				params: location.params || {},
+-				leaveParams: true
++				leaveParams: true,
++				...presentedState && !opts?.pending ? { _fromLocation: baseLocation } : {}
+ 			};
+ 			const next = this.buildLocation(matchLocation);
+-			const isPending = this.stores.status.get() === "pending";
+-			if (opts?.pending && !isPending) return false;
+-			const baseLocation = opts?.pending ?? !isPending ? this.latestLocation : this.stores.resolvedLocation.get() || this.stores.location.get();
+ 			const match = findSingleMatch(next.pathname, opts?.caseSensitive ?? false, opts?.fuzzy ?? false, baseLocation.pathname, this.processedTree);
+ 			if (!match) return false;
+ 			if (location.params) {
+@@ -861,6 +865,7 @@ function lazyFn(fn, key) {
+ /** Create an initial RouterState from a parsed location. */
+ function getInitialRouterState(location) {
+ 	return {
++		frameId: 0,
+ 		isLoading: false,
+ 		status: "idle",
+ 		resolvedLocation: void 0,
+diff --git a/dist/esm/stores.js b/dist/esm/stores.js
+index 803b74b59ff23fbf3247b5130c26d17e14ca766f..2268255384e6e18dda367697bf751b6c17cb9eb8 100644
+--- a/dist/esm/stores.js
++++ b/dist/esm/stores.js
+@@ -20,19 +20,30 @@ function createNonReactiveReadonlyStore(read) {
+ }
+ function createRouterStores(initialLocation, config) {
+ 	const { createMutableStore, createReadonlyStore, batch } = config;
++	let nextFrameId = 0;
+ 	const byRoute = /* @__PURE__ */ new Map();
+ 	const status = createMutableStore("idle");
+ 	const location = createMutableStore(initialLocation);
+ 	const resolvedLocation = createMutableStore(void 0);
+ 	const ids = createMutableStore([]);
+ 	const matches = createReadonlyStore(() => ids.get().map((id) => byRoute.get(id).get()));
+-	const __store = createReadonlyStore(() => ({
+-		status: status.get(),
+-		isLoading: status.get() === "pending",
+-		matches: matches.get(),
+-		location: location.get(),
+-		resolvedLocation: resolvedLocation.get()
+-	}));
++	let previous;
++	const __store = createReadonlyStore(() => {
++		const nextMatches = matches.get();
++		const nextLocation = location.get();
++		const nextResolvedLocation = resolvedLocation.get();
++		const unchanged = previous !== void 0 && previous.location === nextLocation && previous.resolvedLocation === nextResolvedLocation && arraysEqual(previous.matches, nextMatches) ? previous : void 0;
++		const next = {
++			frameId: unchanged ? unchanged.frameId : nextFrameId++,
++			status: status.get(),
++			isLoading: status.get() === "pending",
++			matches: nextMatches,
++			location: nextLocation,
++			resolvedLocation: nextResolvedLocation
++		};
++		previous = next;
++		return next;
++	});
+ 	function getMatchStore(routeId) {
+ 		let matchStore = byRoute.get(routeId);
+ 		if (!matchStore) {
+diff --git a/src/load-client.ts b/src/load-client.ts
+index 1994eb2c3717a865984040201499a81e98dcd5b0..fcebdc13eeb074e23d868ea63a4a1108fdd9fb10 100644
+--- a/src/load-client.ts
++++ b/src/load-client.ts
+@@ -1901,6 +1901,7 @@ async function runClientTransaction(
+     }
+     router.batch(() => {
+       router.stores.resolvedLocation.set(toLocation)
++      router._resolvedMatches = router._committed
+       router.stores.status.set('idle')
+       if (router._tx === tx) {
+         router.emit({ type: 'onResolved', ...changeInfo })
+@@ -2549,6 +2550,7 @@ export async function hydrate(router: AnyRouter): Promise<void> {
+     router.stores.status.set('idle')
+     if (!needsClientLoad) {
+       router.stores.resolvedLocation.set(router.stores.location.get())
++      router._resolvedMatches = router._committed
+     }
+   })
+ }
+diff --git a/src/load-server.ts b/src/load-server.ts
+index 1991828d4fdeb6031ffd0ffa3a368a3653a63e9b..fbe121ca3d91278193a6a511186792c7305581ce 100644
+--- a/src/load-server.ts
++++ b/src/load-server.ts
+@@ -917,6 +917,7 @@ export async function loadServerRoute(
+       nextEnd = router._lifecycleEnd = lifecycleEnd(result.matches)
+       router.stores.setMatches(result.matches)
+       router.stores.resolvedLocation.set(next)
++      router._resolvedMatches = router._committed
+     }
+   })
+   if (result.type === 'render') {
+diff --git a/src/router.ts b/src/router.ts
+index 4ae7554d2cd8e6a281319c2854cee04c5b8af4da..bc1614a086309a5660ba355b3e11a37957d4c5a7 100644
+--- a/src/router.ts
++++ b/src/router.ts
+@@ -574,6 +574,16 @@ export interface RouterState<
+   in out TRouteTree extends AnyRoute = AnyRoute,
+   in out TRouteMatch = MakeRouteMatchUnion,
+ > {
++  /**
++   * Monotonic identity for one atomically assembled snapshot of route content
++   * — `location`, `matches`, `resolvedLocation`.
++   *
++   * Not a change token for the whole state: `status` and `isLoading` are
++   * progress, and an adapter may overlay them onto a snapshot a component is
++   * already presenting while keeping this identity, since it is what an
++   * acknowledgement is matched against.
++   */
++  frameId: number
+   status: 'pending' | 'idle'
+   isLoading: boolean
+   matches: Array<TRouteMatch>
+@@ -1079,7 +1089,7 @@ export interface RouterCore<
+   _serverResult?: ServerLoadResult
+   /** Framework publication waiting for an exact render acknowledgement. */
+   _rendered?: [
+-    offered?: Array<AnyRouteMatch>,
++    offered?: Array<AnyRouteMatch> | number,
+     settle?: (rendered: boolean) => void,
+   ]
+   /** Development-only HMR reload for a route and its descendants. */
+@@ -1128,6 +1138,16 @@ export class RouterCore<
+   _cache = new Map<string, AnyRouteMatch>()
+   /** Accepted semantic lane, excluding temporary pending presentation. */
+   _committed: Array<AnyRouteMatch> = []
++  /**
++   * The matches `resolvedLocation` resolved for.
++   *
++   * `_committed` runs ahead of it: matches are published inside the
++   * framework's transition callback, and `resolvedLocation` only advances
++   * once that publication is acknowledged, so in between the two describe
++   * different navigations. This is the pair — the last publication the
++   * framework has acknowledged, and the location it belongs to.
++   */
++  _resolvedMatches: Array<AnyRouteMatch> = []
+ 
+   // Must build in constructor
+   stores!: RouterStores<TRouteTree>
+@@ -2618,6 +2638,36 @@ export class RouterCore<
+     TDefaultStructuralSharingOption,
+     TRouterHistory
+   > = (location, opts) => {
++    const presentedState = (
++      opts as MatchRouteOptions & { _state?: RouterState }
++    )?._state
++    // An explicit `pending: true` query asks about the navigation in flight —
++    // "is this the link we are going to?" — which is a question about the head,
++    // not about what this render is showing. It is answered from the head
++    // whether or not a frame is presented, exactly as it always has been.
++    // Everything else resolves against the frame being presented.
++    const isPending =
++      (opts?.pending
++        ? this.stores.status.get()
++        : (presentedState?.status ?? this.stores.status.get())) === 'pending'
++    if (opts?.pending && !isPending) {
++      return false
++    }
++
++    const pending = opts?.pending ?? !isPending
++
++    // A presented frame is matched against its own `location`: that is the
++    // route the calling render is showing, which is the whole point of passing
++    // a frame. Its `resolvedLocation` still names the previous route while a
++    // successor is staged but unacknowledged, so consulting it would report the
++    // destination inactive for exactly the render that is presenting it.
++    const baseLocation =
++      presentedState && !opts?.pending
++        ? presentedState.location
++        : pending
++          ? this.latestLocation
++          : this.stores.resolvedLocation.get() || this.stores.location.get()
++
+     const matchLocation = {
+       ...location,
+       to: location.to
+@@ -2625,20 +2675,16 @@ export class RouterCore<
+         : undefined,
+       params: location.params || {},
+       leaveParams: true,
++      // Build the target from the same publication it is about to be compared
++      // against. Otherwise a destination that omits `search` inherits it from
++      // the head while the comparison uses the presented frame, and a link to
++      // the route actually on screen reports itself inactive.
++      ...(presentedState && !opts?.pending
++        ? { _fromLocation: baseLocation }
++        : {}),
+     }
+     const next = this.buildLocation(matchLocation as any)
+ 
+-    const isPending = this.stores.status.get() === 'pending'
+-    if (opts?.pending && !isPending) {
+-      return false
+-    }
+-
+-    const pending = opts?.pending ?? !isPending
+-
+-    const baseLocation = pending
+-      ? this.latestLocation
+-      : this.stores.resolvedLocation.get() || this.stores.location.get()
+-
+     const match = findSingleMatch(
+       next.pathname,
+       opts?.caseSensitive ?? false,
+@@ -2767,6 +2813,7 @@ export function getInitialRouterState(
+   location: ParsedLocation,
+ ): RouterState<any> {
+   return {
++    frameId: 0,
+     isLoading: false,
+     status: 'idle',
+     resolvedLocation: undefined,
+diff --git a/src/stores.ts b/src/stores.ts
+index 8c2beeb2e72005c2bc500ee6070a2c0d396f8725..245e687fb157eb3b49599190e4a0dac02452e278 100644
+--- a/src/stores.ts
++++ b/src/stores.ts
+@@ -92,6 +92,7 @@ export function createRouterStores<TRouteTree extends AnyRoute>(
+   config: StoreConfig,
+ ): RouterStores<TRouteTree> {
+   const { createMutableStore, createReadonlyStore, batch } = config
++  let nextFrameId = 0
+ 
+   // non reactive utilities
+   const byRoute = new Map<string, MatchStore>()
+@@ -109,13 +110,37 @@ export function createRouterStores<TRouteTree extends AnyRoute>(
+   )
+ 
+   // compatibility "big" state store
+-  const __store = createReadonlyStore(() => ({
+-    status: status.get(),
+-    isLoading: status.get() === 'pending',
+-    matches: matches.get(),
+-    location: location.get(),
+-    resolvedLocation: resolvedLocation.get(),
+-  }))
++  //
++  // `frameId` advances when route content does, not on every read. The SSR
++  // store is non-reactive — its getter runs again for each reader — so
++  // counting reads gave two consumers in one server render different ids for
++  // the same content, and anything derived from one would differ between the
++  // server and the client, whose store caches the assembly. Progress is
++  // deliberately not part of the comparison: the id identifies route content,
++  // which is the contract `RouterState` documents.
++  let previous: RouterState<TRouteTree> | undefined
++  const __store = createReadonlyStore(() => {
++    const nextMatches = matches.get()
++    const nextLocation = location.get()
++    const nextResolvedLocation = resolvedLocation.get()
++    const unchanged =
++      previous !== undefined &&
++      previous.location === nextLocation &&
++      previous.resolvedLocation === nextResolvedLocation &&
++      arraysEqual(previous.matches, nextMatches)
++        ? previous
++        : undefined
++    const next: RouterState<TRouteTree> = {
++      frameId: unchanged ? unchanged.frameId : nextFrameId++,
++      status: status.get(),
++      isLoading: status.get() === 'pending',
++      matches: nextMatches,
++      location: nextLocation,
++      resolvedLocation: nextResolvedLocation,
++    }
++    previous = next
++    return next
++  })
+ 
+   function getMatchStore(routeId: string): MatchStore {
+     let matchStore = byRoute.get(routeId)
