@@ -270,7 +270,7 @@ index d995d3c9315fbb5f45441cb88cc65520144d2d01..52346943f77f0b3c59092faa8152918e
  function renderScripts(router, scripts) {
  	if ((_tanstack_router_core_isServer.isServer ?? router.isServer) && router.serverSsr) {
 diff --git a/dist/cjs/Transitioner.cjs b/dist/cjs/Transitioner.cjs
-index 43ace5eb908d6e4629e887a4c4baec475e6cbb49..9fca166e9461e6b0d365480207c89101b73bb56e 100644
+index 43ace5eb908d6e4629e887a4c4baec475e6cbb49..30f93f543878fc379cd7e78313fa19af336a1e08 100644
 --- a/dist/cjs/Transitioner.cjs
 +++ b/dist/cjs/Transitioner.cjs
 @@ -2,6 +2,7 @@
@@ -281,7 +281,7 @@ index 43ace5eb908d6e4629e887a4c4baec475e6cbb49..9fca166e9461e6b0d365480207c89101
  let _tanstack_router_core = require("@tanstack/router-core");
  let react = require("react");
  react = require_runtime.__toESM(react, 1);
-@@ -11,16 +12,36 @@ function settleOwner(owner, rendered) {
+@@ -11,16 +12,37 @@ function settleOwner(owner, rendered) {
  	owner.length = 0;
  	settle?.(rendered);
  }
@@ -313,14 +313,15 @@ index 43ace5eb908d6e4629e887a4c4baec475e6cbb49..9fca166e9461e6b0d365480207c89101
 +		});
  	});
 +	require_utils.useLayoutEffect(() => {
-+		const offered = acknowledgement[0];
++		const slot = router._rendered ??= [];
++		const offered = slot[0];
 +		const satisfiable = routerStateOwner ? typeof offered === "number" : Array.isArray(offered);
-+		if (acknowledgement.length && !satisfiable) settleOwner(acknowledgement, false);
-+	}, []);
++		if (slot.length && !satisfiable) settleOwner(slot, false);
++	}, [router, routerStateOwner]);
  	require_utils.useLayoutEffect(() => {
  		const unsub = router.history.subscribe(router.load);
  		if (mounted?.current) return unsub;
-@@ -44,7 +65,7 @@ function Transitioner({ t }) {
+@@ -44,7 +66,7 @@ function Transitioner({ t }) {
  			return unsub;
  		}
  		const resolvedLocation = router.stores.resolvedLocation.get();
@@ -477,10 +478,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a91b8aa7b70dd149d0c6a13a0b31f6c86b97e619
+index 0000000000000000000000000000000000000000..eb0d108695ec57cd957bc3390203098e3f781201
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,550 @@
+@@ -0,0 +1,555 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -717,7 +718,12 @@ index 0000000000000000000000000000000000000000..a91b8aa7b70dd149d0c6a13a0b31f6c8
 +			return isSuperseded(pending, router.stores.__store.get()) ? void 0 : pending;
 +		},
 +		resync: () => {
-+			if (staging || pending || route.staged) return;
++			if (staging) return;
++			if (pending && isSuperseded(pending, router.stores.__store.get())) {
++				pending = void 0;
++				route.staged = void 0;
++			}
++			if (pending || route.staged) return;
 +			const next = initialFrame(router);
 +			if (next.frameId === root.committed.frameId && sameLocation(next.location, root.committed.location)) return;
 +			root.committed = next;
@@ -1740,7 +1746,7 @@ index 0e0c6ec7c0e0053e08422a83ab63100243a9752b..214c2a024758eaac39747166e5747b09
 +    setRenderFrame: (frame: RouterRenderFrame | undefined) => void;
  }): null;
 diff --git a/dist/esm/Transitioner.js b/dist/esm/Transitioner.js
-index 51d7e69e3b1ad5a656d4c4e6f3ef690520effbf5..c2ee4039f009075821d11b02f6f41e06467807ef 100644
+index 51d7e69e3b1ad5a656d4c4e6f3ef690520effbf5..5f0d92ed313eb9f42053efc59a053af9da8c41cc 100644
 --- a/dist/esm/Transitioner.js
 +++ b/dist/esm/Transitioner.js
 @@ -1,6 +1,7 @@
@@ -1751,7 +1757,7 @@ index 51d7e69e3b1ad5a656d4c4e6f3ef690520effbf5..c2ee4039f009075821d11b02f6f41e06
  import { getLocationChangeInfo, trimPathRight } from "@tanstack/router-core";
  import * as React$1 from "react";
  //#region src/Transitioner.tsx
-@@ -9,16 +10,36 @@ function settleOwner(owner, rendered) {
+@@ -9,16 +10,37 @@ function settleOwner(owner, rendered) {
  	owner.length = 0;
  	settle?.(rendered);
  }
@@ -1783,14 +1789,15 @@ index 51d7e69e3b1ad5a656d4c4e6f3ef690520effbf5..c2ee4039f009075821d11b02f6f41e06
 +		});
  	});
 +	useLayoutEffect(() => {
-+		const offered = acknowledgement[0];
++		const slot = router._rendered ??= [];
++		const offered = slot[0];
 +		const satisfiable = routerStateOwner ? typeof offered === "number" : Array.isArray(offered);
-+		if (acknowledgement.length && !satisfiable) settleOwner(acknowledgement, false);
-+	}, []);
++		if (slot.length && !satisfiable) settleOwner(slot, false);
++	}, [router, routerStateOwner]);
  	useLayoutEffect(() => {
  		const unsub = router.history.subscribe(router.load);
  		if (mounted?.current) return unsub;
-@@ -42,7 +63,7 @@ function Transitioner({ t }) {
+@@ -42,7 +64,7 @@ function Transitioner({ t }) {
  			return unsub;
  		}
  		const resolvedLocation = router.stores.resolvedLocation.get();
@@ -2109,10 +2116,10 @@ index 0000000000000000000000000000000000000000..d71880286fdc7a31aaf0b9367b58e5b2
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..fa75fe60f1f334b38587bd6e15cbd17acee66b31
+index 0000000000000000000000000000000000000000..8af55463fc7a56c4f0d79757cb52eca0621b4c45
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,541 @@
+@@ -0,0 +1,546 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2347,7 +2354,12 @@ index 0000000000000000000000000000000000000000..fa75fe60f1f334b38587bd6e15cbd17a
 +			return isSuperseded(pending, router.stores.__store.get()) ? void 0 : pending;
 +		},
 +		resync: () => {
-+			if (staging || pending || route.staged) return;
++			if (staging) return;
++			if (pending && isSuperseded(pending, router.stores.__store.get())) {
++				pending = void 0;
++				route.staged = void 0;
++			}
++			if (pending || route.staged) return;
 +			const next = initialFrame(router);
 +			if (next.frameId === root.committed.frameId && sameLocation(next.location, root.committed.location)) return;
 +			root.committed = next;
@@ -3433,7 +3445,7 @@ index 13679f553db44af5c588b58ffb4f66d71b0aec76..0fba5d6e1d69d8dabd515f312740917f
  }
  
 diff --git a/src/Transitioner.tsx b/src/Transitioner.tsx
-index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..b5aac60610f17aecc2ebf939e3cb57b2a6119c40 100644
+index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..b58a1bc6130902141e1bb2bea8b1033b726f132c 100644
 --- a/src/Transitioner.tsx
 +++ b/src/Transitioner.tsx
 @@ -4,7 +4,9 @@ import * as React from 'react'
@@ -3460,7 +3472,7 @@ index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..b5aac60610f17aecc2ebf939e3cb57b2
    const acknowledgement = (router._rendered ??= [])
    const mounted =
      process.env.NODE_ENV !== 'production'
-@@ -33,9 +38,49 @@ export function Transitioner({
+@@ -33,9 +38,54 @@ export function Transitioner({
        settleOwner(acknowledgement, false)
        acknowledgement.push(expected, resolve)
        t(router)
@@ -3496,22 +3508,27 @@ index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..b5aac60610f17aecc2ebf939e3cb57b2
 +  // Settle it as unrendered, which is exactly what a navigation gets when
 +  // nothing is mounted to acknowledge it at all: the load resolves, and this
 +  // tree renders the publication from the store like any other reader.
++  //
++  // Not mount-only: a mounted provider handed a different router inherits
++  // that router's outstanding offer, which may have been made to a tree on
++  // the other path, so the same mismatch arrives without a mount. The
++  // acknowledgement slot is per router, so it changes with the router; the
++  // owner changes with it, and with the path this tree is on.
 +  useLayoutEffect(() => {
-+    const offered = acknowledgement[0 /* offered */]
++    const slot = (router._rendered ??= [])
++    const offered = slot[0 /* offered */]
 +    const satisfiable = routerStateOwner
 +      ? typeof offered === 'number'
 +      : Array.isArray(offered)
-+    if (acknowledgement.length && !satisfiable) {
-+      settleOwner(acknowledgement, false)
++    if (slot.length && !satisfiable) {
++      settleOwner(slot, false)
 +    }
-+    // Mount only: a tree offers in its own representation from then on.
-+    // eslint-disable-next-line react-hooks/exhaustive-deps
-+  }, [])
++  }, [router, routerStateOwner])
 +
    // Subscribe before canonicalizing so the initial URL has exactly one load.
    useLayoutEffect(() => {
      const unsub = router.history.subscribe(router.load)
-@@ -78,14 +123,17 @@ export function Transitioner({
+@@ -78,14 +128,17 @@ export function Transitioner({
        resolvedLocation?.href === location.href &&
        resolvedLocation.state.__TSR_key === location.state.__TSR_key
      ) {
@@ -3778,10 +3795,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..40835d76452455a4ec44acbb1fd6cdafcde8fc16
+index 0000000000000000000000000000000000000000..a171bde58c1493c511daa1d45dae59680762041c
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,984 @@
+@@ -0,0 +1,997 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -4203,7 +4220,20 @@ index 0000000000000000000000000000000000000000..40835d76452455a4ec44acbb1fd6cdaf
 +      // advances toward the publication `publish` would have reached anyway;
 +      // where a tree is already mounted and subscribed, that tree has kept the
 +      // owner current and this is a no-op.
-+      if (staging || pending || route.staged) {
++      if (staging) {
++        return
++      }
++      if (pending && isSuperseded(pending, router.stores.__store.get())) {
++        // A frame the head has left cannot commit — `owner.pending` already
++        // refuses to hand it out, and `commit` cancels it — but while it sits
++        // here it blocks this resync, and the tree renders a route two
++        // navigations behind. Dropping it is the same conclusion `publish`
++        // reaches, minus the notification: this runs during render, and the
++        // provider's own subscription republishes once it is mounted.
++        pending = undefined
++        route.staged = undefined
++      }
++      if (pending || route.staged) {
 +        return
 +      }
 +      const next = initialFrame(router)

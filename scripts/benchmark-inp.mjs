@@ -14,8 +14,8 @@
  * browser context and discards warmup clicks.
  */
 import { chromium } from 'playwright'
-import { execFileSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
+import { buildId } from './build-id.mjs'
 
 const CONTROL = process.env.CONTROL ?? 'http://localhost:4173'
 const PATCHED = process.env.PATCHED ?? 'http://localhost:4174'
@@ -37,25 +37,23 @@ const OUT = process.env.OUT ?? 'benchmark-results.json'
  * that, because the first server is the stale one.
  *
  * So the expected stamp comes from outside the run. `EXPECT_BUILD_ID` names
- * it explicitly; otherwise it defaults to the working tree's `HEAD`, which is
+ * it explicitly; otherwise it defaults to `scripts/build-id.mjs`, which is
  * what the README's build commands stamp the arms with. `EXPECT_BUILD_ID=any`
- * opts out, for measuring a build that deliberately is not `HEAD` — the run
- * then falls back to cross-arm agreement alone and says so in its output.
+ * opts out, for measuring a build that deliberately is not this source — the
+ * run then falls back to cross-arm agreement alone and says so in its output.
+ *
+ * That stamp is the commit *and* a hash of anything uncommitted, because
+ * `HEAD` alone cannot tell two arms apart when they were built either side of
+ * an edit that was never committed: same commit, same stamp, identical-source
+ * witness satisfied by two different builds. Any edit between the two builds
+ * changes the stamp, and the run refuses to compare them.
  */
 const EXPECT_BUILD_ID = (() => {
   const configured = process.env.EXPECT_BUILD_ID
   if (configured) {
     return configured === 'any' ? undefined : configured
   }
-  try {
-    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim()
-  } catch {
-    // No git, no answer, and no basis for a freshness claim.
-    return undefined
-  }
+  return buildId()
 })()
 
 /**

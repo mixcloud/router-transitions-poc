@@ -94,7 +94,7 @@ so nothing but the router's publication path can account for a difference.
 ```bash
 pnpm exec playwright install chromium        # once
 
-BUILD_ID=$(git rev-parse --short HEAD)
+BUILD_ID=$(node scripts/build-id.mjs)
 VITE_BUILD_ID=$BUILD_ID VITE_CONCURRENT_FRAMES=0 pnpm build --outDir dist-control
 VITE_BUILD_ID=$BUILD_ID VITE_CONCURRENT_FRAMES=1 pnpm build --outDir dist-patched
 pnpm exec vite preview --outDir dist-control --port 4173 --strictPort &
@@ -108,9 +108,9 @@ whose HTML references the previous build's hashed assets, so a stale server
 serves a page that never hydrates. `--strictPort` also means a server left
 running from an earlier build keeps serving it. The run refuses both cases
 rather than measuring them — it waits for each server to answer, then requires
-every block to report the stamp it *expects*, which defaults to the working
-tree's `HEAD` and can be named with `EXPECT_BUILD_ID` — but the fix is the
-restart, not the script.
+every block to report the stamp it *expects*, which defaults to
+`scripts/build-id.mjs` and can be named with `EXPECT_BUILD_ID` — but the fix
+is the restart, not the script.
 
 The expected stamp comes from outside the run on purpose. An earlier revision
 only required every block to report the *same* stamp, learning the reference
@@ -119,9 +119,25 @@ earlier build the two arms agreed with each other and the run published
 numbers for code that no longer existed. Agreement between arms is not
 freshness, and the first server is exactly the one that cannot establish it.
 `EXPECT_BUILD_ID=any` goes back to arms-agree-only, for measuring a build that
-deliberately is not `HEAD`; the run then says `(agreed by both arms, not
+deliberately is not this source; the run then says `(agreed by both arms, not
 required)` beside the build in its output, and records
 `meta.buildIdRequired: false`.
+
+The stamp is not `HEAD` alone, for a second reason raised in review: two arms
+built either side of an *uncommitted* edit carry the same commit, so the
+identical-source premise the whole comparison rests on would be satisfied by
+two different builds. `scripts/build-id.mjs` prints the commit plus, when the
+tree is not clean, a short hash of what makes it not clean — the diff against
+`HEAD`, staged changes included, and the untracked files with their contents:
+
+```
+ac593e5                     # clean tree: this commit, as committed
+ac593e5-dirty.35dd7cb2      # this commit plus exactly these uncommitted changes
+```
+
+Any edit between the two builds changes it, and the run then refuses to
+compare them. Both the build commands above and the benchmark's default
+expectation call that one script, so they cannot drift apart.
 
 The demo's own routes render in well under a millisecond, far too little to show
 a scheduling difference, so `?rows=N` gives the destination route a controllable
@@ -302,18 +318,19 @@ Five caveats worth knowing:
   commit for `1.170.35` / `1.171.29` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `43afe0a`, on top of a merge of TanStack Router `main` at `6494e753` — the
+  is `d826bb4`, on top of a merge of TanStack Router `main` at `6494e753` — the
   store 0.11 upgrade, which renames the React read hook to `useSelector` and
   moves `compare` into an options object without changing what it does
-  underneath. The published measurements are from `cc08459`, forty commits
+  underneath. The published measurements are from `cc08459`, forty-one commits
   back: every commit since is correctness bookkeeping raised in review — a
   scope-keyed presentation identity, a head subscription for pending matchers,
   a per-router frame queue, weakly held owners, a structural-sharing cache
   restored around a probe, a frame-path decision frozen per provider tree,
   hydration not remounting the route tree, the head revalidated at the
   acknowledgement boundary, progress published when the frame id has not
-  moved, the seed taking the acknowledged publication — and none of it
-  changes the publication path the experiment measures.
+  moved, the seed taking the acknowledged publication, a superseded frame no
+  longer blocking a resync — and none of it changes the publication path the
+  experiment measures.
   Re-run the sweep if you want the numbers pinned to the exact head; the
   commands are above and every witness is live.
 - Until now only the `@tanstack/react-router` patch was regenerated on each
