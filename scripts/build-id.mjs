@@ -59,6 +59,15 @@ export function buildId() {
   return digest === clean ? head : `${head}-dirty.${digest.slice(0, 8)}`
 }
 
+/**
+ * What a build should stamp itself with: an explicit `VITE_BUILD_ID` when one
+ * is set, otherwise the source identity above. Lives here rather than in
+ * `vite.config.ts` so the config needs no Node globals of its own.
+ */
+export function buildStamp() {
+  return process.env.VITE_BUILD_ID ?? buildId() ?? null
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const id = buildId()
   if (!id) {

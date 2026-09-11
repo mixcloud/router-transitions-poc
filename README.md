@@ -94,9 +94,8 @@ so nothing but the router's publication path can account for a difference.
 ```bash
 pnpm exec playwright install chromium        # once
 
-BUILD_ID=$(node scripts/build-id.mjs)
-VITE_BUILD_ID=$BUILD_ID VITE_CONCURRENT_FRAMES=0 pnpm build --outDir dist-control
-VITE_BUILD_ID=$BUILD_ID VITE_CONCURRENT_FRAMES=1 pnpm build --outDir dist-patched
+VITE_CONCURRENT_FRAMES=0 pnpm build --outDir dist-control
+VITE_CONCURRENT_FRAMES=1 pnpm build --outDir dist-patched
 pnpm exec vite preview --outDir dist-control --port 4173 --strictPort &
 pnpm exec vite preview --outDir dist-patched --port 4174 --strictPort &
 
@@ -136,8 +135,17 @@ ac593e5-dirty.35dd7cb2      # this commit plus exactly these uncommitted changes
 ```
 
 Any edit between the two builds changes it, and the run then refuses to
-compare them. Both the build commands above and the benchmark's default
-expectation call that one script, so they cannot drift apart.
+compare them.
+
+Each build computes its own stamp, in `vite.config.ts`, rather than being
+handed one — an earlier revision of these commands computed it once in the
+shell and passed it to both, which cannot check the thing it exists to check:
+an edit between the two builds, reverted before the run, left two different
+artifacts carrying one stamp. Now the arms disagree, and both the default
+expectation and `EXPECT_BUILD_ID=any` refuse them. An explicit
+`VITE_BUILD_ID` still wins, for stamping a build deliberately. The
+benchmark's default expectation calls the same script, so the two cannot
+drift apart.
 
 The demo's own routes render in well under a millisecond, far too little to show
 a scheduling difference, so `?rows=N` gives the destination route a controllable
