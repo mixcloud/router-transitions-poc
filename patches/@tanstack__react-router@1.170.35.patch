@@ -471,10 +471,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..70eff2b4b7a829fd5205a31670c04570a63443f5
+index 0000000000000000000000000000000000000000..38005abc64dfa4147747bd27470d686618b54023
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,524 @@
+@@ -0,0 +1,536 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -626,26 +626,38 @@ index 0000000000000000000000000000000000000000..70eff2b4b7a829fd5205a31670c04570
 +* An owner can be built while a navigation is already in flight — a provider
 +* mounted mid-navigation, or a router that committed its matches on the store
 +* path before the option was turned on. The head is not a snapshot of one
-+* publication at that moment: `location` is already the destination while
-+* `matches` are still the ones on screen, which is the second half of what
-+* this option exists to fix. Seeding both scopes from it presents the
-+* successor's URL beside the previous route's content for the whole load.
++* publication then: `location` is already the destination, and once a pending
++* lane publishes `matches` is the destination's too, while `resolvedLocation`
++* still names the route on screen. Seeding from any mixture of those shows a
++* route under the wrong URL for the whole load.
 +*
-+* `resolvedLocation` is the location the committed matches were resolved for,
-+* so pairing the two gives back a coherent publication. That is also exactly
-+* what a tree that stayed mounted through the same navigation presents: the
-+* route and URL it is showing, until the navigation commits. Mounting midway
-+* should not be a different experience from having been there.
++* So the seed is the *last committed publication*, which is exactly what a
++* tree that had stayed mounted through this navigation would be presenting:
++* `router._committed` is the set of matches `resolvedLocation` was resolved
++* for, and the two are written together. Mounting midway is then not a
++* different experience from having been there.
++*
++* Three earlier revisions of this function tried to reconstruct that pair
++* from the head — substituting `resolvedLocation`, then comparing the history
++* key, then comparing the deepest match's pathname to tell a published
++* pending lane apart. Each missed a case the next review found, the last
++* being a same-path search navigation where the pathname cannot distinguish
++* them at all. Reading the committed publication directly removes the
++* guesswork rather than adding a fourth discriminator.
++*
++* The head's `frameId` is kept. Nothing acknowledges a seeded frame — it is
++* only ever replaced by the next `publish` or `stage` — and a navigation that
++* commits changes the matches, so the head's identity advances past it.
 +*/
 +function initialFrame(router) {
 +	const head = router.stores.__store.get();
 +	const resolved = router.stores.resolvedLocation.get();
-+	if (!resolved || sameLocation(resolved, head.location)) return head;
-+	const deepest = head.matches[head.matches.length - 1];
-+	if (deepest && deepest.pathname !== resolved.pathname) return head;
++	const committed = router._committed;
++	if (!resolved || !committed.length || sameLocation(resolved, head.location)) return head;
 +	return {
 +		...head,
-+		location: resolved
++		location: resolved,
++		matches: committed
 +	};
 +}
 +function createOwner(router) {
@@ -2071,10 +2083,10 @@ index 0000000000000000000000000000000000000000..d71880286fdc7a31aaf0b9367b58e5b2
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..2cc66f040b1e47ceec85a70f4d042544f7eeff25
+index 0000000000000000000000000000000000000000..c091488a0b705c19503d11000a26c017c569357f
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,515 @@
+@@ -0,0 +1,527 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2224,26 +2236,38 @@ index 0000000000000000000000000000000000000000..2cc66f040b1e47ceec85a70f4d042544
 +* An owner can be built while a navigation is already in flight — a provider
 +* mounted mid-navigation, or a router that committed its matches on the store
 +* path before the option was turned on. The head is not a snapshot of one
-+* publication at that moment: `location` is already the destination while
-+* `matches` are still the ones on screen, which is the second half of what
-+* this option exists to fix. Seeding both scopes from it presents the
-+* successor's URL beside the previous route's content for the whole load.
++* publication then: `location` is already the destination, and once a pending
++* lane publishes `matches` is the destination's too, while `resolvedLocation`
++* still names the route on screen. Seeding from any mixture of those shows a
++* route under the wrong URL for the whole load.
 +*
-+* `resolvedLocation` is the location the committed matches were resolved for,
-+* so pairing the two gives back a coherent publication. That is also exactly
-+* what a tree that stayed mounted through the same navigation presents: the
-+* route and URL it is showing, until the navigation commits. Mounting midway
-+* should not be a different experience from having been there.
++* So the seed is the *last committed publication*, which is exactly what a
++* tree that had stayed mounted through this navigation would be presenting:
++* `router._committed` is the set of matches `resolvedLocation` was resolved
++* for, and the two are written together. Mounting midway is then not a
++* different experience from having been there.
++*
++* Three earlier revisions of this function tried to reconstruct that pair
++* from the head — substituting `resolvedLocation`, then comparing the history
++* key, then comparing the deepest match's pathname to tell a published
++* pending lane apart. Each missed a case the next review found, the last
++* being a same-path search navigation where the pathname cannot distinguish
++* them at all. Reading the committed publication directly removes the
++* guesswork rather than adding a fourth discriminator.
++*
++* The head's `frameId` is kept. Nothing acknowledges a seeded frame — it is
++* only ever replaced by the next `publish` or `stage` — and a navigation that
++* commits changes the matches, so the head's identity advances past it.
 +*/
 +function initialFrame(router) {
 +	const head = router.stores.__store.get();
 +	const resolved = router.stores.resolvedLocation.get();
-+	if (!resolved || sameLocation(resolved, head.location)) return head;
-+	const deepest = head.matches[head.matches.length - 1];
-+	if (deepest && deepest.pathname !== resolved.pathname) return head;
++	const committed = router._committed;
++	if (!resolved || !committed.length || sameLocation(resolved, head.location)) return head;
 +	return {
 +		...head,
-+		location: resolved
++		location: resolved,
++		matches: committed
 +	};
 +}
 +function createOwner(router) {
@@ -3688,10 +3712,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..c4c79fa80f62d1be7cac170f09e6743253303f8f
+index 0000000000000000000000000000000000000000..41cfb2ff777f1c9dfe65ecf73277d5a0c37fbe84
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,962 @@
+@@ -0,0 +1,961 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -3985,41 +4009,40 @@ index 0000000000000000000000000000000000000000..c4c79fa80f62d1be7cac170f09e67432
 + * An owner can be built while a navigation is already in flight — a provider
 + * mounted mid-navigation, or a router that committed its matches on the store
 + * path before the option was turned on. The head is not a snapshot of one
-+ * publication at that moment: `location` is already the destination while
-+ * `matches` are still the ones on screen, which is the second half of what
-+ * this option exists to fix. Seeding both scopes from it presents the
-+ * successor's URL beside the previous route's content for the whole load.
++ * publication then: `location` is already the destination, and once a pending
++ * lane publishes `matches` is the destination's too, while `resolvedLocation`
++ * still names the route on screen. Seeding from any mixture of those shows a
++ * route under the wrong URL for the whole load.
 + *
-+ * `resolvedLocation` is the location the committed matches were resolved for,
-+ * so pairing the two gives back a coherent publication. That is also exactly
-+ * what a tree that stayed mounted through the same navigation presents: the
-+ * route and URL it is showing, until the navigation commits. Mounting midway
-+ * should not be a different experience from having been there.
++ * So the seed is the *last committed publication*, which is exactly what a
++ * tree that had stayed mounted through this navigation would be presenting:
++ * `router._committed` is the set of matches `resolvedLocation` was resolved
++ * for, and the two are written together. Mounting midway is then not a
++ * different experience from having been there.
++ *
++ * Three earlier revisions of this function tried to reconstruct that pair
++ * from the head — substituting `resolvedLocation`, then comparing the history
++ * key, then comparing the deepest match's pathname to tell a published
++ * pending lane apart. Each missed a case the next review found, the last
++ * being a same-path search navigation where the pathname cannot distinguish
++ * them at all. Reading the committed publication directly removes the
++ * guesswork rather than adding a fourth discriminator.
++ *
++ * The head's `frameId` is kept. Nothing acknowledges a seeded frame — it is
++ * only ever replaced by the next `publish` or `stage` — and a navigation that
++ * commits changes the matches, so the head's identity advances past it.
 + */
 +function initialFrame(router: AnyRouter): RouterRenderFrame {
 +  const head = router.stores.__store.get()
 +  const resolved = router.stores.resolvedLocation.get()
-+  if (!resolved || sameLocation(resolved, head.location)) {
++  const committed = router._committed
++  // When the location has not moved there is no navigation to be mid-way
++  // through: the head is a single publication, and any matches newer than
++  // `_committed` — a background refresh, say — are the ones to show.
++  if (!resolved || !committed.length || sameLocation(resolved, head.location)) {
 +    return head
 +  }
-+  // Which of the two locations do the head's matches belong to? Once a
-+  // navigation publishes its pending lane — a route with a `pendingComponent`
-+  // and `pendingMs` elapsed — `matches` is already the *destination's* while
-+  // `resolvedLocation` still names the route being left. Pairing those with
-+  // `resolvedLocation` would produce the opposite mixture to the one this
-+  // function exists to avoid: the old URL wearing the destination's matches.
-+  //
-+  // The deepest match's pathname settles it, compared against `resolved`
-+  // rather than against the head: on a same-URL navigation to a new history
-+  // entry both pathnames are equal, and there the matches are the committed
-+  // ones, so `resolved` is still the right partner.
-+  const deepest = head.matches[head.matches.length - 1]
-+  if (deepest && deepest.pathname !== resolved.pathname) {
-+    return head
-+  }
-+  // Same matches, so the same route content and the same identity — only the
-+  // location is put back to the one those matches belong to.
-+  return { ...head, location: resolved }
++  return { ...head, location: resolved, matches: committed }
 +}
 +
 +function createOwner(router: AnyRouter): RouterStateOwner {
