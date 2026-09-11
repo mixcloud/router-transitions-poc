@@ -471,10 +471,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..38005abc64dfa4147747bd27470d686618b54023
+index 0000000000000000000000000000000000000000..92c9b97354b8bc0b6cce9ce7653527323d7af5ac
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,536 @@
+@@ -0,0 +1,539 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -758,7 +758,10 @@ index 0000000000000000000000000000000000000000..38005abc64dfa4147747bd27470d6866
 +				syncProgress(head);
 +				return;
 +			}
-+			if (nextFrame.frameId === root.committed.frameId) return;
++			if (nextFrame.frameId === root.committed.frameId) {
++				syncProgress(head);
++				return;
++			}
 +			root.committed = nextFrame;
 +			route.committed = nextFrame;
 +			route.staged = void 0;
@@ -2083,10 +2086,10 @@ index 0000000000000000000000000000000000000000..d71880286fdc7a31aaf0b9367b58e5b2
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..c091488a0b705c19503d11000a26c017c569357f
+index 0000000000000000000000000000000000000000..d7409ddaf6a549d03b5abd1aa08127ed41701ad2
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,527 @@
+@@ -0,0 +1,530 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2368,7 +2371,10 @@ index 0000000000000000000000000000000000000000..c091488a0b705c19503d11000a26c017
 +				syncProgress(head);
 +				return;
 +			}
-+			if (nextFrame.frameId === root.committed.frameId) return;
++			if (nextFrame.frameId === root.committed.frameId) {
++				syncProgress(head);
++				return;
++			}
 +			root.committed = nextFrame;
 +			route.committed = nextFrame;
 +			route.staged = void 0;
@@ -3712,10 +3718,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..41cfb2ff777f1c9dfe65ecf73277d5a0c37fbe84
+index 0000000000000000000000000000000000000000..5255537e8a8f27e5ed61b676fc4fd10c38d12a20
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,961 @@
+@@ -0,0 +1,969 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -4242,6 +4248,14 @@ index 0000000000000000000000000000000000000000..41cfb2ff777f1c9dfe65ecf73277d5a0
 +        return
 +      }
 +      if (nextFrame.frameId === root.committed.frameId) {
++        // Same route content, so there is nothing to commit — but progress is
++        // deliberately not part of the frame id, and a committed frame can
++        // carry the progress of a *different* moment: `commit` takes it from
++        // the head, which is still 'pending' because the load only settles
++        // after the acknowledgement it is waiting on. The idle that follows
++        // is then the one notification that would tell consumers the load has
++        // finished, and returning here would swallow it.
++        syncProgress(head)
 +        return
 +      }
 +      root.committed = nextFrame
