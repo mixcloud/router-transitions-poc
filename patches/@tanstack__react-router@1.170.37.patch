@@ -1,5 +1,5 @@
 diff --git a/dist/cjs/Match.cjs b/dist/cjs/Match.cjs
-index a3bcc0c5b9dbfc0048388a90f9fe8fab9bb76dc5..6416a448e6501fc0f73c471cc2f91acac0661d3e 100644
+index a3bcc0c5b9dbfc0048388a90f9fe8fab9bb76dc5..0189c1f759471818f0100a4a3bf33c8621b902e1 100644
 --- a/dist/cjs/Match.cjs
 +++ b/dist/cjs/Match.cjs
 @@ -5,6 +5,7 @@ const require_CatchBoundary = require("./CatchBoundary.cjs");
@@ -48,7 +48,7 @@ index a3bcc0c5b9dbfc0048388a90f9fe8fab9bb76dc5..6416a448e6501fc0f73c471cc2f91aca
  	const routeNotFoundComponent = route.isRoot ? route.options.notFoundComponent ?? router.options.notFoundRoute?.options.component : route.options.notFoundComponent;
  	const resolvedNoSsr = match.ssr === false || match.ssr === "data-only";
 -	const ResolvedSuspenseBoundary = canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? react.Suspense : require_SafeFragment.SafeFragment;
-+	const ResolvedSuspenseBoundary = !require_routerStateContext.useFrameRootBoundary(router, _tanstack_router_core_isServer.isServer ?? router.isServer) && canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? react.Suspense : require_SafeFragment.SafeFragment;
++	const ResolvedSuspenseBoundary = !(require_routerStateContext.useFrameMode(router) && !(_tanstack_router_core_isServer.isServer ?? router.isServer) && !router.ssr) && canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? react.Suspense : require_SafeFragment.SafeFragment;
  	const ResolvedCatchBoundary = routeErrorComponent ? require_CatchBoundary.CatchBoundary : require_SafeFragment.SafeFragment;
  	const ResolvedNotFoundBoundary = routeNotFoundComponent ? require_not_found.CatchNotFound : require_SafeFragment.SafeFragment;
  	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(route.isRoot ? route.options.shellComponent ?? require_SafeFragment.SafeFragment : require_SafeFragment.SafeFragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_matchContext.matchContext.Provider, {
@@ -522,10 +522,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..eb0d108695ec57cd957bc3390203098e3f781201
+index 0000000000000000000000000000000000000000..5c76559584702c1d96e4e30b934a8e716496ef6a
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,555 @@
+@@ -0,0 +1,544 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -707,10 +707,17 @@ index 0000000000000000000000000000000000000000..eb0d108695ec57cd957bc3390203098e
 +* with `_committed`. Recording the matches at the acknowledgement removes the
 +* guesswork rather than adding a fifth discriminator.
 +*
-+* The head's `frameId` is kept. Nothing acknowledges a seeded frame — it is
-+* only ever replaced by the next `publish` or `stage` — and a navigation that
-+* commits changes the matches, so the head's identity advances past it.
++* A reconstruction gets an identity of its own. `frameId` identifies route
++* content, and this frame's content is by construction *not* the head's, so
++* carrying the head's id would put two different publications under one
++* identity — which is what an acknowledgement is matched against, and what
++* `publish` compares to decide that content has not moved. Core counts its
++* ids up from zero, so counting down from below zero here cannot collide with
++* a publication, and a consumer versioning a cache on `frameId` sees a
++* snapshot distinct from both the publication being left and the one being
++* prepared.
 +*/
++var reconstructedFrameId = 0;
 +function initialFrame(router) {
 +	const head = router.stores.__store.get();
 +	const resolved = router.stores.resolvedLocation.get();
@@ -718,6 +725,7 @@ index 0000000000000000000000000000000000000000..eb0d108695ec57cd957bc3390203098e
 +	if (!resolved || !resolvedMatches.length || sameLocation(resolved, head.location)) return head;
 +	return {
 +		...head,
++		frameId: --reconstructedFrameId,
 +		location: resolved,
 +		matches: resolvedMatches
 +	};
@@ -865,9 +873,10 @@ index 0000000000000000000000000000000000000000..eb0d108695ec57cd957bc3390203098e
 +	return owner;
 +}
 +function RouterStateProvider({ router, children }) {
-+	const owner = ownerFor(router);
++	const owner = _tanstack_router_core_isServer.isServer ?? router.isServer ? void 0 : ownerFor(router);
 +	const [frameMode] = react.useState(() => Boolean(router.options.experimental_concurrentRenderFrames));
 +	require_utils.useLayoutEffect(() => {
++		if (!owner) return;
 +		const subscription = router.stores.__store.subscribe(() => owner.publish());
 +		owner.publish();
 +		return () => subscription.unsubscribe();
@@ -878,7 +887,7 @@ index 0000000000000000000000000000000000000000..eb0d108695ec57cd957bc3390203098e
 +			router,
 +			frameMode,
 +			children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateScopeContext.Provider, {
-+				value: owner.root,
++				value: owner?.root,
 +				children
 +			})
 +		})
@@ -968,7 +977,9 @@ index 0000000000000000000000000000000000000000..eb0d108695ec57cd957bc3390203098e
 +*/
 +function useFrameMode(router) {
 +	const tree = react.useContext(routerStateFrameModeContext);
-+	const [mode] = react.useState(() => tree?.router === router ? tree.frameMode : Boolean(router.options.experimental_concurrentRenderFrames));
++	const decide = () => tree?.router === router ? tree.frameMode : Boolean(router.options.experimental_concurrentRenderFrames);
++	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return decide();
++	const [mode] = react.useState(decide);
 +	return mode;
 +}
 +function useRouterStateSelector(router, selector, compare = defaultCompare, presentedFrame) {
@@ -1049,33 +1060,11 @@ index 0000000000000000000000000000000000000000..eb0d108695ec57cd957bc3390203098e
 +	}, [rebase, scope]);
 +	return rendered;
 +}
-+/**
-+* Whether this render should consolidate route suspension at the frame root.
-+*
-+* Answered from the option and whether the app renders on the server, both
-+* fixed for the tree's lifetime — deliberately, because this decides an
-+* element *type*. It first followed hydration, which meant the wrapper at the
-+* root of the route tree changed from a fragment to a `Suspense` boundary the
-+* moment hydration finished: React reads a changed type as a replacement, so
-+* the whole route subtree unmounted and remounted, re-running mount effects
-+* and discarding anything a component had set up while hydrating.
-+*
-+* A server-rendered app therefore does not consolidate at all. It keeps
-+* upstream's route-level boundaries, which is what its streamed HTML already
-+* describes, and gives up atomic acknowledgement: a child that suspends
-+* resolves at its own boundary, so a frame can be acknowledged while part of
-+* the tree is still pending. That is upstream's behaviour today, and a far
-+* better trade than remounting the route tree once per page load.
-+*/
-+function useFrameRootBoundary(router, isServerRender) {
-+	return useFrameMode(router) && !isServerRender && !router.ssr;
-+}
 +//#endregion
 +exports.RouterStateFrame = RouterStateFrame;
 +exports.RouterStateProvider = RouterStateProvider;
 +exports.RouterStateStorePath = RouterStateStorePath;
 +exports.useFrameMode = useFrameMode;
-+exports.useFrameRootBoundary = useFrameRootBoundary;
 +exports.usePresentedLocation = usePresentedLocation;
 +exports.useRouterStateOwner = useRouterStateOwner;
 +exports.useRouterStateSelector = useRouterStateSelector;
@@ -1084,10 +1073,10 @@ index 0000000000000000000000000000000000000000..eb0d108695ec57cd957bc3390203098e
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..c29d325cd613026a956e6bf0e37d6f47770765c0
+index 0000000000000000000000000000000000000000..e807813272ae79e9e1c2a80e323dde0544bffd98
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,153 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.cjs';
 +import * as React from 'react';
@@ -1240,25 +1229,6 @@ index 0000000000000000000000000000000000000000..c29d325cd613026a956e6bf0e37d6f47
 + * navigation is the route now on screen.
 + */
 +presentedFrame?: React.MutableRefObject<(() => RouterRenderFrame) | undefined>): TSelected;
-+/**
-+ * Whether this render should consolidate route suspension at the frame root.
-+ *
-+ * Answered from the option and whether the app renders on the server, both
-+ * fixed for the tree's lifetime — deliberately, because this decides an
-+ * element *type*. It first followed hydration, which meant the wrapper at the
-+ * root of the route tree changed from a fragment to a `Suspense` boundary the
-+ * moment hydration finished: React reads a changed type as a replacement, so
-+ * the whole route subtree unmounted and remounted, re-running mount effects
-+ * and discarding anything a component had set up while hydrating.
-+ *
-+ * A server-rendered app therefore does not consolidate at all. It keeps
-+ * upstream's route-level boundaries, which is what its streamed HTML already
-+ * describes, and gives up atomic acknowledgement: a child that suspends
-+ * resolves at its own boundary, so a frame can be acknowledged while part of
-+ * the tree is still pending. That is upstream's behaviour today, and a far
-+ * better trade than remounting the route tree once per page load.
-+ */
-+export declare function useFrameRootBoundary(router: AnyRouter, isServerRender: boolean): boolean;
 +export {};
 diff --git a/dist/cjs/useCanGoBack.cjs b/dist/cjs/useCanGoBack.cjs
 index 479c317e31b9f3fb414081c3e1d10c8878410880..7394abdd2d05b5cfe204694865907d55ac09aaac 100644
@@ -1517,14 +1487,14 @@ index d62c0d3de4b965e718476d251164e80621bbf4a0..3154bd60e62f83b15c56abe527ee93c6
      match: AnyRouteMatch;
  }) => any>;
 diff --git a/dist/esm/Match.js b/dist/esm/Match.js
-index 61bdaf0190e7067af284f4fbb24a4d03b0a25003..29586014c7401ba41f19a53313d35d860f2abc74 100644
+index 61bdaf0190e7067af284f4fbb24a4d03b0a25003..15a1b7d39bfbb21670a39eb43b464ec550c2069e 100644
 --- a/dist/esm/Match.js
 +++ b/dist/esm/Match.js
 @@ -4,6 +4,7 @@ import { CatchBoundary, ErrorComponent } from "./CatchBoundary.js";
  import { ClientOnly } from "./ClientOnly.js";
  import { matchContext } from "./matchContext.js";
  import { useRouter } from "./useRouter.js";
-+import { useFrameMode, useFrameRootBoundary, useRouterStateSelector } from "./routerStateContext.js";
++import { useFrameMode, useRouterStateSelector } from "./routerStateContext.js";
  import { CatchNotFound } from "./not-found.js";
  import { SafeFragment } from "./SafeFragment.js";
  import { renderRouteNotFound } from "./renderRouteNotFound.js";
@@ -1566,7 +1536,7 @@ index 61bdaf0190e7067af284f4fbb24a4d03b0a25003..29586014c7401ba41f19a53313d35d86
  	const routeNotFoundComponent = route.isRoot ? route.options.notFoundComponent ?? router.options.notFoundRoute?.options.component : route.options.notFoundComponent;
  	const resolvedNoSsr = match.ssr === false || match.ssr === "data-only";
 -	const ResolvedSuspenseBoundary = canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? React$1.Suspense : SafeFragment;
-+	const ResolvedSuspenseBoundary = !useFrameRootBoundary(router, isServer ?? router.isServer) && canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? React$1.Suspense : SafeFragment;
++	const ResolvedSuspenseBoundary = !(useFrameMode(router) && !(isServer ?? router.isServer) && !router.ssr) && canWrapInSuspense(router, route, match.ssr) && (route.options.wrapInSuspense ?? pendingElement ?? (route.options.errorComponent?.preload || resolvedNoSsr)) ? React$1.Suspense : SafeFragment;
  	const ResolvedCatchBoundary = routeErrorComponent ? CatchBoundary : SafeFragment;
  	const ResolvedNotFoundBoundary = routeNotFoundComponent ? CatchNotFound : SafeFragment;
  	return /* @__PURE__ */ jsxs(route.isRoot ? route.options.shellComponent ?? SafeFragment : SafeFragment, { children: [/* @__PURE__ */ jsx(matchContext.Provider, {
@@ -2026,10 +1996,10 @@ index a75a6159942121bcf30ef34d67733867d51d47b7..6ab2577dfa0a5b579b4088622e35f37d
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..d71880286fdc7a31aaf0b9367b58e5b2f3a5cfdd
+index 0000000000000000000000000000000000000000..2709d28c0f05741798e22fdcc6be6574a8455311
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,153 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.js';
 +import * as React from 'react';
@@ -2182,32 +2152,13 @@ index 0000000000000000000000000000000000000000..d71880286fdc7a31aaf0b9367b58e5b2
 + * navigation is the route now on screen.
 + */
 +presentedFrame?: React.MutableRefObject<(() => RouterRenderFrame) | undefined>): TSelected;
-+/**
-+ * Whether this render should consolidate route suspension at the frame root.
-+ *
-+ * Answered from the option and whether the app renders on the server, both
-+ * fixed for the tree's lifetime — deliberately, because this decides an
-+ * element *type*. It first followed hydration, which meant the wrapper at the
-+ * root of the route tree changed from a fragment to a `Suspense` boundary the
-+ * moment hydration finished: React reads a changed type as a replacement, so
-+ * the whole route subtree unmounted and remounted, re-running mount effects
-+ * and discarding anything a component had set up while hydrating.
-+ *
-+ * A server-rendered app therefore does not consolidate at all. It keeps
-+ * upstream's route-level boundaries, which is what its streamed HTML already
-+ * describes, and gives up atomic acknowledgement: a child that suspends
-+ * resolves at its own boundary, so a frame can be acknowledged while part of
-+ * the tree is still pending. That is upstream's behaviour today, and a far
-+ * better trade than remounting the route tree once per page load.
-+ */
-+export declare function useFrameRootBoundary(router: AnyRouter, isServerRender: boolean): boolean;
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..8af55463fc7a56c4f0d79757cb52eca0621b4c45
+index 0000000000000000000000000000000000000000..3c5e8f1397a8411c47701b9148feab27734055ef
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,546 @@
+@@ -0,0 +1,536 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2387,10 +2338,17 @@ index 0000000000000000000000000000000000000000..8af55463fc7a56c4f0d79757cb52eca0
 +* with `_committed`. Recording the matches at the acknowledgement removes the
 +* guesswork rather than adding a fifth discriminator.
 +*
-+* The head's `frameId` is kept. Nothing acknowledges a seeded frame — it is
-+* only ever replaced by the next `publish` or `stage` — and a navigation that
-+* commits changes the matches, so the head's identity advances past it.
++* A reconstruction gets an identity of its own. `frameId` identifies route
++* content, and this frame's content is by construction *not* the head's, so
++* carrying the head's id would put two different publications under one
++* identity — which is what an acknowledgement is matched against, and what
++* `publish` compares to decide that content has not moved. Core counts its
++* ids up from zero, so counting down from below zero here cannot collide with
++* a publication, and a consumer versioning a cache on `frameId` sees a
++* snapshot distinct from both the publication being left and the one being
++* prepared.
 +*/
++var reconstructedFrameId = 0;
 +function initialFrame(router) {
 +	const head = router.stores.__store.get();
 +	const resolved = router.stores.resolvedLocation.get();
@@ -2398,6 +2356,7 @@ index 0000000000000000000000000000000000000000..8af55463fc7a56c4f0d79757cb52eca0
 +	if (!resolved || !resolvedMatches.length || sameLocation(resolved, head.location)) return head;
 +	return {
 +		...head,
++		frameId: --reconstructedFrameId,
 +		location: resolved,
 +		matches: resolvedMatches
 +	};
@@ -2545,9 +2504,10 @@ index 0000000000000000000000000000000000000000..8af55463fc7a56c4f0d79757cb52eca0
 +	return owner;
 +}
 +function RouterStateProvider({ router, children }) {
-+	const owner = ownerFor(router);
++	const owner = isServer ?? router.isServer ? void 0 : ownerFor(router);
 +	const [frameMode] = React$1.useState(() => Boolean(router.options.experimental_concurrentRenderFrames));
 +	useLayoutEffect(() => {
++		if (!owner) return;
 +		const subscription = router.stores.__store.subscribe(() => owner.publish());
 +		owner.publish();
 +		return () => subscription.unsubscribe();
@@ -2558,7 +2518,7 @@ index 0000000000000000000000000000000000000000..8af55463fc7a56c4f0d79757cb52eca0
 +			router,
 +			frameMode,
 +			children: /* @__PURE__ */ jsx(routerStateScopeContext.Provider, {
-+				value: owner.root,
++				value: owner?.root,
 +				children
 +			})
 +		})
@@ -2648,7 +2608,9 @@ index 0000000000000000000000000000000000000000..8af55463fc7a56c4f0d79757cb52eca0
 +*/
 +function useFrameMode(router) {
 +	const tree = React$1.useContext(routerStateFrameModeContext);
-+	const [mode] = React$1.useState(() => tree?.router === router ? tree.frameMode : Boolean(router.options.experimental_concurrentRenderFrames));
++	const decide = () => tree?.router === router ? tree.frameMode : Boolean(router.options.experimental_concurrentRenderFrames);
++	if (isServer ?? router.isServer) return decide();
++	const [mode] = React$1.useState(decide);
 +	return mode;
 +}
 +function useRouterStateSelector(router, selector, compare = defaultCompare, presentedFrame) {
@@ -2729,29 +2691,8 @@ index 0000000000000000000000000000000000000000..8af55463fc7a56c4f0d79757cb52eca0
 +	}, [rebase, scope]);
 +	return rendered;
 +}
-+/**
-+* Whether this render should consolidate route suspension at the frame root.
-+*
-+* Answered from the option and whether the app renders on the server, both
-+* fixed for the tree's lifetime — deliberately, because this decides an
-+* element *type*. It first followed hydration, which meant the wrapper at the
-+* root of the route tree changed from a fragment to a `Suspense` boundary the
-+* moment hydration finished: React reads a changed type as a replacement, so
-+* the whole route subtree unmounted and remounted, re-running mount effects
-+* and discarding anything a component had set up while hydrating.
-+*
-+* A server-rendered app therefore does not consolidate at all. It keeps
-+* upstream's route-level boundaries, which is what its streamed HTML already
-+* describes, and gives up atomic acknowledgement: a child that suspends
-+* resolves at its own boundary, so a frame can be acknowledged while part of
-+* the tree is still pending. That is upstream's behaviour today, and a far
-+* better trade than remounting the route tree once per page load.
-+*/
-+function useFrameRootBoundary(router, isServerRender) {
-+	return useFrameMode(router) && !isServerRender && !router.ssr;
-+}
 +//#endregion
-+export { RouterStateFrame, RouterStateProvider, RouterStateStorePath, useFrameMode, useFrameRootBoundary, usePresentedLocation, useRouterStateOwner, useRouterStateSelector };
++export { RouterStateFrame, RouterStateProvider, RouterStateStorePath, useFrameMode, usePresentedLocation, useRouterStateOwner, useRouterStateSelector };
 +
 +//# sourceMappingURL=routerStateContext.js.map
 \ No newline at end of file
@@ -3000,22 +2941,18 @@ index 531ea9313a389e6658031196d1b185a726ec16c6..f1803bff7e79eb3113bd257df7cef25e
  		const state = router.stores.__store.get();
  		return opts?.select ? opts.select(state) : state;
 diff --git a/src/Match.tsx b/src/Match.tsx
-index 1ba756053a0600f0204f87b854de017d7ca507f2..3f0b3180077dc377ae566e61732e5cfb0e7100ba 100644
+index 1ba756053a0600f0204f87b854de017d7ca507f2..219eb412951448f4870c2215a2e3e34cc5b4a194 100644
 --- a/src/Match.tsx
 +++ b/src/Match.tsx
-@@ -12,6 +12,11 @@ import { SafeFragment } from './SafeFragment'
+@@ -12,6 +12,7 @@ import { SafeFragment } from './SafeFragment'
  import { renderRouteNotFound } from './renderRouteNotFound'
  import { ScrollRestoration } from './scroll-restoration'
  import { ClientOnly } from './ClientOnly'
-+import {
-+  useFrameMode,
-+  useFrameRootBoundary,
-+  useRouterStateSelector,
-+} from './routerStateContext'
++import { useFrameMode, useRouterStateSelector } from './routerStateContext'
  import {
    nonRouteComponentContext,
    wrapInNonRouteComponentContext,
-@@ -43,11 +48,37 @@ type OutletMatchSelection = [
+@@ -43,11 +44,37 @@ type OutletMatchSelection = [
    parentNotFoundError: unknown,
  ]
  
@@ -3053,7 +2990,7 @@ index 1ba756053a0600f0204f87b854de017d7ca507f2..3f0b3180077dc377ae566e61732e5cfb
  const canWrapInSuspense = (
    router: ReturnType<typeof useRouter>,
    route: AnyRoute,
-@@ -66,6 +97,20 @@ export const Match = React.memo(function MatchImpl({
+@@ -66,6 +93,20 @@ export const Match = React.memo(function MatchImpl({
    routeId: string
  }) {
    const router = useRouter()
@@ -3074,15 +3011,20 @@ index 1ba756053a0600f0204f87b854de017d7ca507f2..3f0b3180077dc377ae566e61732e5cfb
  
    if (isServer ?? router.isServer) {
      const match = router.stores.byRoute.get(routeId)!.get()!
-@@ -101,9 +146,15 @@ function MatchView({
+@@ -101,9 +142,20 @@ function MatchView({
      : route.options.notFoundComponent
  
    const resolvedNoSsr = match.ssr === false || match.ssr === 'data-only'
-+  const _isServer = isServer ?? router.isServer
 +  // Once hydrated, a concurrent frame must suspend and acknowledge as one
 +  // unit. During SSR and hydration, retain the route boundaries so the server
 +  // can stream its shell and the client hydrates the same boundary tree.
-+  const frameRootBoundary = useFrameRootBoundary(router, _isServer)
++  //
++  // `useFrameMode` is read unconditionally, since it is a hook; the server
++  // expression stays directly in the branch condition so the whole thing
++  // folds away in a client bundle.
++  const frameMode = useFrameMode(router)
++  const frameRootBoundary =
++    frameMode && !(isServer ?? router.isServer) && !router.ssr
    // A root component may render the document itself. Only place its Suspense
    // boundary in pure CSR, inside an explicit shell, or when explicitly opted in.
    const ResolvedSuspenseBoundary =
@@ -3090,7 +3032,7 @@ index 1ba756053a0600f0204f87b854de017d7ca507f2..3f0b3180077dc377ae566e61732e5cfb
      canWrapInSuspense(router, route, match.ssr) &&
      (route.options.wrapInSuspense ??
        pendingElement ??
-@@ -277,7 +328,30 @@ export const Outlet = React.memo(function OutletImpl() {
+@@ -277,7 +329,30 @@ export const Outlet = React.memo(function OutletImpl() {
    let parentNotFoundError: unknown
    let childRouteId: string | undefined
  
@@ -3122,7 +3064,7 @@ index 1ba756053a0600f0204f87b854de017d7ca507f2..3f0b3180077dc377ae566e61732e5cfb
      const matches = router.stores.matches.get()
      const parentIndex = matches.findIndex((match) => match.routeId === routeId)
      const parentMatch = matches[parentIndex]!
-@@ -314,7 +388,8 @@ export const Outlet = React.memo(function OutletImpl() {
+@@ -314,7 +389,8 @@ export const Outlet = React.memo(function OutletImpl() {
  
    const nextMatch = <Match routeId={childRouteId} />
  
@@ -3133,7 +3075,7 @@ index 1ba756053a0600f0204f87b854de017d7ca507f2..3f0b3180077dc377ae566e61732e5cfb
        <React.Suspense fallback={renderPending(router)}>
          {nextMatch}
 diff --git a/src/Matches.tsx b/src/Matches.tsx
-index 6dea1032f22bb981067e5b3872b9d9f3880164e6..afaf1a07a3d34e18aa4d1b636a0e3d90f44fecb5 100644
+index 6dea1032f22bb981067e5b3872b9d9f3880164e6..59302b202d2d257d1db70a77bc00f2d500a9671e 100644
 --- a/src/Matches.tsx
 +++ b/src/Matches.tsx
 @@ -6,18 +6,26 @@ import { rootRouteId } from '@tanstack/router-core'
@@ -3172,7 +3114,7 @@ index 6dea1032f22bb981067e5b3872b9d9f3880164e6..afaf1a07a3d34e18aa4d1b636a0e3d90
    ToSubOptionsProps,
  } from '@tanstack/router-core'
  
-@@ -47,13 +56,110 @@ declare module '@tanstack/router-core' {
+@@ -47,11 +56,107 @@ declare module '@tanstack/router-core' {
   */
  export function Matches() {
    const router = useRouter()
@@ -3266,9 +3208,8 @@ index 6dea1032f22bb981067e5b3872b9d9f3880164e6..afaf1a07a3d34e18aa4d1b636a0e3d90
    const pendingElement = renderPending(router, rootRoute)
  
 -  // Do not render a root Suspense during SSR or hydrating from SSR
-+  const _isServer = isServer ?? router.isServer
 +  // Unchanged from upstream, deliberately. An earlier revision wrote this as
-+  // `router.ssr && !useFrameRootBoundary(...)`, which reads as though the
++  // `router.ssr && !frameRootBoundary`, which reads as though the
 +  // frame path opens a boundary here that the store path does not — but the
 +  // clause is dead: `frameRootBoundary` requires `!router.ssr`, so it can only
 +  // ever be false where `router.ssr` is what decides the expression. The
@@ -3280,12 +3221,9 @@ index 6dea1032f22bb981067e5b3872b9d9f3880164e6..afaf1a07a3d34e18aa4d1b636a0e3d90
 +  // remount if a mounted provider is handed a router with the opposite
 +  // setting — is upstream behaviour that this option neither adds nor fixes.
    const ResolvedSuspense =
--    (isServer ?? router.isServer) || router.ssr ? SafeFragment : React.Suspense
-+    _isServer || router.ssr ? SafeFragment : React.Suspense
+     (isServer ?? router.isServer) || router.ssr ? SafeFragment : React.Suspense
  
-   const inner = (
-     <>
-@@ -65,10 +171,21 @@ export function Matches() {
+@@ -65,10 +170,21 @@ export function Matches() {
            // router object, so React skips the update.
            // eslint-disable-next-line react-hooks/rules-of-hooks -- server only, condition is static
            t={React.useState<AnyRouter>()[1]}
@@ -3308,7 +3246,7 @@ index 6dea1032f22bb981067e5b3872b9d9f3880164e6..afaf1a07a3d34e18aa4d1b636a0e3d90
        </ResolvedSuspense>
      </>
    )
-@@ -80,25 +197,59 @@ export function Matches() {
+@@ -80,25 +196,59 @@ export function Matches() {
    )
  }
  
@@ -3379,7 +3317,7 @@ index 6dea1032f22bb981067e5b3872b9d9f3880164e6..afaf1a07a3d34e18aa4d1b636a0e3d90
  
    const matchComponent = routeId ? <Match routeId={routeId} /> : null
  
-@@ -177,6 +328,45 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
+@@ -177,6 +327,45 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
      }
    }
  
@@ -3425,7 +3363,7 @@ index 6dea1032f22bb981067e5b3872b9d9f3880164e6..afaf1a07a3d34e18aa4d1b636a0e3d90
    // eslint-disable-next-line react-hooks/rules-of-hooks
    return React.useCallback(
      (opts) => {
-@@ -267,6 +457,19 @@ export function useMatches<
+@@ -267,6 +456,19 @@ export function useMatches<
  ): UseMatchesResult<TRouter, TSelected> {
    const router = useRouter<TRouter>()
  
@@ -3941,10 +3879,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..a171bde58c1493c511daa1d45dae59680762041c
+index 0000000000000000000000000000000000000000..e65ad734b638ad1eff409c33771187d2949cf672
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,997 @@
+@@ -0,0 +1,1003 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -4268,10 +4206,18 @@ index 0000000000000000000000000000000000000000..a171bde58c1493c511daa1d45dae5968
 + * with `_committed`. Recording the matches at the acknowledgement removes the
 + * guesswork rather than adding a fifth discriminator.
 + *
-+ * The head's `frameId` is kept. Nothing acknowledges a seeded frame — it is
-+ * only ever replaced by the next `publish` or `stage` — and a navigation that
-+ * commits changes the matches, so the head's identity advances past it.
++ * A reconstruction gets an identity of its own. `frameId` identifies route
++ * content, and this frame's content is by construction *not* the head's, so
++ * carrying the head's id would put two different publications under one
++ * identity — which is what an acknowledgement is matched against, and what
++ * `publish` compares to decide that content has not moved. Core counts its
++ * ids up from zero, so counting down from below zero here cannot collide with
++ * a publication, and a consumer versioning a cache on `frameId` sees a
++ * snapshot distinct from both the publication being left and the one being
++ * prepared.
 + */
++let reconstructedFrameId = 0
++
 +function initialFrame(router: AnyRouter): RouterRenderFrame {
 +  const head = router.stores.__store.get()
 +  const resolved = router.stores.resolvedLocation.get()
@@ -4286,7 +4232,12 @@ index 0000000000000000000000000000000000000000..a171bde58c1493c511daa1d45dae5968
 +  ) {
 +    return head
 +  }
-+  return { ...head, location: resolved, matches: resolvedMatches }
++  return {
++    ...head,
++    frameId: --reconstructedFrameId,
++    location: resolved,
++    matches: resolvedMatches,
++  }
 +}
 +
 +function createOwner(router: AnyRouter): RouterStateOwner {
@@ -4558,7 +4509,13 @@ index 0000000000000000000000000000000000000000..a171bde58c1493c511daa1d45dae5968
 +  // Keyed by router identity. A mounted provider can be handed a different
 +  // router — a test rerender, HMR, switching tenant — and an owner built for
 +  // the previous one would keep reading and staging that router's state.
-+  const owner = ownerFor(router)
++  //
++  // Not on the server: an owner carries subscriber sets and a cached
++  // presentation, which is UI state a server render must not build. Readers
++  // there resolve to a detached scope over the store head instead, which is
++  // the same publication an owner would have been seeded with, so the render
++  // is identical and the client builds the owner at hydration.
++  const owner = (isServer ?? router.isServer) ? undefined : ownerFor(router)
 +  // The tree's decision: the option as it stands when this provider mounts,
 +  // kept for as long as it is mounted. Read from the router rather than from
 +  // the owner, because an owner is cached for its router's lifetime — a
@@ -4569,6 +4526,9 @@ index 0000000000000000000000000000000000000000..a171bde58c1493c511daa1d45dae5968
 +  )
 +
 +  useLayoutEffect(() => {
++    if (!owner) {
++      return
++    }
 +    const subscription = router.stores.__store.subscribe(() => owner.publish())
 +    owner.publish()
 +    return () => subscription.unsubscribe()
@@ -4577,7 +4537,7 @@ index 0000000000000000000000000000000000000000..a171bde58c1493c511daa1d45dae5968
 +  return (
 +    <routerStateOwnerContext.Provider value={owner}>
 +      <RouterStateFrameMode router={router} frameMode={frameMode}>
-+        <routerStateScopeContext.Provider value={owner.root}>
++        <routerStateScopeContext.Provider value={owner?.root}>
 +          {children}
 +        </routerStateScopeContext.Provider>
 +      </RouterStateFrameMode>
@@ -4685,11 +4645,20 @@ index 0000000000000000000000000000000000000000..a171bde58c1493c511daa1d45dae5968
 +  // component's first render, and kept, so a later swap cannot change this
 +  // reader's hook shape underneath it either.
 +  const tree = React.useContext(routerStateFrameModeContext)
-+  const [mode] = React.useState(() =>
++  const decide = () =>
 +    tree?.router === router
 +      ? tree.frameMode
-+      : Boolean(router.options.experimental_concurrentRenderFrames),
-+  )
++      : Boolean(router.options.experimental_concurrentRenderFrames)
++  if (isServer ?? router.isServer) {
++    // One render, so there is nothing to freeze against a later swap, and no
++    // React state may be created here. The answer itself is unchanged: the
++    // client hydrates through the same branch the server rendered, and a
++    // server render that disagreed would be a hydration mismatch rather than
++    // an optimisation.
++    return decide()
++  }
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
++  const [mode] = React.useState(decide)
 +  return mode
 +}
 +
@@ -4916,31 +4885,6 @@ index 0000000000000000000000000000000000000000..a171bde58c1493c511daa1d45dae5968
 +  }, [rebase, scope])
 +
 +  return rendered
-+}
-+
-+/**
-+ * Whether this render should consolidate route suspension at the frame root.
-+ *
-+ * Answered from the option and whether the app renders on the server, both
-+ * fixed for the tree's lifetime — deliberately, because this decides an
-+ * element *type*. It first followed hydration, which meant the wrapper at the
-+ * root of the route tree changed from a fragment to a `Suspense` boundary the
-+ * moment hydration finished: React reads a changed type as a replacement, so
-+ * the whole route subtree unmounted and remounted, re-running mount effects
-+ * and discarding anything a component had set up while hydrating.
-+ *
-+ * A server-rendered app therefore does not consolidate at all. It keeps
-+ * upstream's route-level boundaries, which is what its streamed HTML already
-+ * describes, and gives up atomic acknowledgement: a child that suspends
-+ * resolves at its own boundary, so a frame can be acknowledged while part of
-+ * the tree is still pending. That is upstream's behaviour today, and a far
-+ * better trade than remounting the route tree once per page load.
-+ */
-+export function useFrameRootBoundary(
-+  router: AnyRouter,
-+  isServerRender: boolean,
-+): boolean {
-+  return useFrameMode(router) && !isServerRender && !router.ssr
 +}
 diff --git a/src/useCanGoBack.ts b/src/useCanGoBack.ts
 index 2a8ce612b192a2a6f370e2c21be329cf7f96e772..d1f412dd934a514138c1e77c74f344c116d666a4 100644
