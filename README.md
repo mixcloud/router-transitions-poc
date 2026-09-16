@@ -25,9 +25,9 @@ one synchronous commit and the image jumps.
 | | |
 | --- | --- |
 | `react` / `react-dom` | `19.3.0` |
-| `@tanstack/react-router` | `1.170.35` |
-| `@tanstack/react-start` | `1.168.49` |
-| `@tanstack/router-core` | `1.171.29` |
+| `@tanstack/react-router` | `1.170.37` |
+| `@tanstack/react-start` | `1.168.55` |
+| `@tanstack/router-core` | `1.171.31` |
 | `@tanstack/react-store` | `0.11.1` |
 | `vite` | `8.2.2` |
 
@@ -314,31 +314,36 @@ plain `pnpm install` reproduces everything:
 
 | Patch | Package |
 | --- | --- |
-| `@tanstack__react-router@1.170.35.patch` | `@tanstack/react-router` |
-| `@tanstack__router-core@1.171.29.patch` | `@tanstack/router-core` |
+| `@tanstack__react-router@1.170.37.patch` | `@tanstack/react-router` |
+| `@tanstack__router-core@1.171.31.patch` | `@tanstack/router-core` |
 
 They replace `dist/` and `src/` with a build of
 [`mixcloud/router@concurrent-router-render-frames`](https://github.com/mixcloud/router/tree/concurrent-router-render-frames).
 Five caveats worth knowing:
 
-- That branch is now rebased onto TanStack Router `main` at
-  [`6494e753`](https://github.com/TanStack/router/commit/6494e753), the release
-  commit for `1.170.35` / `1.171.29` — the exact versions these patches target.
+- That branch now carries TanStack Router `main` at
+  [`de023a75`](https://github.com/TanStack/router/commit/de023a75), the release
+  commit for `1.170.37` / `1.171.31` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `d826bb4`, on top of a merge of TanStack Router `main` at `6494e753` — the
-  store 0.11 upgrade, which renames the React read hook to `useSelector` and
-  moves `compare` into an options object without changing what it does
-  underneath. The published measurements are from `cc08459`, forty-one commits
-  back: every commit since is correctness bookkeeping raised in review — a
+  is `81418ff`, the merge of that commit. It restructured three files this
+  branch had already touched: script assembly moved behind
+  `getSsrBodyScriptParts` / `composeSsrBodyScripts`, the link selector's
+  comparator was hoisted, and link preloading went through a `preloadLink`
+  helper. The frame-path reads were re-applied on top of each. Bringing it in
+  also moves `@tanstack/react-start` to `1.168.55`: `start-client-core`
+  before that imports `defaultSerovalPlugins` from the root of
+  `@tanstack/router-core`, which `1.171.31` no longer exports, so the pins
+  move together. The published measurements are from `cc08459`, forty-two
+  commits back: every commit since is correctness bookkeeping raised in review — a
   scope-keyed presentation identity, a head subscription for pending matchers,
   a per-router frame queue, weakly held owners, a structural-sharing cache
   restored around a probe, a frame-path decision frozen per provider tree,
   hydration not remounting the route tree, the head revalidated at the
   acknowledgement boundary, progress published when the frame id has not
   moved, the seed taking the acknowledged publication, a superseded frame no
-  longer blocking a resync — and none of it changes the publication path the
-  experiment measures.
+  longer blocking a resync, and the merge above — and none of it changes the
+  publication path the experiment measures.
   Re-run the sweep if you want the numbers pinned to the exact head; the
   commands are above and every witness is live.
 - Until now only the `@tanstack/react-router` patch was regenerated on each

@@ -216,7 +216,7 @@ index b13f8aca089525915aa00f55f3f5456a3e30d3ef..6ee57f77ed19760b8735dce78c16a841
  		const matches = router.stores.matches.get();
  		return opts?.select ? opts.select(matches) : matches;
 diff --git a/dist/cjs/RouterProvider.cjs b/dist/cjs/RouterProvider.cjs
-index b656365a95110796038c0dc47160d210d196c7a8..d7f1d2393898a39a0bf2985f81501f6b0c4690d1 100644
+index f64e032a5cca9ac11b039860d557286b84437b0a..c9cdda4d4f719312073692085e801c5796ddfce2 100644
 --- a/dist/cjs/RouterProvider.cjs
 +++ b/dist/cjs/RouterProvider.cjs
 @@ -1,6 +1,7 @@
@@ -246,7 +246,7 @@ index b656365a95110796038c0dc47160d210d196c7a8..d7f1d2393898a39a0bf2985f81501f6b
  	if (router.options.Wrap) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(router.options.Wrap, { children: provider });
  	return provider;
 diff --git a/dist/cjs/Scripts.cjs b/dist/cjs/Scripts.cjs
-index d995d3c9315fbb5f45441cb88cc65520144d2d01..52346943f77f0b3c59092faa8152918ec74fdd6e 100644
+index 38086cbe4a6212349e102e9025401f20ea2a17fd..b56412994adc80955e425067725af05bc93a1945 100644
 --- a/dist/cjs/Scripts.cjs
 +++ b/dist/cjs/Scripts.cjs
 @@ -1,4 +1,5 @@
@@ -255,20 +255,18 @@ index d995d3c9315fbb5f45441cb88cc65520144d2d01..52346943f77f0b3c59092faa8152918e
  const require_Asset = require("./Asset.cjs");
  let _tanstack_router_core = require("@tanstack/router-core");
  let react = require("react");
-@@ -41,8 +42,11 @@ var Scripts = () => {
- 		}
- 		return scripts;
+@@ -27,7 +28,10 @@ var Scripts = () => {
+ 		return (0, _tanstack_router_core.composeSsrBodyScripts)(getParts(matches));
  	};
--	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return renderScripts(router, getScripts(router.stores.matches.get()));
--	return renderScripts(router, (0, _tanstack_react_store.useSelector)(router.stores.matches, getScripts, { compare: _tanstack_router_core.deepEqual }));
+ 	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return renderScripts((0, _tanstack_router_core.composeSsrBodyScripts)(getParts(router.stores.matches.get()), router.serverSsr?.takeInitialHydrationScriptTags()));
+-	return renderScripts((0, _tanstack_react_store.useSelector)(router.stores.matches, getScripts, { compare: _tanstack_router_core.deepEqual }));
 +	let scripts;
 +	if (require_routerStateContext.useFrameMode(router)) scripts = require_routerStateContext.useRouterStateSelector(router, (state) => getScripts(state.matches), _tanstack_router_core.deepEqual);
-+	else if (_tanstack_router_core_isServer.isServer ?? router.isServer) scripts = getScripts(router.stores.matches.get());
 +	else scripts = (0, _tanstack_react_store.useSelector)(router.stores.matches, getScripts, { compare: _tanstack_router_core.deepEqual });
-+	return renderScripts(router, scripts);
++	return renderScripts(scripts);
  };
- function renderScripts(router, scripts) {
- 	if ((_tanstack_router_core_isServer.isServer ?? router.isServer) && router.serverSsr) {
+ function renderScripts(scripts) {
+ 	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(react_jsx_runtime.Fragment, { children: scripts.map((asset, i) => /* @__PURE__ */ (0, react.createElement)(require_Asset.Asset, {
 diff --git a/dist/cjs/Transitioner.cjs b/dist/cjs/Transitioner.cjs
 index 43ace5eb908d6e4629e887a4c4baec475e6cbb49..30f93f543878fc379cd7e78313fa19af336a1e08 100644
 --- a/dist/cjs/Transitioner.cjs
@@ -371,40 +369,77 @@ index 6162c746e0cbb5d6052b4d61975d533a3b7b278c..1b3f625132ae99f385664f35f723b210
  };
  //#endregion
 diff --git a/dist/cjs/link.cjs b/dist/cjs/link.cjs
-index ddf41e3b722279e9d7a969171f3260f7ffa12416..07c97dbbc9b63023e10bf0853323b506158ef81b 100644
+index 23b5059a0a83fd2f40406b0b4bd361cfa3a76622..7fd1914c1619f78270788c11569cc01d251bfdfe 100644
 --- a/dist/cjs/link.cjs
 +++ b/dist/cjs/link.cjs
-@@ -3,6 +3,7 @@ const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
- const require_utils = require("./utils.cjs");
+@@ -2,6 +2,7 @@
+ const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
  const require_ClientOnly = require("./ClientOnly.cjs");
  const require_useRouter = require("./useRouter.cjs");
 +const require_routerStateContext = require("./routerStateContext.cjs");
  let _tanstack_router_core = require("@tanstack/router-core");
  let react = require("react");
  react = require_runtime.__toESM(react, 1);
-@@ -173,14 +174,19 @@ function useLinkProps(options, forwardedRef) {
+@@ -83,12 +84,18 @@ function useLinkProps(options, forwardedRef, host) {
  		router,
  		to
  	]);
--	const [href, isActive] = (0, _tanstack_react_store.useSelector)(router.stores.location, selectLinkState, { compare: compareLinkState });
+-	const [href, isActive] = (0, _tanstack_react_store.useSelector)(router.stores.location, selectLinkState, LINK_SELECTOR_OPTIONS);
 +	const frameMode = require_routerStateContext.useFrameMode(router);
 +	const presentedFrame = react.useRef(void 0);
-+	const [href, isActive] = frameMode ? require_routerStateContext.useRouterStateSelector(router, (state) => selectLinkState(state.location), compareLinkState, presentedFrame) : (0, _tanstack_react_store.useSelector)(router.stores.location, selectLinkState, { compare: compareLinkState });
++	const [href, isActive] = frameMode ? require_routerStateContext.useRouterStateSelector(router, (state) => selectLinkState(state.location), LINK_SELECTOR_OPTIONS.compare, presentedFrame) : (0, _tanstack_react_store.useSelector)(router.stores.location, selectLinkState, LINK_SELECTOR_OPTIONS);
  	const externalLink = isActive === void 0 ? href : void 0;
  	const linkDisabled = disabled || href === void 0;
  	const hasRenderFetched = react.useRef(false);
  	const preload = options.reloadDocument || externalLink || linkDisabled ? false : userPreload ?? router.options.defaultPreload;
  	const preloadDelay = userPreloadDelay ?? router.options.defaultPreloadDelay ?? 0;
- 	const doPreload = react.useCallback(() => {
--		router.preloadRoute(_options).catch((err) => {
-+		router.preloadRoute({
-+			_fromLocation: presentedFrame.current?.().location,
-+			..._options
-+		}).catch((err) => {
- 			console.warn(err);
- 			console.warn(_tanstack_router_core.preloadWarning);
- 		});
-@@ -247,6 +253,7 @@ function useLinkProps(options, forwardedRef) {
++	const preloadOptions = react.useCallback(() => ({
++		_fromLocation: presentedFrame.current?.().location,
++		..._options
++	}), [_options]);
+ 	const enqueuePreload = react.useCallback((e) => {
+ 		const isIntersecting = e?.isIntersecting;
+ 		if (!(isIntersecting ?? preload === "intent")) {
+@@ -96,17 +103,17 @@ function useLinkProps(options, forwardedRef, host) {
+ 			return;
+ 		}
+ 		if (!preloadDelay) {
+-			preloadLink(router, _options);
++			preloadLink(router, preloadOptions());
+ 			return;
+ 		}
+ 		if (timeoutMap.has(innerRef)) return;
+ 		timeoutMap.set(innerRef, setTimeout(() => {
+ 			timeoutMap.delete(innerRef);
+-			preloadLink(router, _options);
++			preloadLink(router, preloadOptions());
+ 		}, preloadDelay));
+ 	}, [
+ 		router,
+-		_options,
++		preloadOptions,
+ 		innerRef,
+ 		preload,
+ 		preloadDelay
+@@ -114,7 +121,7 @@ function useLinkProps(options, forwardedRef, host) {
+ 	react.useEffect(() => {
+ 		if (preload === "render" && !hasRenderFetched.current) {
+ 			hasRenderFetched.current = true;
+-			preloadLink(router, _options);
++			preloadLink(router, preloadOptions());
+ 		}
+ 		let observer;
+ 		if (preload === "viewport" && innerRef.current && typeof IntersectionObserver === "function") {
+@@ -127,7 +134,7 @@ function useLinkProps(options, forwardedRef, host) {
+ 		};
+ 	}, [
+ 		router,
+-		_options,
++		preloadOptions,
+ 		preload,
+ 		enqueuePreload,
+ 		innerRef
+@@ -143,6 +150,7 @@ function useLinkProps(options, forwardedRef, host) {
  		if (!linkDisabled && !(e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) && !e.defaultPrevented && (!effectiveTarget || effectiveTarget === "_self") && e.button === 0) {
  			e.preventDefault();
  			router.navigate({
@@ -412,6 +447,15 @@ index ddf41e3b722279e9d7a969171f3260f7ffa12416..07c97dbbc9b63023e10bf0853323b506
  				..._options,
  				replace,
  				resetScroll,
+@@ -154,7 +162,7 @@ function useLinkProps(options, forwardedRef, host) {
+ 		}
+ 	};
+ 	const handleTouchStart = () => {
+-		if (preload === "intent") preloadLink(router, _options);
++		if (preload === "intent") preloadLink(router, preloadOptions());
+ 	};
+ 	const handleLeave = () => {
+ 		if (preload === "intent") cancelPreload(innerRef);
 diff --git a/dist/cjs/not-found.cjs b/dist/cjs/not-found.cjs
 index b67c949005e5b1265bf6682ab567c753afc11793..a283057d6471b475fcf3ed2b254624ce07af6f04 100644
 --- a/dist/cjs/not-found.cjs
@@ -1679,7 +1723,7 @@ index c4d69f186bc0175f07bc2550f0ceb461e767a7e3..cee630bb00bcaed3b52d5682509fb365
  		const matches = router.stores.matches.get();
  		return opts?.select ? opts.select(matches) : matches;
 diff --git a/dist/esm/RouterProvider.js b/dist/esm/RouterProvider.js
-index 572653edbeee98466ef60bb88bf0ce9c63bacc3f..769347e21430a4b80c1897ecfe52958d7345eea1 100644
+index cafc4e25ed0852fb5a07ad51a1c7b34e6f3f5e80..c2ce2cc6238db280eee74ef37b820becee59ce8d 100644
 --- a/dist/esm/RouterProvider.js
 +++ b/dist/esm/RouterProvider.js
 @@ -1,5 +1,6 @@
@@ -1708,29 +1752,27 @@ index 572653edbeee98466ef60bb88bf0ce9c63bacc3f..769347e21430a4b80c1897ecfe52958d
  	if (router.options.Wrap) return /* @__PURE__ */ jsx(router.options.Wrap, { children: provider });
  	return provider;
 diff --git a/dist/esm/Scripts.js b/dist/esm/Scripts.js
-index 5d2219ce6781440f33aeb34874a55ab0e6538dff..eddc56b66c88fcd2f763689cff7aa6ddc0b0214d 100644
+index 0ebf6b6bb89f1deae7b6089468b35dd4461e8fd2..7f6960d1300716b8cf67c74e9445bacd55bd1b5d 100644
 --- a/dist/esm/Scripts.js
 +++ b/dist/esm/Scripts.js
 @@ -1,4 +1,5 @@
  import { useRouter } from "./useRouter.js";
 +import { useFrameMode, useRouterStateSelector } from "./routerStateContext.js";
  import { Asset } from "./Asset.js";
- import { _getAssetMatches, deepEqual } from "@tanstack/router-core";
+ import { composeSsrBodyScripts, deepEqual, getSsrBodyScriptParts } from "@tanstack/router-core";
  import { createElement } from "react";
-@@ -41,8 +42,11 @@ var Scripts = () => {
- 		}
- 		return scripts;
+@@ -27,7 +28,10 @@ var Scripts = () => {
+ 		return composeSsrBodyScripts(getParts(matches));
  	};
--	if (isServer ?? router.isServer) return renderScripts(router, getScripts(router.stores.matches.get()));
--	return renderScripts(router, useSelector(router.stores.matches, getScripts, { compare: deepEqual }));
+ 	if (isServer ?? router.isServer) return renderScripts(composeSsrBodyScripts(getParts(router.stores.matches.get()), router.serverSsr?.takeInitialHydrationScriptTags()));
+-	return renderScripts(useSelector(router.stores.matches, getScripts, { compare: deepEqual }));
 +	let scripts;
 +	if (useFrameMode(router)) scripts = useRouterStateSelector(router, (state) => getScripts(state.matches), deepEqual);
-+	else if (isServer ?? router.isServer) scripts = getScripts(router.stores.matches.get());
 +	else scripts = useSelector(router.stores.matches, getScripts, { compare: deepEqual });
-+	return renderScripts(router, scripts);
++	return renderScripts(scripts);
  };
- function renderScripts(router, scripts) {
- 	if ((isServer ?? router.isServer) && router.serverSsr) {
+ function renderScripts(scripts) {
+ 	return /* @__PURE__ */ jsx(Fragment, { children: scripts.map((asset, i) => /* @__PURE__ */ createElement(Asset, {
 diff --git a/dist/esm/Transitioner.d.ts b/dist/esm/Transitioner.d.ts
 index 0e0c6ec7c0e0053e08422a83ab63100243a9752b..214c2a024758eaac39747166e5747b09bdf3d724 100644
 --- a/dist/esm/Transitioner.d.ts
@@ -1832,40 +1874,77 @@ index be1263837f954fff8470267e58eb09ba97949c8f..78341159eac331fdc9628a08917ae0e7
  };
  //#endregion
 diff --git a/dist/esm/link.js b/dist/esm/link.js
-index f9c5e7ce77479a9738d3d726ec2bf51ff422b22e..34fb9c1ab0ec32869b5c36c6bf7b66aebf25275e 100644
+index fe7da5be7a389737a4ce744862bc16558ebe64e3..63a0b116c0d470a4356c62155b803f1edb259c52 100644
 --- a/dist/esm/link.js
 +++ b/dist/esm/link.js
-@@ -2,6 +2,7 @@
- import { useForwardedRef, useIntersectionObserver } from "./utils.js";
+@@ -1,6 +1,7 @@
+ "use client";
  import { useHydrated } from "./ClientOnly.js";
  import { useRouter } from "./useRouter.js";
 +import { useFrameMode, useRouterStateSelector } from "./routerStateContext.js";
- import { deepEqual, exactPathTest, functionalUpdate, getUrlScheme, hasKeys, isDangerousProtocol, preloadWarning, removeTrailingSlash } from "@tanstack/router-core";
+ import { deepEqual, functionalUpdate, getUrlScheme, isDangerousProtocol, preloadWarning, removeTrailingSlash } from "@tanstack/router-core";
  import * as React$1 from "react";
  import { isServer } from "@tanstack/router-core/isServer";
-@@ -171,14 +172,19 @@ function useLinkProps(options, forwardedRef) {
+@@ -81,12 +82,18 @@ function useLinkProps(options, forwardedRef, host) {
  		router,
  		to
  	]);
--	const [href, isActive] = useSelector(router.stores.location, selectLinkState, { compare: compareLinkState });
+-	const [href, isActive] = useSelector(router.stores.location, selectLinkState, LINK_SELECTOR_OPTIONS);
 +	const frameMode = useFrameMode(router);
 +	const presentedFrame = React$1.useRef(void 0);
-+	const [href, isActive] = frameMode ? useRouterStateSelector(router, (state) => selectLinkState(state.location), compareLinkState, presentedFrame) : useSelector(router.stores.location, selectLinkState, { compare: compareLinkState });
++	const [href, isActive] = frameMode ? useRouterStateSelector(router, (state) => selectLinkState(state.location), LINK_SELECTOR_OPTIONS.compare, presentedFrame) : useSelector(router.stores.location, selectLinkState, LINK_SELECTOR_OPTIONS);
  	const externalLink = isActive === void 0 ? href : void 0;
  	const linkDisabled = disabled || href === void 0;
  	const hasRenderFetched = React$1.useRef(false);
  	const preload = options.reloadDocument || externalLink || linkDisabled ? false : userPreload ?? router.options.defaultPreload;
  	const preloadDelay = userPreloadDelay ?? router.options.defaultPreloadDelay ?? 0;
- 	const doPreload = React$1.useCallback(() => {
--		router.preloadRoute(_options).catch((err) => {
-+		router.preloadRoute({
-+			_fromLocation: presentedFrame.current?.().location,
-+			..._options
-+		}).catch((err) => {
- 			console.warn(err);
- 			console.warn(preloadWarning);
- 		});
-@@ -245,6 +251,7 @@ function useLinkProps(options, forwardedRef) {
++	const preloadOptions = React$1.useCallback(() => ({
++		_fromLocation: presentedFrame.current?.().location,
++		..._options
++	}), [_options]);
+ 	const enqueuePreload = React$1.useCallback((e) => {
+ 		const isIntersecting = e?.isIntersecting;
+ 		if (!(isIntersecting ?? preload === "intent")) {
+@@ -94,17 +101,17 @@ function useLinkProps(options, forwardedRef, host) {
+ 			return;
+ 		}
+ 		if (!preloadDelay) {
+-			preloadLink(router, _options);
++			preloadLink(router, preloadOptions());
+ 			return;
+ 		}
+ 		if (timeoutMap.has(innerRef)) return;
+ 		timeoutMap.set(innerRef, setTimeout(() => {
+ 			timeoutMap.delete(innerRef);
+-			preloadLink(router, _options);
++			preloadLink(router, preloadOptions());
+ 		}, preloadDelay));
+ 	}, [
+ 		router,
+-		_options,
++		preloadOptions,
+ 		innerRef,
+ 		preload,
+ 		preloadDelay
+@@ -112,7 +119,7 @@ function useLinkProps(options, forwardedRef, host) {
+ 	React$1.useEffect(() => {
+ 		if (preload === "render" && !hasRenderFetched.current) {
+ 			hasRenderFetched.current = true;
+-			preloadLink(router, _options);
++			preloadLink(router, preloadOptions());
+ 		}
+ 		let observer;
+ 		if (preload === "viewport" && innerRef.current && typeof IntersectionObserver === "function") {
+@@ -125,7 +132,7 @@ function useLinkProps(options, forwardedRef, host) {
+ 		};
+ 	}, [
+ 		router,
+-		_options,
++		preloadOptions,
+ 		preload,
+ 		enqueuePreload,
+ 		innerRef
+@@ -141,6 +148,7 @@ function useLinkProps(options, forwardedRef, host) {
  		if (!linkDisabled && !(e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) && !e.defaultPrevented && (!effectiveTarget || effectiveTarget === "_self") && e.button === 0) {
  			e.preventDefault();
  			router.navigate({
@@ -1873,6 +1952,15 @@ index f9c5e7ce77479a9738d3d726ec2bf51ff422b22e..34fb9c1ab0ec32869b5c36c6bf7b66ae
  				..._options,
  				replace,
  				resetScroll,
+@@ -152,7 +160,7 @@ function useLinkProps(options, forwardedRef, host) {
+ 		}
+ 	};
+ 	const handleTouchStart = () => {
+-		if (preload === "intent") preloadLink(router, _options);
++		if (preload === "intent") preloadLink(router, preloadOptions());
+ 	};
+ 	const handleLeave = () => {
+ 		if (preload === "intent") cancelPreload(innerRef);
 diff --git a/dist/esm/not-found.js b/dist/esm/not-found.js
 index 9e2ec17efebea9a6f60fd1f5a5c50c844d30e88a..3dbb5911ed3fd5d5c6f9f8a5f244119b933a984f 100644
 --- a/dist/esm/not-found.js
@@ -3358,7 +3446,7 @@ index 6dea1032f22bb981067e5b3872b9d9f3880164e6..afaf1a07a3d34e18aa4d1b636a0e3d90
      const matches = router.stores.matches.get() as Array<
        MakeRouteMatchUnion<TRouter>
 diff --git a/src/RouterProvider.tsx b/src/RouterProvider.tsx
-index 81c3fb4ece27ca0e8044f58a14677eb68628adb7..a413d9cf7cc86ff3f8701ed085b99bacf4c27292 100644
+index e61cdf1b8ae90cd67d465e610c136ba8e746ae67..bbcb355a1b9a011e0d12e7247cd359cb3803c473 100644
 --- a/src/RouterProvider.tsx
 +++ b/src/RouterProvider.tsx
 @@ -4,6 +4,11 @@ import * as React from 'react'
@@ -3397,10 +3485,10 @@ index 81c3fb4ece27ca0e8044f58a14677eb68628adb7..a413d9cf7cc86ff3f8701ed085b99bac
    )
  
 diff --git a/src/Scripts.tsx b/src/Scripts.tsx
-index 13679f553db44af5c588b58ffb4f66d71b0aec76..0fba5d6e1d69d8dabd515f312740917f37c39f30 100644
+index 56afe0a44324bee8b85ba52b7cfab13e5ae2a1bf..e66ab1720b99b020c060dda51d4a343dc2070712 100644
 --- a/src/Scripts.tsx
 +++ b/src/Scripts.tsx
-@@ -3,6 +3,10 @@ import { _getAssetMatches, deepEqual } from '@tanstack/router-core'
+@@ -7,6 +7,10 @@ import {
  import { isServer } from '@tanstack/router-core/isServer'
  import { Asset } from './Asset'
  import { useRouter } from './useRouter'
@@ -3411,15 +3499,28 @@ index 13679f553db44af5c588b58ffb4f66d71b0aec76..0fba5d6e1d69d8dabd515f312740917f
  import type { RouterManagedTag } from '@tanstack/router-core'
  
  type ScriptRenderAsset = RouterManagedTag & {
-@@ -62,17 +66,23 @@ export const Scripts = () => {
-     return scripts
+@@ -44,6 +48,8 @@ export const Scripts = () => {
+     return composeSsrBodyScripts(getParts(matches))
    }
  
--  if (isServer ?? router.isServer) {
--    const activeMatches = router.stores.matches.get()
--    const scripts = getScripts(activeMatches)
--    return renderScripts(router, scripts)
++  // The server renders once and has no staged successor, so it reads the
++  // store head directly, as upstream does.
+   if (isServer ?? router.isServer) {
+     const activeMatches = router.stores.matches.get()
+     return renderScripts(
+@@ -54,10 +60,24 @@ export const Scripts = () => {
+     )
+   }
+ 
+-  // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
+-  const scripts = useSelector(router.stores.matches, getScripts, {
+-    compare: deepEqual,
+-  })
++  // On the client the scripts belong to the publication this tree is
++  // presenting, so that a staged navigation does not pull in the
++  // destination's scripts while the previous route is still on screen.
 +  let scripts: ReturnType<typeof getScripts>
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
 +  if (useFrameMode(router)) {
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
 +    scripts = useRouterStateSelector(
@@ -3427,23 +3528,15 @@ index 13679f553db44af5c588b58ffb4f66d71b0aec76..0fba5d6e1d69d8dabd515f312740917f
 +      (state) => getScripts(state.matches),
 +      deepEqual,
 +    )
-+  } else if (isServer ?? router.isServer) {
-+    scripts = getScripts(router.stores.matches.get())
 +  } else {
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
 +    scripts = useSelector(router.stores.matches, getScripts, {
 +      compare: deepEqual,
 +    })
-   }
++  }
  
--  // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
--  const scripts = useSelector(router.stores.matches, getScripts, {
--    compare: deepEqual,
--  })
--
-   return renderScripts(router, scripts)
+   return renderScripts(scripts)
  }
- 
 diff --git a/src/Transitioner.tsx b/src/Transitioner.tsx
 index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..b58a1bc6130902141e1bb2bea8b1033b726f132c 100644
 --- a/src/Transitioner.tsx
@@ -3605,10 +3698,10 @@ index d517e0e453c08ca819e3e8a048badb9d8547c1c6..bf643d8ad04f6e82807c7b0b98146a6b
    return useSelector(router.stores.matches, selectTags, { compare: deepEqual })
  }
 diff --git a/src/link.tsx b/src/link.tsx
-index c0e2ddc4e3ec017b146f04d6f9a5651fc5d309f1..f26ea405e1f09dc6e3d928896a02d52acea247ce 100644
+index 26ec05a84887b767d42ec4b45c1e0927948f8e7d..b491bb4c3f0118e508e9833f54cdc39c1aa9f2c7 100644
 --- a/src/link.tsx
 +++ b/src/link.tsx
-@@ -14,10 +14,15 @@ import {
+@@ -12,8 +12,13 @@ import {
  } from '@tanstack/router-core'
  import { isServer } from '@tanstack/router-core/isServer'
  import { useRouter } from './useRouter'
@@ -3617,15 +3710,22 @@ index c0e2ddc4e3ec017b146f04d6f9a5651fc5d309f1..f26ea405e1f09dc6e3d928896a02d52a
 +  useRouterStateSelector,
 +} from './routerStateContext'
  
- import { useForwardedRef, useIntersectionObserver } from './utils'
- 
  import { useHydrated } from './ClientOnly'
 +import type { RouterRenderFrame } from './routerStateContext'
  import type {
    ActiveOptions,
    AnyRouter,
-@@ -458,12 +463,32 @@ export function useLinkProps<
-     [stableActiveOptions, disabled, isHydrated, _options, router, to],
+@@ -286,7 +291,7 @@ export function useLinkProps<
+     ],
+   )
+ 
+-  // Derive inside the selector so `compareLinkState` can bail out. Deriving after
++  // Derive inside the selector so the comparator can bail out. Deriving after
+   // the subscription instead re-renders every link on every navigation, because
+   // the comparator only sees the location, not whether this link's output moved.
+   // eslint-disable-next-line react-hooks/rules-of-hooks
+@@ -326,12 +331,30 @@ export function useLinkProps<
+     [stableActiveOptions, disabled, isHydrated, _options, dest, router, to],
    )
  
 +  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
@@ -3642,7 +3742,7 @@ index c0e2ddc4e3ec017b146f04d6f9a5651fc5d309f1..f26ea405e1f09dc6e3d928896a02d52a
 -  const [href, isActive] = useSelector(
 -    router.stores.location,
 -    selectLinkState,
--    { compare: compareLinkState },
+-    LINK_SELECTOR_OPTIONS,
 +  const presentedFrame = React.useRef<(() => RouterRenderFrame) | undefined>(
 +    undefined,
    )
@@ -3651,41 +3751,78 @@ index c0e2ddc4e3ec017b146f04d6f9a5651fc5d309f1..f26ea405e1f09dc6e3d928896a02d52a
 +      useRouterStateSelector(
 +        router,
 +        (state) => selectLinkState(state.location),
-+        compareLinkState,
++        LINK_SELECTOR_OPTIONS.compare,
 +        presentedFrame,
 +      )
 +    : // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
-+      useSelector(router.stores.location, selectLinkState, {
-+        compare: compareLinkState,
-+      })
++      useSelector(router.stores.location, selectLinkState, LINK_SELECTOR_OPTIONS)
    const externalLink = isActive === undefined ? href : undefined
    const linkDisabled = disabled || href === undefined
  
-@@ -480,11 +505,18 @@ export function useLinkProps<
-   // eslint-disable-next-line react-hooks/rules-of-hooks
-   const doPreload = React.useCallback(() => {
-     // `preloadRoute` builds the location itself; it is no longer held in render
--    // state. It only reads the options, so `_options` can go through as-is.
--    router.preloadRoute(_options as any).catch((err) => {
--      console.warn(err)
--      console.warn(preloadWarning)
--    })
-+    // state. It resolves against the publication this link is presenting, so
-+    // it preloads the destination the link is displaying, and an explicit
-+    // `_fromLocation` in the options still wins.
-+    router
-+      .preloadRoute({
-+        _fromLocation: presentedFrame.current?.().location,
-+        ..._options,
-+      } as any)
-+      .catch((err) => {
-+        console.warn(err)
-+        console.warn(preloadWarning)
-+      })
-   }, [router, _options])
+@@ -346,7 +369,20 @@ export function useLinkProps<
+     userPreloadDelay ?? router.options.defaultPreloadDelay ?? 0
  
+   // `preloadRoute` builds the location itself and only reads the options, so
+-  // `_options` goes through as-is.
++  // `_options` goes through as-is, except for the location it resolves
++  // against: on the frame path that is the publication this link is
++  // presenting, read at call time, so a link preloads the destination it is
++  // displaying rather than one relative to the route being prepared. An
++  // explicit `_fromLocation` in the options still wins, and outside the frame
++  // path `presentedFrame` is empty and the router's own head is used.
++  // eslint-disable-next-line react-hooks/rules-of-hooks
++  const preloadOptions = React.useCallback(
++    () => ({
++      _fromLocation: presentedFrame.current?.().location,
++      ..._options,
++    }),
++    [_options],
++  )
    // eslint-disable-next-line react-hooks/rules-of-hooks
-@@ -595,6 +627,9 @@ export function useLinkProps<
+   const enqueuePreload = React.useCallback(
+     (e?: React.MouseEvent | React.FocusEvent | IntersectionObserverEntry) => {
+@@ -360,7 +396,7 @@ export function useLinkProps<
+       }
+ 
+       if (!preloadDelay) {
+-        preloadLink(router, _options)
++        preloadLink(router, preloadOptions())
+         return
+       }
+ 
+@@ -372,11 +408,11 @@ export function useLinkProps<
+         innerRef,
+         setTimeout(() => {
+           timeoutMap.delete(innerRef)
+-          preloadLink(router, _options)
++          preloadLink(router, preloadOptions())
+         }, preloadDelay),
+       )
+     },
+-    [router, _options, innerRef, preload, preloadDelay],
++    [router, preloadOptions, innerRef, preload, preloadDelay],
+   )
+ 
+   // Preload side effects: `render` preloads once per link, `viewport` watches
+@@ -385,7 +421,7 @@ export function useLinkProps<
+   React.useEffect(() => {
+     if (preload === 'render' && !hasRenderFetched.current) {
+       hasRenderFetched.current = true
+-      preloadLink(router, _options)
++      preloadLink(router, preloadOptions())
+     }
+     let observer: IntersectionObserver | undefined
+     if (
+@@ -403,7 +439,7 @@ export function useLinkProps<
+       observer?.disconnect()
+       cancelPreload(innerRef)
+     }
+-  }, [router, _options, preload, enqueuePreload, innerRef])
++  }, [router, preloadOptions, preload, enqueuePreload, innerRef])
+ 
+   const props = collectElementProps(options, host)
+   props.ref = forwardedRef ? mergedRef : innerRef
+@@ -434,6 +470,9 @@ export function useLinkProps<
        // All is well? Navigate!
        // N.B. we don't call `router.commitLocation(next) here because we want to run `validateSearch` before committing
        router.navigate({
@@ -3695,6 +3832,15 @@ index c0e2ddc4e3ec017b146f04d6f9a5651fc5d309f1..f26ea405e1f09dc6e3d928896a02d52a
          ..._options,
          replace,
          resetScroll,
+@@ -447,7 +486,7 @@ export function useLinkProps<
+ 
+   const handleTouchStart = () => {
+     if (preload === 'intent') {
+-      preloadLink(router, _options)
++      preloadLink(router, preloadOptions())
+     }
+   }
+ 
 diff --git a/src/not-found.tsx b/src/not-found.tsx
 index 3c5287cb2e0a8828b9c42d81b213356dafc3475f..3c3d935428b3eef9ccb162e35eb21a09f0a98ef1 100644
 --- a/src/not-found.tsx
