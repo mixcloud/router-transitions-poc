@@ -1,5 +1,5 @@
 diff --git a/dist/cjs/Match.cjs b/dist/cjs/Match.cjs
-index a3bcc0c5b9dbfc0048388a90f9fe8fab9bb76dc5..0189c1f759471818f0100a4a3bf33c8621b902e1 100644
+index a3bcc0c5b9dbfc0048388a90f9fe8fab9bb76dc5..8f1ba416bd57c8a771061bbd5e0356472b99d762 100644
 --- a/dist/cjs/Match.cjs
 +++ b/dist/cjs/Match.cjs
 @@ -5,6 +5,7 @@ const require_CatchBoundary = require("./CatchBoundary.cjs");
@@ -10,7 +10,7 @@ index a3bcc0c5b9dbfc0048388a90f9fe8fab9bb76dc5..0189c1f759471818f0100a4a3bf33c86
  const require_not_found = require("./not-found.cjs");
  const require_SafeFragment = require("./SafeFragment.cjs");
  const require_renderRouteNotFound = require("./renderRouteNotFound.cjs");
-@@ -23,9 +24,32 @@ function renderPending(router, route) {
+@@ -23,6 +24,21 @@ function renderPending(router, route) {
  	return process.env.NODE_ENV !== "production" ? require_nonRouteComponentContext.wrapInNonRouteComponentContext(pendingElement, "pendingComponent") : pendingElement;
  }
  var outletMatchSelectionEqual = (a, b) => a[0] === b[0] && a[1] === b[1];
@@ -32,6 +32,10 @@ index a3bcc0c5b9dbfc0048388a90f9fe8fab9bb76dc5..0189c1f759471818f0100a4a3bf33c86
  var canWrapInSuspense = (router, route, ssr) => !route.isRoot || route.options.shellComponent || route.options.wrapInSuspense || ssr === false || ssr === "data-only" || !((_tanstack_router_core_isServer.isServer ?? router.isServer) || router.ssr);
  var Match = react.memo(function MatchImpl({ routeId }) {
  	const router = require_useRouter.useRouter();
+@@ -30,6 +46,14 @@ var Match = react.memo(function MatchImpl({ routeId }) {
+ 		router,
+ 		match: router.stores.byRoute.get(routeId).get()
+ 	});
 +	if (require_routerStateContext.useFrameMode(router)) {
 +		const match = require_routerStateContext.useRouterStateSelector(router, (state) => state.matches.find((candidate) => candidate.routeId === routeId));
 +		if (!match) return null;
@@ -40,9 +44,9 @@ index a3bcc0c5b9dbfc0048388a90f9fe8fab9bb76dc5..0189c1f759471818f0100a4a3bf33c86
 +			match
 +		});
 +	}
- 	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MatchView, {
+ 	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MatchView, {
  		router,
- 		match: router.stores.byRoute.get(routeId).get()
+ 		match: (0, _tanstack_react_store.useSelector)(router.stores.getMatchStore(routeId))
 @@ -42,7 +66,7 @@ function MatchView({ router, match }) {
  	const routeOnCatch = route.options.onCatch ?? router.options.defaultOnCatch;
  	const routeNotFoundComponent = route.isRoot ? route.options.notFoundComponent ?? router.options.notFoundRoute?.options.component : route.options.notFoundComponent;
@@ -361,7 +365,7 @@ index 0e0c6ec7c0e0053e08422a83ab63100243a9752b..969c12bf47cfb9cf3203818896f788e7
 +    setRenderFrame: (frame: RouterRenderFrame | undefined) => void;
  }): null;
 diff --git a/dist/cjs/headContentUtils.cjs b/dist/cjs/headContentUtils.cjs
-index 6162c746e0cbb5d6052b4d61975d533a3b7b278c..1b3f625132ae99f385664f35f723b2106f72e49f 100644
+index 6162c746e0cbb5d6052b4d61975d533a3b7b278c..ffa9434e0c20fb249bf74c0a2518b5b28fb5d493 100644
 --- a/dist/cjs/headContentUtils.cjs
 +++ b/dist/cjs/headContentUtils.cjs
 @@ -1,5 +1,6 @@
@@ -371,18 +375,11 @@ index 6162c746e0cbb5d6052b4d61975d533a3b7b278c..1b3f625132ae99f385664f35f723b210
  let _tanstack_router_core = require("@tanstack/router-core");
  let react = require("react");
  react = require_runtime.__toESM(react, 1);
-@@ -132,12 +133,13 @@ function buildTagsFromMatches(router, nonce, matches, assetCrossOrigin) {
- var useTags = (assetCrossOrigin) => {
- 	const router = require_useRouter.useRouter();
- 	const nonce = router.options.ssr?.nonce;
--	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return buildTagsFromMatches(router, nonce, router.stores.matches.get(), assetCrossOrigin);
- 	const selectTags = react.useCallback((matches) => buildTagsFromMatches(router, nonce, matches, assetCrossOrigin), [
- 		assetCrossOrigin,
+@@ -138,6 +139,7 @@ var useTags = (assetCrossOrigin) => {
  		nonce,
  		router
  	]);
 +	if (require_routerStateContext.useFrameMode(router)) return require_routerStateContext.useRouterStateSelector(router, (state) => selectTags(state.matches), _tanstack_router_core.deepEqual);
-+	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return selectTags(router.stores.matches.get());
  	return (0, _tanstack_react_store.useSelector)(router.stores.matches, selectTags, { compare: _tanstack_router_core.deepEqual });
  };
  //#endregion
@@ -475,7 +472,7 @@ index 23b5059a0a83fd2f40406b0b4bd361cfa3a76622..7fd1914c1619f78270788c11569cc01d
  	const handleLeave = () => {
  		if (preload === "intent") cancelPreload(innerRef);
 diff --git a/dist/cjs/not-found.cjs b/dist/cjs/not-found.cjs
-index b67c949005e5b1265bf6682ab567c753afc11793..a283057d6471b475fcf3ed2b254624ce07af6f04 100644
+index b67c949005e5b1265bf6682ab567c753afc11793..f11fdceb2e7c5c477214361a7af8a70b2b4e59fa 100644
 --- a/dist/cjs/not-found.cjs
 +++ b/dist/cjs/not-found.cjs
 @@ -1,6 +1,7 @@
@@ -490,7 +487,9 @@ index b67c949005e5b1265bf6682ab567c753afc11793..a283057d6471b475fcf3ed2b254624ce
  //#region src/not-found.tsx
  function CatchNotFound(props) {
  	const router = require_useRouter.useRouter();
--	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
++	let pathname;
++	let status;
+ 	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
 -		const resetKey = `not-found-${router.stores.location.get().pathname}-${router.stores.status.get()}`;
 -		return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_CatchBoundary.CatchBoundary, {
 -			getResetKey: () => resetKey,
@@ -504,13 +503,10 @@ index b67c949005e5b1265bf6682ab567c753afc11793..a283057d6471b475fcf3ed2b254624ce
 -			},
 -			children: props.children
 -		});
-+	let pathname;
-+	let status;
-+	if (require_routerStateContext.useFrameMode(router)) [pathname, status] = require_routerStateContext.useRouterStateSelector(router, (state) => [state.location.pathname, state.status], (a, b) => a[0] === b[0] && a[1] === b[1]);
-+	else if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
 +		pathname = router.stores.location.get().pathname;
 +		status = router.stores.status.get();
-+	} else {
++	} else if (require_routerStateContext.useFrameMode(router)) [pathname, status] = require_routerStateContext.useRouterStateSelector(router, (state) => [state.location.pathname, state.status], (a, b) => a[0] === b[0] && a[1] === b[1]);
++	else {
 +		pathname = (0, _tanstack_react_store.useSelector)(router.stores.location, (location) => location.pathname);
 +		status = (0, _tanstack_react_store.useSelector)(router.stores.status);
  	}
@@ -540,10 +536,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c2aa04c0533572c5f45db9178845a01ca57e009e
+index 0000000000000000000000000000000000000000..3315ea3b7fff279ffc2283c66c68d875d204ad8f
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,567 @@
+@@ -0,0 +1,574 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -648,6 +644,13 @@ index 0000000000000000000000000000000000000000..c2aa04c0533572c5f45db9178845a01c
 +* from the tree around it.
 +*/
 +function RouterStateFrameMode({ router, frameMode, children }) {
++	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateFrameModeContext.Provider, {
++		value: {
++			router,
++			frameMode
++		},
++		children
++	});
 +	const value = react.useMemo(() => ({
 +		router,
 +		frameMode
@@ -1326,7 +1329,7 @@ index a6fdc13bcf727a650d8f1d4ad2456a3a27390a40..8bedc2348873916cceeac8562e0d2a7c
 + */
  export declare function useCanGoBack(): boolean;
 diff --git a/dist/cjs/useLocation.cjs b/dist/cjs/useLocation.cjs
-index be6ac493e2d8c511c227effdecadd4f9ab5a29d4..d95f27dad72d3919a05481bed1990db94f0ba28d 100644
+index be6ac493e2d8c511c227effdecadd4f9ab5a29d4..60e2668e81d1887b0dc4e39b0a862e661a13d48a 100644
 --- a/dist/cjs/useLocation.cjs
 +++ b/dist/cjs/useLocation.cjs
 @@ -1,5 +1,6 @@
@@ -1336,19 +1339,19 @@ index be6ac493e2d8c511c227effdecadd4f9ab5a29d4..d95f27dad72d3919a05481bed1990db9
  const require_useMatch = require("./useMatch.cjs");
  let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
  let _tanstack_react_store = require("@tanstack/react-store");
-@@ -17,6 +18,10 @@ let _tanstack_react_store = require("@tanstack/react-store");
- */
- function useLocation(opts) {
- 	const router = require_useRouter.useRouter();
+@@ -21,6 +22,10 @@ function useLocation(opts) {
+ 		const location = router.stores.location.get();
+ 		return opts?.select ? opts.select(location) : location;
+ 	}
 +	if (require_routerStateContext.useFrameMode(router)) {
 +		const selectLocation = require_useMatch.useStructuralSharing(opts, router);
 +		return require_routerStateContext.useRouterStateSelector(router, require_useMatch.withSelectorCache((state) => selectLocation(state.location), selectLocation));
 +	}
- 	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
- 		const location = router.stores.location.get();
- 		return opts?.select ? opts.select(location) : location;
+ 	return (0, _tanstack_react_store.useSelector)(router.stores.location, require_useMatch.useStructuralSharing(opts, router));
+ }
+ //#endregion
 diff --git a/dist/cjs/useMatch.cjs b/dist/cjs/useMatch.cjs
-index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..d7661db16e839b59539e52ff5665ee81f074e6af 100644
+index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..a206cf5e882605d4687b163eba26516a83b8493c 100644
 --- a/dist/cjs/useMatch.cjs
 +++ b/dist/cjs/useMatch.cjs
 @@ -2,6 +2,7 @@
@@ -1404,30 +1407,14 @@ index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..d7661db16e839b59539e52ff5665ee81
  }
  /**
  * Read and select the nearest or targeted route match.
-@@ -26,20 +57,29 @@ function useMatch(opts) {
- 	const nearestRouteId = react.useContext(opts.from ? require_matchContext.dummyMatchContext : require_matchContext.matchContext);
- 	const routeId = opts.from ?? nearestRouteId;
- 	const matchStore = router.stores.getMatchStore(routeId);
--	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
--		const match = matchStore.get();
--		if (!match) {
--			if (opts.shouldThrow ?? true) {
--				if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
--				(0, _tanstack_router_core.invariant)();
-+	if (!require_routerStateContext.useFrameMode(router)) {
-+		if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
-+			const match = matchStore.get();
-+			if (!match) {
-+				if (opts.shouldThrow ?? true) {
-+					if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
-+					(0, _tanstack_router_core.invariant)();
-+				}
-+				return;
- 			}
--			return;
-+			return opts.select ? opts.select(match) : match;
+@@ -37,9 +68,18 @@ function useMatch(opts) {
  		}
--		return opts.select ? opts.select(match) : match;
+ 		return opts.select ? opts.select(match) : match;
+ 	}
+-	const selector = useStructuralSharing(opts, router);
+-	const matchSelection = (0, _tanstack_react_store.useSelector)(matchStore, (match) => match ? selector(match) : dummyMatch);
+-	if (matchSelection !== dummyMatch) return matchSelection;
++	if (!require_routerStateContext.useFrameMode(router)) {
 +		const selector = useStructuralSharing(opts, router);
 +		const matchSelection = (0, _tanstack_react_store.useSelector)(matchStore, (match) => match ? selector(match) : dummyMatch);
 +		if (matchSelection !== dummyMatch) return matchSelection;
@@ -1438,10 +1425,7 @@ index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..d7661db16e839b59539e52ff5665ee81
 +			return match ? selector(match) : dummyMatch;
 +		}, selector, (result) => result !== dummyMatch));
 +		if (matchSelection !== dummyMatch) return matchSelection;
- 	}
--	const selector = useStructuralSharing(opts, router);
--	const matchSelection = (0, _tanstack_react_store.useSelector)(matchStore, (match) => match ? selector(match) : dummyMatch);
--	if (matchSelection !== dummyMatch) return matchSelection;
++	}
  	if (opts.shouldThrow ?? true) {
  		if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
  		(0, _tanstack_router_core.invariant)();
@@ -1534,7 +1518,7 @@ index acfc91708d94633c0b636ac9366882fd55c79b09..6e8f5116382de331fe9772b141cf2204
  /**
  * Component that triggers a navigation when rendered. Navigation executes
 diff --git a/dist/cjs/useRouterState.cjs b/dist/cjs/useRouterState.cjs
-index 863e7187ae1c41192f376aea66226e1c2107c432..bd1f7d266cf97904dbfb4e9a4d476aa2aded8ef7 100644
+index 863e7187ae1c41192f376aea66226e1c2107c432..170e0f588de1049d4ffc0ffe89c1eef226124ac4 100644
 --- a/dist/cjs/useRouterState.cjs
 +++ b/dist/cjs/useRouterState.cjs
 @@ -1,5 +1,6 @@
@@ -1544,14 +1528,14 @@ index 863e7187ae1c41192f376aea66226e1c2107c432..bd1f7d266cf97904dbfb4e9a4d476aa2
  const require_useMatch = require("./useMatch.cjs");
  let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
  let _tanstack_react_store = require("@tanstack/react-store");
-@@ -19,6 +20,7 @@ let _tanstack_react_store = require("@tanstack/react-store");
- function useRouterState(opts) {
- 	const contextRouter = require_useRouter.useRouter({ warn: opts?.router === void 0 });
- 	const router = opts?.router || contextRouter;
-+	if (require_routerStateContext.useFrameMode(router)) return require_routerStateContext.useRouterStateSelector(router, require_useMatch.useStructuralSharing(opts, router));
- 	if (_tanstack_router_core_isServer.isServer ?? router.isServer) {
+@@ -23,6 +24,7 @@ function useRouterState(opts) {
  		const state = router.stores.__store.get();
  		return opts?.select ? opts.select(state) : state;
+ 	}
++	if (require_routerStateContext.useFrameMode(router)) return require_routerStateContext.useRouterStateSelector(router, require_useMatch.useStructuralSharing(opts, router));
+ 	return (0, _tanstack_react_store.useSelector)(router.stores.__store, require_useMatch.useStructuralSharing(opts, router));
+ }
+ //#endregion
 diff --git a/dist/esm/Match.d.ts b/dist/esm/Match.d.ts
 index d62c0d3de4b965e718476d251164e80621bbf4a0..3154bd60e62f83b15c56abe527ee93c6768de808 100644
 --- a/dist/esm/Match.d.ts
@@ -1566,7 +1550,7 @@ index d62c0d3de4b965e718476d251164e80621bbf4a0..3154bd60e62f83b15c56abe527ee93c6
      match: AnyRouteMatch;
  }) => any>;
 diff --git a/dist/esm/Match.js b/dist/esm/Match.js
-index 61bdaf0190e7067af284f4fbb24a4d03b0a25003..15a1b7d39bfbb21670a39eb43b464ec550c2069e 100644
+index 61bdaf0190e7067af284f4fbb24a4d03b0a25003..a81ecd0fb30238823993c2329649f9cbcade15fa 100644
 --- a/dist/esm/Match.js
 +++ b/dist/esm/Match.js
 @@ -4,6 +4,7 @@ import { CatchBoundary, ErrorComponent } from "./CatchBoundary.js";
@@ -1577,7 +1561,7 @@ index 61bdaf0190e7067af284f4fbb24a4d03b0a25003..15a1b7d39bfbb21670a39eb43b464ec5
  import { CatchNotFound } from "./not-found.js";
  import { SafeFragment } from "./SafeFragment.js";
  import { renderRouteNotFound } from "./renderRouteNotFound.js";
-@@ -21,9 +22,32 @@ function renderPending(router, route) {
+@@ -21,6 +22,21 @@ function renderPending(router, route) {
  	return process.env.NODE_ENV !== "production" ? wrapInNonRouteComponentContext(pendingElement, "pendingComponent") : pendingElement;
  }
  var outletMatchSelectionEqual = (a, b) => a[0] === b[0] && a[1] === b[1];
@@ -1599,6 +1583,10 @@ index 61bdaf0190e7067af284f4fbb24a4d03b0a25003..15a1b7d39bfbb21670a39eb43b464ec5
  var canWrapInSuspense = (router, route, ssr) => !route.isRoot || route.options.shellComponent || route.options.wrapInSuspense || ssr === false || ssr === "data-only" || !((isServer ?? router.isServer) || router.ssr);
  var Match = React$1.memo(function MatchImpl({ routeId }) {
  	const router = useRouter();
+@@ -28,6 +44,14 @@ var Match = React$1.memo(function MatchImpl({ routeId }) {
+ 		router,
+ 		match: router.stores.byRoute.get(routeId).get()
+ 	});
 +	if (useFrameMode(router)) {
 +		const match = useRouterStateSelector(router, (state) => state.matches.find((candidate) => candidate.routeId === routeId));
 +		if (!match) return null;
@@ -1607,9 +1595,9 @@ index 61bdaf0190e7067af284f4fbb24a4d03b0a25003..15a1b7d39bfbb21670a39eb43b464ec5
 +			match
 +		});
 +	}
- 	if (isServer ?? router.isServer) return /* @__PURE__ */ jsx(MatchView, {
+ 	return /* @__PURE__ */ jsx(MatchView, {
  		router,
- 		match: router.stores.byRoute.get(routeId).get()
+ 		match: useSelector(router.stores.getMatchStore(routeId))
 @@ -40,7 +64,7 @@ function MatchView({ router, match }) {
  	const routeOnCatch = route.options.onCatch ?? router.options.defaultOnCatch;
  	const routeNotFoundComponent = route.isRoot ? route.options.notFoundComponent ?? router.options.notFoundRoute?.options.component : route.options.notFoundComponent;
@@ -1916,7 +1904,7 @@ index 51d7e69e3b1ad5a656d4c4e6f3ef690520effbf5..5f0d92ed313eb9f42053efc59a053af9
  				type: "onRendered",
  				...getLocationChangeInfo(resolvedLocation, resolvedLocation)
 diff --git a/dist/esm/headContentUtils.js b/dist/esm/headContentUtils.js
-index be1263837f954fff8470267e58eb09ba97949c8f..78341159eac331fdc9628a08917ae0e783e5c84e 100644
+index be1263837f954fff8470267e58eb09ba97949c8f..25d34ddcd9898ac6f51664a661c172e3f2389a2a 100644
 --- a/dist/esm/headContentUtils.js
 +++ b/dist/esm/headContentUtils.js
 @@ -1,4 +1,5 @@
@@ -1925,18 +1913,11 @@ index be1263837f954fff8470267e58eb09ba97949c8f..78341159eac331fdc9628a08917ae0e7
  import { _getAssetMatches, appendUniqueUserTags, deepEqual, escapeHtml, getAssetCrossOrigin, getScriptPreloadAttrs, resolveManifestCssLink } from "@tanstack/router-core";
  import * as React$1 from "react";
  import { isServer } from "@tanstack/router-core/isServer";
-@@ -130,12 +131,13 @@ function buildTagsFromMatches(router, nonce, matches, assetCrossOrigin) {
- var useTags = (assetCrossOrigin) => {
- 	const router = useRouter();
- 	const nonce = router.options.ssr?.nonce;
--	if (isServer ?? router.isServer) return buildTagsFromMatches(router, nonce, router.stores.matches.get(), assetCrossOrigin);
- 	const selectTags = React$1.useCallback((matches) => buildTagsFromMatches(router, nonce, matches, assetCrossOrigin), [
- 		assetCrossOrigin,
+@@ -136,6 +137,7 @@ var useTags = (assetCrossOrigin) => {
  		nonce,
  		router
  	]);
 +	if (useFrameMode(router)) return useRouterStateSelector(router, (state) => selectTags(state.matches), deepEqual);
-+	if (isServer ?? router.isServer) return selectTags(router.stores.matches.get());
  	return useSelector(router.stores.matches, selectTags, { compare: deepEqual });
  };
  //#endregion
@@ -2029,7 +2010,7 @@ index fe7da5be7a389737a4ce744862bc16558ebe64e3..63a0b116c0d470a4356c62155b803f1e
  	const handleLeave = () => {
  		if (preload === "intent") cancelPreload(innerRef);
 diff --git a/dist/esm/not-found.js b/dist/esm/not-found.js
-index 9e2ec17efebea9a6f60fd1f5a5c50c844d30e88a..3dbb5911ed3fd5d5c6f9f8a5f244119b933a984f 100644
+index 9e2ec17efebea9a6f60fd1f5a5c50c844d30e88a..14517b65860245201a68a9c7f2cb18aa40b70070 100644
 --- a/dist/esm/not-found.js
 +++ b/dist/esm/not-found.js
 @@ -1,5 +1,6 @@
@@ -2043,7 +2024,9 @@ index 9e2ec17efebea9a6f60fd1f5a5c50c844d30e88a..3dbb5911ed3fd5d5c6f9f8a5f244119b
  //#region src/not-found.tsx
  function CatchNotFound(props) {
  	const router = useRouter();
--	if (isServer ?? router.isServer) {
++	let pathname;
++	let status;
+ 	if (isServer ?? router.isServer) {
 -		const resetKey = `not-found-${router.stores.location.get().pathname}-${router.stores.status.get()}`;
 -		return /* @__PURE__ */ jsx(CatchBoundary, {
 -			getResetKey: () => resetKey,
@@ -2057,13 +2040,10 @@ index 9e2ec17efebea9a6f60fd1f5a5c50c844d30e88a..3dbb5911ed3fd5d5c6f9f8a5f244119b
 -			},
 -			children: props.children
 -		});
-+	let pathname;
-+	let status;
-+	if (useFrameMode(router)) [pathname, status] = useRouterStateSelector(router, (state) => [state.location.pathname, state.status], (a, b) => a[0] === b[0] && a[1] === b[1]);
-+	else if (isServer ?? router.isServer) {
 +		pathname = router.stores.location.get().pathname;
 +		status = router.stores.status.get();
-+	} else {
++	} else if (useFrameMode(router)) [pathname, status] = useRouterStateSelector(router, (state) => [state.location.pathname, state.status], (a, b) => a[0] === b[0] && a[1] === b[1]);
++	else {
 +		pathname = useSelector(router.stores.location, (location) => location.pathname);
 +		status = useSelector(router.stores.status);
  	}
@@ -2265,10 +2245,10 @@ index 0000000000000000000000000000000000000000..a0a34622298100ecb5d7ef7f44bdeca2
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..1b3dc235afee813d2f85b17083431932adcc8b58
+index 0000000000000000000000000000000000000000..a63933cf3a4eba38ce59a8176bc2d84459296fda
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,559 @@
+@@ -0,0 +1,566 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2371,6 +2351,13 @@ index 0000000000000000000000000000000000000000..1b3dc235afee813d2f85b17083431932
 +* from the tree around it.
 +*/
 +function RouterStateFrameMode({ router, frameMode, children }) {
++	if (isServer ?? router.isServer) return /* @__PURE__ */ jsx(routerStateFrameModeContext.Provider, {
++		value: {
++			router,
++			frameMode
++		},
++		children
++	});
 +	const value = React$1.useMemo(() => ({
 +		router,
 +		frameMode
@@ -2871,7 +2858,7 @@ index b3ebc19709f8737bf391da7e74edbbf1f9be6624..ebf25ef5aa94829dc2a79c9acc04076a
  	const router = useRouter();
  	if (isServer ?? router.isServer) return router.stores.location.get().state.__TSR_index !== 0;
 diff --git a/dist/esm/useLocation.js b/dist/esm/useLocation.js
-index 7e5736b345e089516ec3b8ce79e4da41c64c84c8..1431e28ff9485984f49c62acdb6a8e858d7e87bf 100644
+index 7e5736b345e089516ec3b8ce79e4da41c64c84c8..e9ba412c5901f72d23432eec2f71ec424934dc33 100644
 --- a/dist/esm/useLocation.js
 +++ b/dist/esm/useLocation.js
 @@ -1,6 +1,7 @@
@@ -2883,17 +2870,17 @@ index 7e5736b345e089516ec3b8ce79e4da41c64c84c8..1431e28ff9485984f49c62acdb6a8e85
  import { isServer } from "@tanstack/router-core/isServer";
  import { useSelector } from "@tanstack/react-store";
  //#region src/useLocation.tsx
-@@ -17,6 +18,10 @@ import { useSelector } from "@tanstack/react-store";
- */
- function useLocation(opts) {
- 	const router = useRouter();
+@@ -21,6 +22,10 @@ function useLocation(opts) {
+ 		const location = router.stores.location.get();
+ 		return opts?.select ? opts.select(location) : location;
+ 	}
 +	if (useFrameMode(router)) {
 +		const selectLocation = useStructuralSharing(opts, router);
 +		return useRouterStateSelector(router, withSelectorCache((state) => selectLocation(state.location), selectLocation));
 +	}
- 	if (isServer ?? router.isServer) {
- 		const location = router.stores.location.get();
- 		return opts?.select ? opts.select(location) : location;
+ 	return useSelector(router.stores.location, useStructuralSharing(opts, router));
+ }
+ //#endregion
 diff --git a/dist/esm/useMatch.d.ts b/dist/esm/useMatch.d.ts
 index c2623c5bb27a7c301c912404de0721c2d138e1f8..c673924032e30ffcf1e5c6b2845366e6372b0a95 100644
 --- a/dist/esm/useMatch.d.ts
@@ -2943,7 +2930,7 @@ index c2623c5bb27a7c301c912404de0721c2d138e1f8..c673924032e30ffcf1e5c6b2845366e6
      select?: (match: MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict>) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
      shouldThrow?: TThrow;
 diff --git a/dist/esm/useMatch.js b/dist/esm/useMatch.js
-index 2c4d50063c492de3879a5080007dd0e040af77b4..cac5d97d27b61d23f876c1820bc634eb10fada3e 100644
+index 2c4d50063c492de3879a5080007dd0e040af77b4..2f1bb71c8826f5680464970d74b8da198bacd4da 100644
 --- a/dist/esm/useMatch.js
 +++ b/dist/esm/useMatch.js
 @@ -1,19 +1,50 @@
@@ -2998,30 +2985,14 @@ index 2c4d50063c492de3879a5080007dd0e040af77b4..cac5d97d27b61d23f876c1820bc634eb
  }
  /**
  * Read and select the nearest or targeted route match.
-@@ -24,26 +55,35 @@ function useMatch(opts) {
- 	const nearestRouteId = React$1.useContext(opts.from ? dummyMatchContext : matchContext);
- 	const routeId = opts.from ?? nearestRouteId;
- 	const matchStore = router.stores.getMatchStore(routeId);
--	if (isServer ?? router.isServer) {
--		const match = matchStore.get();
--		if (!match) {
--			if (opts.shouldThrow ?? true) {
--				if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
--				invariant();
-+	if (!useFrameMode(router)) {
-+		if (isServer ?? router.isServer) {
-+			const match = matchStore.get();
-+			if (!match) {
-+				if (opts.shouldThrow ?? true) {
-+					if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
-+					invariant();
-+				}
-+				return;
- 			}
--			return;
-+			return opts.select ? opts.select(match) : match;
+@@ -35,15 +66,24 @@ function useMatch(opts) {
  		}
--		return opts.select ? opts.select(match) : match;
+ 		return opts.select ? opts.select(match) : match;
+ 	}
+-	const selector = useStructuralSharing(opts, router);
+-	const matchSelection = useSelector(matchStore, (match) => match ? selector(match) : dummyMatch);
+-	if (matchSelection !== dummyMatch) return matchSelection;
++	if (!useFrameMode(router)) {
 +		const selector = useStructuralSharing(opts, router);
 +		const matchSelection = useSelector(matchStore, (match) => match ? selector(match) : dummyMatch);
 +		if (matchSelection !== dummyMatch) return matchSelection;
@@ -3032,10 +3003,7 @@ index 2c4d50063c492de3879a5080007dd0e040af77b4..cac5d97d27b61d23f876c1820bc634eb
 +			return match ? selector(match) : dummyMatch;
 +		}, selector, (result) => result !== dummyMatch));
 +		if (matchSelection !== dummyMatch) return matchSelection;
- 	}
--	const selector = useStructuralSharing(opts, router);
--	const matchSelection = useSelector(matchStore, (match) => match ? selector(match) : dummyMatch);
--	if (matchSelection !== dummyMatch) return matchSelection;
++	}
  	if (opts.shouldThrow ?? true) {
  		if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
  		invariant();
@@ -3080,7 +3048,7 @@ index b15db38cce348acc255507c3e5fed9db6968f331..99fae4daac6ff6dfcd95098e40537efd
  /**
  * Component that triggers a navigation when rendered. Navigation executes
 diff --git a/dist/esm/useRouterState.js b/dist/esm/useRouterState.js
-index 531ea9313a389e6658031196d1b185a726ec16c6..f1803bff7e79eb3113bd257df7cef25e8516867b 100644
+index 531ea9313a389e6658031196d1b185a726ec16c6..18a6aa2555124dc9c64668662d637b22363dee29 100644
 --- a/dist/esm/useRouterState.js
 +++ b/dist/esm/useRouterState.js
 @@ -1,5 +1,6 @@
@@ -3090,16 +3058,16 @@ index 531ea9313a389e6658031196d1b185a726ec16c6..f1803bff7e79eb3113bd257df7cef25e
  import { useStructuralSharing } from "./useMatch.js";
  import { isServer } from "@tanstack/router-core/isServer";
  import { useSelector } from "@tanstack/react-store";
-@@ -19,6 +20,7 @@ import { useSelector } from "@tanstack/react-store";
- function useRouterState(opts) {
- 	const contextRouter = useRouter({ warn: opts?.router === void 0 });
- 	const router = opts?.router || contextRouter;
-+	if (useFrameMode(router)) return useRouterStateSelector(router, useStructuralSharing(opts, router));
- 	if (isServer ?? router.isServer) {
+@@ -23,6 +24,7 @@ function useRouterState(opts) {
  		const state = router.stores.__store.get();
  		return opts?.select ? opts.select(state) : state;
+ 	}
++	if (useFrameMode(router)) return useRouterStateSelector(router, useStructuralSharing(opts, router));
+ 	return useSelector(router.stores.__store, useStructuralSharing(opts, router));
+ }
+ //#endregion
 diff --git a/src/Match.tsx b/src/Match.tsx
-index 1ba756053a0600f0204f87b854de017d7ca507f2..219eb412951448f4870c2215a2e3e34cc5b4a194 100644
+index 1ba756053a0600f0204f87b854de017d7ca507f2..4d4bb308f58b2eb6823003e8f499acf2f091e2c4 100644
 --- a/src/Match.tsx
 +++ b/src/Match.tsx
 @@ -12,6 +12,7 @@ import { SafeFragment } from './SafeFragment'
@@ -3148,10 +3116,19 @@ index 1ba756053a0600f0204f87b854de017d7ca507f2..219eb412951448f4870c2215a2e3e34c
  const canWrapInSuspense = (
    router: ReturnType<typeof useRouter>,
    route: AnyRoute,
-@@ -66,6 +93,20 @@ export const Match = React.memo(function MatchImpl({
+@@ -66,12 +93,29 @@ export const Match = React.memo(function MatchImpl({
    routeId: string
  }) {
    const router = useRouter()
+-
++  // The server first, so the frame branch below is not reached there: it would
++  // resolve to the head, which is what this reads directly.
+   if (isServer ?? router.isServer) {
+     const match = router.stores.byRoute.get(routeId)!.get()!
+     return <MatchView router={router} match={match} />
+   }
+ 
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
 +  if (useFrameMode(router)) {
 +    // eslint-disable-next-line react-hooks/rules-of-hooks
 +    const match = useRouterStateSelector(router, (state) =>
@@ -3166,10 +3143,11 @@ index 1ba756053a0600f0204f87b854de017d7ca507f2..219eb412951448f4870c2215a2e3e34c
 +    }
 +    return <MatchView router={router} match={match} />
 +  }
- 
-   if (isServer ?? router.isServer) {
-     const match = router.stores.byRoute.get(routeId)!.get()!
-@@ -101,9 +142,20 @@ function MatchView({
++
+   const matchStore = router.stores.getMatchStore(routeId)
+   // eslint-disable-next-line react-hooks/rules-of-hooks
+   const match = useSelector(matchStore)
+@@ -101,9 +145,20 @@ function MatchView({
      : route.options.notFoundComponent
  
    const resolvedNoSsr = match.ssr === false || match.ssr === 'data-only'
@@ -3190,7 +3168,7 @@ index 1ba756053a0600f0204f87b854de017d7ca507f2..219eb412951448f4870c2215a2e3e34c
      canWrapInSuspense(router, route, match.ssr) &&
      (route.options.wrapInSuspense ??
        pendingElement ??
-@@ -277,7 +329,30 @@ export const Outlet = React.memo(function OutletImpl() {
+@@ -277,7 +332,30 @@ export const Outlet = React.memo(function OutletImpl() {
    let parentNotFoundError: unknown
    let childRouteId: string | undefined
  
@@ -3222,7 +3200,7 @@ index 1ba756053a0600f0204f87b854de017d7ca507f2..219eb412951448f4870c2215a2e3e34c
      const matches = router.stores.matches.get()
      const parentIndex = matches.findIndex((match) => match.routeId === routeId)
      const parentMatch = matches[parentIndex]!
-@@ -314,7 +389,8 @@ export const Outlet = React.memo(function OutletImpl() {
+@@ -314,7 +392,8 @@ export const Outlet = React.memo(function OutletImpl() {
  
    const nextMatch = <Match routeId={childRouteId} />
  
@@ -3783,7 +3761,7 @@ index ddf8afea2e1e92f1024e688f52409dba7cd5ae7e..b58a1bc6130902141e1bb2bea8b1033b
        router.load({ sync: true }).catch(console.error)
      }
 diff --git a/src/headContentUtils.tsx b/src/headContentUtils.tsx
-index d517e0e453c08ca819e3e8a048badb9d8547c1c6..bf643d8ad04f6e82807c7b0b98146a6bff3b7537 100644
+index d517e0e453c08ca819e3e8a048badb9d8547c1c6..a6a239f4f785cbacb5b5ec45505903acc9b152a3 100644
 --- a/src/headContentUtils.tsx
 +++ b/src/headContentUtils.tsx
 @@ -11,6 +11,10 @@ import {
@@ -3797,25 +3775,29 @@ index d517e0e453c08ca819e3e8a048badb9d8547c1c6..bf643d8ad04f6e82807c7b0b98146a6b
  import type {
    AnyRouteMatch,
    AssetCrossOriginConfig,
-@@ -196,21 +200,24 @@ export const useTags = (assetCrossOrigin?: AssetCrossOriginConfig) => {
+@@ -196,6 +200,9 @@ export const useTags = (assetCrossOrigin?: AssetCrossOriginConfig) => {
    const router = useRouter()
    const nonce = router.options.ssr?.nonce
  
--  if (isServer ?? router.isServer) {
--    return buildTagsFromMatches(
--      router,
--      nonce,
--      router.stores.matches.get(),
--      assetCrossOrigin,
--    )
--  }
--
++  // The server renders once and subscribes to nothing, so there is nothing for
++  // a memoized selector to hold steady — and creating one is reactivity the
++  // server render must not build. Branch before it, as upstream does.
+   if (isServer ?? router.isServer) {
+     return buildTagsFromMatches(
+       router,
+@@ -205,12 +212,22 @@ export const useTags = (assetCrossOrigin?: AssetCrossOriginConfig) => {
+     )
+   }
+ 
 -  // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
    const selectTags = React.useCallback(
      (matches: Array<AnyRouteMatch>) =>
        buildTagsFromMatches(router, nonce, matches, assetCrossOrigin),
      [assetCrossOrigin, nonce, router],
    )
+-  // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
 +  if (useFrameMode(router)) {
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
 +    return useRouterStateSelector(
@@ -3825,11 +3807,7 @@ index d517e0e453c08ca819e3e8a048badb9d8547c1c6..bf643d8ad04f6e82807c7b0b98146a6b
 +    )
 +  }
 +
-+  if (isServer ?? router.isServer) {
-+    return selectTags(router.stores.matches.get())
-+  }
-+
-   // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
    return useSelector(router.stores.matches, selectTags, { compare: deepEqual })
  }
 diff --git a/src/link.tsx b/src/link.tsx
@@ -3977,7 +3955,7 @@ index 26ec05a84887b767d42ec4b45c1e0927948f8e7d..b491bb4c3f0118e508e9833f54cdc39c
    }
  
 diff --git a/src/not-found.tsx b/src/not-found.tsx
-index 3c5287cb2e0a8828b9c42d81b213356dafc3475f..3c3d935428b3eef9ccb162e35eb21a09f0a98ef1 100644
+index 3c5287cb2e0a8828b9c42d81b213356dafc3475f..e32ad73d353e60da9a202509e744e52e415a2f47 100644
 --- a/src/not-found.tsx
 +++ b/src/not-found.tsx
 @@ -4,6 +4,10 @@ import { isServer } from '@tanstack/router-core/isServer'
@@ -3991,12 +3969,15 @@ index 3c5287cb2e0a8828b9c42d81b213356dafc3475f..3c3d935428b3eef9ccb162e35eb21a09
  import type { ErrorInfo } from 'react'
  import type { NotFoundError } from '@tanstack/router-core'
  
-@@ -13,43 +17,28 @@ export function CatchNotFound(props: {
+@@ -13,43 +17,30 @@ export function CatchNotFound(props: {
    children: React.ReactNode
  }) {
    const router = useRouter()
 -
--  if (isServer ?? router.isServer) {
++  let pathname: string
++  let status: 'pending' | 'idle'
++  // The server first, so neither reactive branch is reached there.
+   if (isServer ?? router.isServer) {
 -    const pathname = router.stores.location.get().pathname
 -    const status = router.stores.status.get()
 -    const resetKey = `not-found-${pathname}-${status}`
@@ -4021,18 +4002,16 @@ index 3c5287cb2e0a8828b9c42d81b213356dafc3475f..3c3d935428b3eef9ccb162e35eb21a09
 -      >
 -        {props.children}
 -      </CatchBoundary>
-+  let pathname: string
-+  let status: 'pending' | 'idle'
-+  if (useFrameMode(router)) {
++    pathname = router.stores.location.get().pathname
++    status = router.stores.status.get()
++    // eslint-disable-next-line react-hooks/rules-of-hooks -- server branch above, condition is static
++  } else if (useFrameMode(router)) {
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
 +    ;[pathname, status] = useRouterStateSelector(
 +      router,
 +      (state) => [state.location.pathname, state.status] as const,
 +      (a, b) => a[0] === b[0] && a[1] === b[1],
 +    )
-+  } else if (isServer ?? router.isServer) {
-+    pathname = router.stores.location.get().pathname
-+    status = router.stores.status.get()
 +  } else {
 +    // TODO: Some way for the user to programmatically reset the not-found boundary?
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
@@ -4076,10 +4055,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..271ab9c81c82f0900f7728a93fa265a8baf53d74
+index 0000000000000000000000000000000000000000..142cde4554a78d3d6310b5c994a54e4d123db2d1
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,1049 @@
+@@ -0,0 +1,1061 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -4319,6 +4298,18 @@ index 0000000000000000000000000000000000000000..271ab9c81c82f0900f7728a93fa265a8
 +  frameMode: boolean
 +  children: React.ReactNode
 +}) {
++  // The memo exists to keep the context value stable across re-renders, which
++  // the server, rendering once, has no use for. Branch before it rather than
++  // memoize a value nothing will compare.
++  if (isServer ?? router.isServer) {
++    return (
++      <routerStateFrameModeContext.Provider value={{ router, frameMode }}>
++        {children}
++      </routerStateFrameModeContext.Provider>
++    )
++  }
++
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
 +  const value = React.useMemo(
 +    () => ({ router, frameMode }),
 +    [router, frameMode],
@@ -5153,7 +5144,7 @@ index 2a8ce612b192a2a6f370e2c21be329cf7f96e772..d1f412dd934a514138c1e77c74f344c1
    const router = useRouter()
  
 diff --git a/src/useLocation.tsx b/src/useLocation.tsx
-index 5fa39fa92ef55de0aeda0919f9e0b5622c16436b..8bbe93afff4f5597bd8ece6d6b37142c16420e4e 100644
+index 5fa39fa92ef55de0aeda0919f9e0b5622c16436b..7e55d1776f90961f27b6d43c9052d5c1a80c9616 100644
 --- a/src/useLocation.tsx
 +++ b/src/useLocation.tsx
 @@ -3,7 +3,11 @@
@@ -5169,10 +5160,21 @@ index 5fa39fa92ef55de0aeda0919f9e0b5622c16436b..8bbe93afff4f5597bd8ece6d6b37142c
  import type {
    StructuralSharingOption,
    ValidateSelected,
-@@ -52,6 +56,19 @@ export function useLocation<
+@@ -52,6 +56,9 @@ export function useLocation<
  ): UseLocationResult<TRouter, TSelected> {
    const router = useRouter<TRouter>()
  
++  // The server first, so that neither branch below is reached there: one
++  // render, no subscription, and no presented publication to resolve — the
++  // head is what a frame path would offer anyway.
+   if (isServer ?? router.isServer) {
+     const location = router.stores.location.get()
+     return (
+@@ -59,6 +66,20 @@ export function useLocation<
+     ) as UseLocationResult<TRouter, TSelected>
+   }
+ 
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
 +  if (useFrameMode(router)) {
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
 +    const selectLocation = useStructuralSharing(opts, router)
@@ -5186,11 +5188,11 @@ index 5fa39fa92ef55de0aeda0919f9e0b5622c16436b..8bbe93afff4f5597bd8ece6d6b37142c
 +    ) as UseLocationResult<TRouter, TSelected>
 +  }
 +
-   if (isServer ?? router.isServer) {
-     const location = router.stores.location.get()
-     return (
+   // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
+   return useSelector(
+     router.stores.location,
 diff --git a/src/useMatch.tsx b/src/useMatch.tsx
-index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..5ba28d4866e6eaa5b1ae2e66ff2cfa4f175e2bb5 100644
+index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..b40576c42d86fef8d708de5871ed694e5784e71a 100644
 --- a/src/useMatch.tsx
 +++ b/src/useMatch.tsx
 @@ -6,6 +6,10 @@ import { invariant, replaceEqualDeep } from '@tanstack/router-core'
@@ -5320,46 +5322,25 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..5ba28d4866e6eaa5b1ae2e66ff2cfa4f
  }
  
  export interface UseMatchBaseOptions<
-@@ -150,36 +230,53 @@ export function useMatch<
+@@ -150,6 +230,9 @@ export function useMatch<
    const routeId = opts.from ?? nearestRouteId
    const matchStore = router.stores.getMatchStore(routeId!)
  
--  if (isServer ?? router.isServer) {
--    const match = matchStore.get()
--    if (!match) {
--      if (opts.shouldThrow ?? true) {
--        if (process.env.NODE_ENV !== 'production') {
--          throw new Error(
--            `Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : 'a nearest match!'}`,
--          )
-+  if (!useFrameMode(router)) {
-+    if (isServer ?? router.isServer) {
-+      const match = matchStore.get()
-+      if (!match) {
-+        if (opts.shouldThrow ?? true) {
-+          if (process.env.NODE_ENV !== 'production') {
-+            throw new Error(
-+              `Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : 'a nearest match!'}`,
-+            )
-+          }
-+
-+          invariant()
-         }
++  // The server first, so neither reactive branch below is reached there,
++  // whichever way the option is set: a frame path would resolve the head,
++  // which is what this match store holds.
+   if (isServer ?? router.isServer) {
+     const match = matchStore.get()
+     if (!match) {
+@@ -169,17 +252,35 @@ export function useMatch<
+     return (opts.select ? opts.select(match as any) : match) as any
+   }
  
--        invariant()
-+        return undefined as any
-       }
- 
--      return undefined as any
-+      return (opts.select ? opts.select(match as any) : match) as any
-     }
- 
--    return (opts.select ? opts.select(match as any) : match) as any
--  }
--
 -  const selector =
 -    // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
 -    useStructuralSharing(opts, router)
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
++  if (!useFrameMode(router)) {
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
 +    const selector = useStructuralSharing(opts, router)
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
@@ -5434,7 +5415,7 @@ index ce95e5b4c1c647f37274a0d4b56c1caf95c11588..b3130a62e9b90e4b5ea3c9b0c21954f9
  }
  
 diff --git a/src/useRouterState.tsx b/src/useRouterState.tsx
-index fa17ee9f598f9b2f80a88a8ae05f88cb09a79fff..0c6e93567f926c053baabf6889177d67f23e02cd 100644
+index fa17ee9f598f9b2f80a88a8ae05f88cb09a79fff..e932af689f2f92116d04846eaf6352d4dc0ddc9e 100644
 --- a/src/useRouterState.tsx
 +++ b/src/useRouterState.tsx
 @@ -4,6 +4,10 @@ import { useSelector } from '@tanstack/react-store'
@@ -5448,10 +5429,21 @@ index fa17ee9f598f9b2f80a88a8ae05f88cb09a79fff..0c6e93567f926c053baabf6889177d67
  import type {
    AnyRouter,
    RegisteredRouter,
-@@ -54,6 +58,15 @@ export function useRouterState<
-   })
-   const router = opts?.router || contextRouter
+@@ -58,6 +62,9 @@ export function useRouterState<
+   // Avoid subscribing to the store (and any structural sharing work) on the server.
+   // The expression must stay inlined in the `if` so bundlers fold the
+   // browser-build constant `isServer = false` and drop this server block.
++  //
++  // First, so the frame branch below is not reached there either: the head is
++  // what it would resolve to on the server anyway, with no publication staged.
+   if (isServer ?? router.isServer) {
+     const state = router.stores.__store.get() as RouterState<
+       TRouter['routeTree']
+@@ -68,6 +75,16 @@ export function useRouterState<
+     >
+   }
  
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
 +  if (useFrameMode(router)) {
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
 +    return useRouterStateSelector(
@@ -5461,6 +5453,6 @@ index fa17ee9f598f9b2f80a88a8ae05f88cb09a79fff..0c6e93567f926c053baabf6889177d67
 +    ) as UseRouterStateResult<TRouter, TSelected>
 +  }
 +
-   // During SSR we render exactly once and do not need reactivity.
-   // Avoid subscribing to the store (and any structural sharing work) on the server.
-   // The expression must stay inlined in the `if` so bundlers fold the
+   // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
+   return useSelector(
+     router.stores.__store,
