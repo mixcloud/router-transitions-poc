@@ -536,10 +536,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3315ea3b7fff279ffc2283c66c68d875d204ad8f
+index 0000000000000000000000000000000000000000..09c6053be1cbc67dfada8baa70cdb3d42998e653
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,574 @@
+@@ -0,0 +1,575 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -958,6 +958,7 @@ index 0000000000000000000000000000000000000000..3315ea3b7fff279ffc2283c66c68d875
 +* the router's own head is the right source and already fresh.
 +*/
 +function usePresentedLocation(router) {
++	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return;
 +	const scope = react.useContext(routerStateScopeContext);
 +	const frameMode = useFrameMode(router);
 +	return react.useMemo(() => {
@@ -2245,10 +2246,10 @@ index 0000000000000000000000000000000000000000..a0a34622298100ecb5d7ef7f44bdeca2
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..a63933cf3a4eba38ce59a8176bc2d84459296fda
+index 0000000000000000000000000000000000000000..acd93093abcb42ad89a6f6cd6885d8c893586b2a
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,566 @@
+@@ -0,0 +1,567 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2665,6 +2666,7 @@ index 0000000000000000000000000000000000000000..a63933cf3a4eba38ce59a8176bc2d844
 +* the router's own head is the right source and already fresh.
 +*/
 +function usePresentedLocation(router) {
++	if (isServer ?? router.isServer) return;
 +	const scope = React$1.useContext(routerStateScopeContext);
 +	const frameMode = useFrameMode(router);
 +	return React$1.useMemo(() => {
@@ -4055,10 +4057,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..142cde4554a78d3d6310b5c994a54e4d123db2d1
+index 0000000000000000000000000000000000000000..a1e35ddf3d6090f8edc75d40b04680754a2515b3
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,1061 @@
+@@ -0,0 +1,1072 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -4804,8 +4806,19 @@ index 0000000000000000000000000000000000000000..142cde4554a78d3d6310b5c994a54e4d
 +export function usePresentedLocation(
 +  router: AnyRouter,
 +): (() => RouterRenderFrame['location'] | undefined) | undefined {
++  // Nothing is presented on the server: one render, no staged successor, and
++  // an imperative navigation there resolves against the head, which is what
++  // `undefined` tells the caller to use. Branch before the hooks rather than
++  // memoize an answer that is always the same.
++  if (isServer ?? router.isServer) {
++    return undefined
++  }
++
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
 +  const scope = React.useContext(routerStateScopeContext)
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
 +  const frameMode = useFrameMode(router)
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
 +  return React.useMemo(() => {
 +    if (!frameMode || !scope || scope.router !== router) {
 +      return undefined
