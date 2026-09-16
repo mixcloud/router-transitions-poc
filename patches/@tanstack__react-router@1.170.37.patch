@@ -232,7 +232,7 @@ index b13f8aca089525915aa00f55f3f5456a3e30d3ef..1afc314afa72e985785c348d064a6920
  		const matches = router.stores.matches.get();
  		return opts?.select ? opts.select(matches) : matches;
 diff --git a/dist/cjs/RouterProvider.cjs b/dist/cjs/RouterProvider.cjs
-index f64e032a5cca9ac11b039860d557286b84437b0a..c9cdda4d4f719312073692085e801c5796ddfce2 100644
+index f64e032a5cca9ac11b039860d557286b84437b0a..1b462d3d077e3674d5e2f4c618550f34a019d29d 100644
 --- a/dist/cjs/RouterProvider.cjs
 +++ b/dist/cjs/RouterProvider.cjs
 @@ -1,6 +1,7 @@
@@ -243,12 +243,14 @@ index f64e032a5cca9ac11b039860d557286b84437b0a..c9cdda4d4f719312073692085e801c57
  const require_Matches = require("./Matches.cjs");
  let _tanstack_router_core = require("@tanstack/router-core");
  let react = require("react");
-@@ -20,9 +21,16 @@ function RouterContextProvider({ router, children, ...rest }) {
+@@ -20,9 +21,18 @@ function RouterContextProvider({ router, children, ...rest }) {
  			...rest.context
  		}
  	});
-+	const childrenWithState = require_routerStateContext.useFrameMode(router) ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_routerStateContext.RouterStateProvider, {
++	const frameMode = require_routerStateContext.useFrameMode(router);
++	const childrenWithState = frameMode ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_routerStateContext.RouterStateProvider, {
 +		router,
++		frameMode,
 +		children
 +	}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)(require_routerStateContext.RouterStateStorePath, {
 +		router,
@@ -538,10 +540,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7c6785d281292d3bd1f0a5f92237ae632dd9b30c
+index 0000000000000000000000000000000000000000..c2aa04c0533572c5f45db9178845a01ca57e009e
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,565 @@
+@@ -0,0 +1,567 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -891,13 +893,14 @@ index 0000000000000000000000000000000000000000..7c6785d281292d3bd1f0a5f92237ae63
 +	ownersByRouter.set(router, owner);
 +	return owner;
 +}
-+function RouterStateProvider({ router, children }) {
++function RouterStateProvider({ router, frameMode, children }) {
++	const decided = frameMode ?? Boolean(router.options.experimental_concurrentRenderFrames);
 +	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateOwnerContext.Provider, {
 +		value: void 0,
 +		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateFrameModeContext.Provider, {
 +			value: {
 +				router,
-+				frameMode: Boolean(router.options.experimental_concurrentRenderFrames)
++				frameMode: decided
 +			},
 +			children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateScopeContext.Provider, {
 +				value: void 0,
@@ -907,12 +910,13 @@ index 0000000000000000000000000000000000000000..7c6785d281292d3bd1f0a5f92237ae63
 +	});
 +	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(RouterStateClientProvider, {
 +		router,
++		frameMode: decided,
 +		children
 +	});
 +}
-+function RouterStateClientProvider({ router, children }) {
++function RouterStateClientProvider({ router, frameMode: decided, children }) {
 +	const owner = ownerFor(router);
-+	const [frameMode] = react.useState(() => Boolean(router.options.experimental_concurrentRenderFrames));
++	const [frameMode] = react.useState(decided);
 +	require_utils.useLayoutEffect(() => {
 +		const subscription = router.stores.__store.subscribe(() => owner.publish());
 +		owner.publish();
@@ -1110,10 +1114,10 @@ index 0000000000000000000000000000000000000000..7c6785d281292d3bd1f0a5f92237ae63
 \ No newline at end of file
 diff --git a/dist/cjs/routerStateContext.d.cts b/dist/cjs/routerStateContext.d.cts
 new file mode 100644
-index 0000000000000000000000000000000000000000..e807813272ae79e9e1c2a80e323dde0544bffd98
+index 0000000000000000000000000000000000000000..dbb7ad07a372e6527b0b23b037c7d1a1d957a23e
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.d.cts
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,166 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.cjs';
 +import * as React from 'react';
@@ -1214,8 +1218,21 @@ index 0000000000000000000000000000000000000000..e807813272ae79e9e1c2a80e323dde05
 +    router: AnyRouter;
 +    children: React.ReactNode;
 +}): import("react/jsx-runtime").JSX.Element;
-+export declare function RouterStateProvider({ router, children, }: {
++export declare function RouterStateProvider({ router, frameMode, children, }: {
 +    router: AnyRouter;
++    /**
++     * The decision that selected this arm, from the caller's own `useFrameMode`.
++     *
++     * Reading the option again here would let the two disagree: a provider
++     * mounting inside a frame-path tree takes the frame arm from the tree's
++     * frozen answer, so re-reading an option that has since changed published
++     * the store path to its descendants while this provider still built an
++     * owner. Its `Transitioner` then offers a frame identity into an
++     * acknowledgement its own `Matches` reads as matches, and the navigation
++     * never settles. Falls back to the option for a caller that decides
++     * nothing — the tests that mount this provider directly.
++     */
++    frameMode?: boolean;
 +    children: React.ReactNode;
 +}): import("react/jsx-runtime").JSX.Element;
 +/** Present the route subtree from the presentation scope. */
@@ -1771,7 +1788,7 @@ index c4d69f186bc0175f07bc2550f0ceb461e767a7e3..bbad21e53d3471b9d0562c57b53ce5dd
  		const matches = router.stores.matches.get();
  		return opts?.select ? opts.select(matches) : matches;
 diff --git a/dist/esm/RouterProvider.js b/dist/esm/RouterProvider.js
-index cafc4e25ed0852fb5a07ad51a1c7b34e6f3f5e80..c2ce2cc6238db280eee74ef37b820becee59ce8d 100644
+index cafc4e25ed0852fb5a07ad51a1c7b34e6f3f5e80..34eeb5a2e6a874b54bd32a6ba4fac1d0e924bcb5 100644
 --- a/dist/esm/RouterProvider.js
 +++ b/dist/esm/RouterProvider.js
 @@ -1,5 +1,6 @@
@@ -1781,12 +1798,14 @@ index cafc4e25ed0852fb5a07ad51a1c7b34e6f3f5e80..c2ce2cc6238db280eee74ef37b820bec
  import { Matches } from "./Matches.js";
  import { hasKeys } from "@tanstack/router-core";
  import "react";
-@@ -18,9 +19,16 @@ function RouterContextProvider({ router, children, ...rest }) {
+@@ -18,9 +19,18 @@ function RouterContextProvider({ router, children, ...rest }) {
  			...rest.context
  		}
  	});
-+	const childrenWithState = useFrameMode(router) ? /* @__PURE__ */ jsx(RouterStateProvider, {
++	const frameMode = useFrameMode(router);
++	const childrenWithState = frameMode ? /* @__PURE__ */ jsx(RouterStateProvider, {
 +		router,
++		frameMode,
 +		children
 +	}) : /* @__PURE__ */ jsx(RouterStateStorePath, {
 +		router,
@@ -2074,10 +2093,10 @@ index a75a6159942121bcf30ef34d67733867d51d47b7..6ab2577dfa0a5b579b4088622e35f37d
           *
 diff --git a/dist/esm/routerStateContext.d.ts b/dist/esm/routerStateContext.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..2709d28c0f05741798e22fdcc6be6574a8455311
+index 0000000000000000000000000000000000000000..a0a34622298100ecb5d7ef7f44bdeca298d2608e
 --- /dev/null
 +++ b/dist/esm/routerStateContext.d.ts
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,166 @@
 +import { AnyRouter, RouterState } from '@tanstack/router-core';
 +import { CacheableSelector } from './useMatch.js';
 +import * as React from 'react';
@@ -2178,8 +2197,21 @@ index 0000000000000000000000000000000000000000..2709d28c0f05741798e22fdcc6be6574
 +    router: AnyRouter;
 +    children: React.ReactNode;
 +}): import("react/jsx-runtime").JSX.Element;
-+export declare function RouterStateProvider({ router, children, }: {
++export declare function RouterStateProvider({ router, frameMode, children, }: {
 +    router: AnyRouter;
++    /**
++     * The decision that selected this arm, from the caller's own `useFrameMode`.
++     *
++     * Reading the option again here would let the two disagree: a provider
++     * mounting inside a frame-path tree takes the frame arm from the tree's
++     * frozen answer, so re-reading an option that has since changed published
++     * the store path to its descendants while this provider still built an
++     * owner. Its `Transitioner` then offers a frame identity into an
++     * acknowledgement its own `Matches` reads as matches, and the navigation
++     * never settles. Falls back to the option for a caller that decides
++     * nothing — the tests that mount this provider directly.
++     */
++    frameMode?: boolean;
 +    children: React.ReactNode;
 +}): import("react/jsx-runtime").JSX.Element;
 +/** Present the route subtree from the presentation scope. */
@@ -2233,10 +2265,10 @@ index 0000000000000000000000000000000000000000..2709d28c0f05741798e22fdcc6be6574
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..903720898fb4f7d2a8eceaceec98eaf58be8c8fd
+index 0000000000000000000000000000000000000000..1b3dc235afee813d2f85b17083431932adcc8b58
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,557 @@
+@@ -0,0 +1,559 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2584,13 +2616,14 @@ index 0000000000000000000000000000000000000000..903720898fb4f7d2a8eceaceec98eaf5
 +	ownersByRouter.set(router, owner);
 +	return owner;
 +}
-+function RouterStateProvider({ router, children }) {
++function RouterStateProvider({ router, frameMode, children }) {
++	const decided = frameMode ?? Boolean(router.options.experimental_concurrentRenderFrames);
 +	if (isServer ?? router.isServer) return /* @__PURE__ */ jsx(routerStateOwnerContext.Provider, {
 +		value: void 0,
 +		children: /* @__PURE__ */ jsx(routerStateFrameModeContext.Provider, {
 +			value: {
 +				router,
-+				frameMode: Boolean(router.options.experimental_concurrentRenderFrames)
++				frameMode: decided
 +			},
 +			children: /* @__PURE__ */ jsx(routerStateScopeContext.Provider, {
 +				value: void 0,
@@ -2600,12 +2633,13 @@ index 0000000000000000000000000000000000000000..903720898fb4f7d2a8eceaceec98eaf5
 +	});
 +	return /* @__PURE__ */ jsx(RouterStateClientProvider, {
 +		router,
++		frameMode: decided,
 +		children
 +	});
 +}
-+function RouterStateClientProvider({ router, children }) {
++function RouterStateClientProvider({ router, frameMode: decided, children }) {
 +	const owner = ownerFor(router);
-+	const [frameMode] = React$1.useState(() => Boolean(router.options.experimental_concurrentRenderFrames));
++	const [frameMode] = React$1.useState(decided);
 +	useLayoutEffect(() => {
 +		const subscription = router.stores.__store.subscribe(() => owner.publish());
 +		owner.publish();
@@ -3544,7 +3578,7 @@ index 6dea1032f22bb981067e5b3872b9d9f3880164e6..f612a73693b8bfdb4a8cbfa82bd95c72
      const matches = router.stores.matches.get() as Array<
        MakeRouteMatchUnion<TRouter>
 diff --git a/src/RouterProvider.tsx b/src/RouterProvider.tsx
-index e61cdf1b8ae90cd67d465e610c136ba8e746ae67..bbcb355a1b9a011e0d12e7247cd359cb3803c473 100644
+index e61cdf1b8ae90cd67d465e610c136ba8e746ae67..04e91488a4ab0f523694e9505096bb95a69c2c59 100644
 --- a/src/RouterProvider.tsx
 +++ b/src/RouterProvider.tsx
 @@ -4,6 +4,11 @@ import * as React from 'react'
@@ -3559,7 +3593,7 @@ index e61cdf1b8ae90cd67d465e610c136ba8e746ae67..bbcb355a1b9a011e0d12e7247cd359cb
  import type {
    AnyRouter,
    RegisteredRouter,
-@@ -36,9 +41,21 @@ export function RouterContextProvider<
+@@ -36,9 +41,24 @@ export function RouterContextProvider<
      })
    }
  
@@ -3567,8 +3601,11 @@ index e61cdf1b8ae90cd67d465e610c136ba8e746ae67..bbcb355a1b9a011e0d12e7247cd359cb
 +  // one configured differently must not unmount the whole tree. Published on
 +  // both arms, so a reader mounting later agrees with this tree whichever way
 +  // it went — only the frame path builds an owner to carry it.
-+  const childrenWithState = useFrameMode(router as AnyRouter) ? (
-+    <RouterStateProvider router={router}>{children}</RouterStateProvider>
++  const frameMode = useFrameMode(router as AnyRouter)
++  const childrenWithState = frameMode ? (
++    <RouterStateProvider router={router} frameMode={frameMode}>
++      {children}
++    </RouterStateProvider>
 +  ) : (
 +    <RouterStateStorePath router={router as AnyRouter}>
 +      {children}
@@ -4039,10 +4076,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..0180c2c28ec517802b5b42da256328f2582e9b97
+index 0000000000000000000000000000000000000000..271ab9c81c82f0900f7728a93fa265a8baf53d74
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,1038 @@
+@@ -0,0 +1,1049 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -4663,11 +4700,27 @@ index 0000000000000000000000000000000000000000..0180c2c28ec517802b5b42da256328f2
 +
 +export function RouterStateProvider({
 +  router,
++  frameMode,
 +  children,
 +}: {
 +  router: AnyRouter
++  /**
++   * The decision that selected this arm, from the caller's own `useFrameMode`.
++   *
++   * Reading the option again here would let the two disagree: a provider
++   * mounting inside a frame-path tree takes the frame arm from the tree's
++   * frozen answer, so re-reading an option that has since changed published
++   * the store path to its descendants while this provider still built an
++   * owner. Its `Transitioner` then offers a frame identity into an
++   * acknowledgement its own `Matches` reads as matches, and the navigation
++   * never settles. Falls back to the option for a caller that decides
++   * nothing — the tests that mount this provider directly.
++   */
++  frameMode?: boolean
 +  children: React.ReactNode
 +}) {
++  const decided =
++    frameMode ?? Boolean(router.options.experimental_concurrentRenderFrames)
 +  // The server renders once and has no staged successor, so nothing here is
 +  // reactive: no owner — it carries subscriber sets and a cached presentation,
 +  // which is UI state a server render must not build — and no state to freeze
@@ -4681,14 +4734,7 @@ index 0000000000000000000000000000000000000000..0180c2c28ec517802b5b42da256328f2
 +  if (isServer ?? router.isServer) {
 +    return (
 +      <routerStateOwnerContext.Provider value={undefined}>
-+        <routerStateFrameModeContext.Provider
-+          value={{
-+            router,
-+            frameMode: Boolean(
-+              router.options.experimental_concurrentRenderFrames,
-+            ),
-+          }}
-+        >
++        <routerStateFrameModeContext.Provider value={{ router, frameMode: decided }}>
 +          <routerStateScopeContext.Provider value={undefined}>
 +            {children}
 +          </routerStateScopeContext.Provider>
@@ -4697,7 +4743,7 @@ index 0000000000000000000000000000000000000000..0180c2c28ec517802b5b42da256328f2
 +    )
 +  }
 +  return (
-+    <RouterStateClientProvider router={router}>
++    <RouterStateClientProvider router={router} frameMode={decided}>
 +      {children}
 +    </RouterStateClientProvider>
 +  )
@@ -4705,23 +4751,25 @@ index 0000000000000000000000000000000000000000..0180c2c28ec517802b5b42da256328f2
 +
 +function RouterStateClientProvider({
 +  router,
++  frameMode: decided,
 +  children,
 +}: {
 +  router: AnyRouter
++  frameMode: boolean
 +  children: React.ReactNode
 +}) {
 +  // Keyed by router identity. A mounted provider can be handed a different
 +  // router — a test rerender, HMR, switching tenant — and an owner built for
 +  // the previous one would keep reading and staging that router's state.
 +  const owner = ownerFor(router)
-+  // The tree's decision: the option as it stands when this provider mounts,
-+  // kept for as long as it is mounted. Read from the router rather than from
-+  // the owner, because an owner is cached for its router's lifetime — a
-+  // router that was once mounted with the option off would otherwise be
-+  // stuck on the store path in every later tree, whatever the option says.
-+  const [frameMode] = React.useState(() =>
-+    Boolean(router.options.experimental_concurrentRenderFrames),
-+  )
++  // The tree's decision, kept for as long as this provider is mounted. It is
++  // the same answer that selected this arm rather than a fresh read of the
++  // option, so what this provider publishes cannot disagree with the path it
++  // is on. That answer comes from `useFrameMode`, which prefers an enclosing
++  // tree's frozen decision and falls back to the option — never from the
++  // owner, which is cached for the router's lifetime and would strand a
++  // router first mounted with the option off on the store path for good.
++  const [frameMode] = React.useState(decided)
 +
 +  useLayoutEffect(() => {
 +    const subscription = router.stores.__store.subscribe(() => owner.publish())
