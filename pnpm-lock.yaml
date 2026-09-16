@@ -13,7 +13,7 @@ patchedDependencies:
     hash: 754b15182702142093beeb9928a2abba01967bd2d5d076dc1cb1a611f61fd43d
     path: patches/@tanstack__react-router@1.170.37.patch
   '@tanstack/router-core@1.171.31':
-    hash: c5d218118b8b63865c61f4345b1b440264a9b62d96e4a119bae0ef18e468c0ca
+    hash: 3b6482ba89bbc7776197ada1a726adae9adcdc7b816a8ac1ebe2bb691b2ca2a7
     path: patches/@tanstack__router-core@1.171.31.patch
 
 importers:
@@ -1141,7 +1141,7 @@ snapshots:
     dependencies:
       '@tanstack/history': 1.162.4
       '@tanstack/react-store': 0.11.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@tanstack/router-core': 1.171.31(patch_hash=c5d218118b8b63865c61f4345b1b440264a9b62d96e4a119bae0ef18e468c0ca)
+      '@tanstack/router-core': 1.171.31(patch_hash=3b6482ba89bbc7776197ada1a726adae9adcdc7b816a8ac1ebe2bb691b2ca2a7)
       isbot: 5.2.2
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
@@ -1149,7 +1149,7 @@ snapshots:
   '@tanstack/react-start-client@1.168.35(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@tanstack/react-router': 1.170.37(patch_hash=754b15182702142093beeb9928a2abba01967bd2d5d076dc1cb1a611f61fd43d)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@tanstack/router-core': 1.171.31(patch_hash=c5d218118b8b63865c61f4345b1b440264a9b62d96e4a119bae0ef18e468c0ca)
+      '@tanstack/router-core': 1.171.31(patch_hash=3b6482ba89bbc7776197ada1a726adae9adcdc7b816a8ac1ebe2bb691b2ca2a7)
       '@tanstack/start-client-core': 1.170.31
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
@@ -1157,7 +1157,7 @@ snapshots:
   '@tanstack/react-start-rsc@0.1.54(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))':
     dependencies:
       '@tanstack/react-router': 1.170.37(patch_hash=754b15182702142093beeb9928a2abba01967bd2d5d076dc1cb1a611f61fd43d)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@tanstack/router-core': 1.171.31(patch_hash=c5d218118b8b63865c61f4345b1b440264a9b62d96e4a119bae0ef18e468c0ca)
+      '@tanstack/router-core': 1.171.31(patch_hash=3b6482ba89bbc7776197ada1a726adae9adcdc7b816a8ac1ebe2bb691b2ca2a7)
       '@tanstack/router-utils': 1.162.3
       '@tanstack/start-client-core': 1.170.31
       '@tanstack/start-fn-stubs': 1.162.0
@@ -1183,7 +1183,7 @@ snapshots:
   '@tanstack/react-start-server@1.167.42(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@tanstack/react-router': 1.170.37(patch_hash=754b15182702142093beeb9928a2abba01967bd2d5d076dc1cb1a611f61fd43d)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@tanstack/router-core': 1.171.31(patch_hash=c5d218118b8b63865c61f4345b1b440264a9b62d96e4a119bae0ef18e468c0ca)
+      '@tanstack/router-core': 1.171.31(patch_hash=3b6482ba89bbc7776197ada1a726adae9adcdc7b816a8ac1ebe2bb691b2ca2a7)
       '@tanstack/start-server-core': 1.169.36
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
@@ -1226,7 +1226,7 @@ snapshots:
       react-dom: 19.3.0(react@19.3.0)
       use-sync-external-store: 1.6.0(react@19.3.0)
 
-  '@tanstack/router-core@1.171.31(patch_hash=c5d218118b8b63865c61f4345b1b440264a9b62d96e4a119bae0ef18e468c0ca)':
+  '@tanstack/router-core@1.171.31(patch_hash=3b6482ba89bbc7776197ada1a726adae9adcdc7b816a8ac1ebe2bb691b2ca2a7)':
     dependencies:
       '@tanstack/history': 1.162.4
       cookie-es: 3.1.1
@@ -1236,7 +1236,7 @@ snapshots:
   '@tanstack/router-generator@1.167.37':
     dependencies:
       '@babel/types': 7.29.8
-      '@tanstack/router-core': 1.171.31(patch_hash=c5d218118b8b63865c61f4345b1b440264a9b62d96e4a119bae0ef18e468c0ca)
+      '@tanstack/router-core': 1.171.31(patch_hash=3b6482ba89bbc7776197ada1a726adae9adcdc7b816a8ac1ebe2bb691b2ca2a7)
       '@tanstack/router-utils': 1.162.3
       '@tanstack/virtual-file-routes': 1.162.0
       jiti: 2.7.0
@@ -1251,7 +1251,7 @@ snapshots:
       '@babel/core': 7.29.7
       '@babel/template': 7.29.7
       '@babel/types': 7.29.8
-      '@tanstack/router-core': 1.171.31(patch_hash=c5d218118b8b63865c61f4345b1b440264a9b62d96e4a119bae0ef18e468c0ca)
+      '@tanstack/router-core': 1.171.31(patch_hash=3b6482ba89bbc7776197ada1a726adae9adcdc7b816a8ac1ebe2bb691b2ca2a7)
       '@tanstack/router-generator': 1.167.37
       '@tanstack/router-utils': 1.162.3
       chokidar: 5.0.0
@@ -1285,7 +1285,7 @@ snapshots:
 
   '@tanstack/start-client-core@1.170.31':
     dependencies:
-      '@tanstack/router-core': 1.171.31(patch_hash=c5d218118b8b63865c61f4345b1b440264a9b62d96e4a119bae0ef18e468c0ca)
+      '@tanstack/router-core': 1.171.31(patch_hash=3b6482ba89bbc7776197ada1a726adae9adcdc7b816a8ac1ebe2bb691b2ca2a7)
       '@tanstack/start-fn-stubs': 1.162.0
       '@tanstack/start-storage-context': 1.167.33
       seroval: 1.6.4
@@ -1298,7 +1298,7 @@ snapshots:
       '@babel/core': 7.29.7
       '@babel/types': 7.29.8
       '@jridgewell/remapping': 2.3.5
-      '@tanstack/router-core': 1.171.31(patch_hash=c5d218118b8b63865c61f4345b1b440264a9b62d96e4a119bae0ef18e468c0ca)
+      '@tanstack/router-core': 1.171.31(patch_hash=3b6482ba89bbc7776197ada1a726adae9adcdc7b816a8ac1ebe2bb691b2ca2a7)
       '@tanstack/router-generator': 1.167.37
       '@tanstack/router-plugin': 1.168.39(@tanstack/react-router@1.170.37(patch_hash=754b15182702142093beeb9928a2abba01967bd2d5d076dc1cb1a611f61fd43d)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(rolldown@1.2.6)(vite@8.2.2(jiti@2.7.0))
       '@tanstack/router-utils': 1.162.3
@@ -1334,7 +1334,7 @@ snapshots:
   '@tanstack/start-server-core@1.169.36':
     dependencies:
       '@tanstack/history': 1.162.4
-      '@tanstack/router-core': 1.171.31(patch_hash=c5d218118b8b63865c61f4345b1b440264a9b62d96e4a119bae0ef18e468c0ca)
+      '@tanstack/router-core': 1.171.31(patch_hash=3b6482ba89bbc7776197ada1a726adae9adcdc7b816a8ac1ebe2bb691b2ca2a7)
       '@tanstack/start-client-core': 1.170.31
       '@tanstack/start-storage-context': 1.167.33
       fetchdts: 0.1.7
@@ -1345,7 +1345,7 @@ snapshots:
 
   '@tanstack/start-storage-context@1.167.33':
     dependencies:
-      '@tanstack/router-core': 1.171.31(patch_hash=c5d218118b8b63865c61f4345b1b440264a9b62d96e4a119bae0ef18e468c0ca)
+      '@tanstack/router-core': 1.171.31(patch_hash=3b6482ba89bbc7776197ada1a726adae9adcdc7b816a8ac1ebe2bb691b2ca2a7)
 
   '@tanstack/store@0.11.1': {}
 

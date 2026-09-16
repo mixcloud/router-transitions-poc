@@ -1,8 +1,16 @@
 diff --git a/dist/cjs/load-client.cjs b/dist/cjs/load-client.cjs
-index 6284b2353bd2acb96dc6a191f9b7bb6c8648f0e0..8567083940ddd49a4ce6fc09cdcef1e53bf982a6 100644
+index 6284b2353bd2acb96dc6a191f9b7bb6c8648f0e0..ef25c496f504aebe4855af95bc45e99a8d82deb5 100644
 --- a/dist/cjs/load-client.cjs
 +++ b/dist/cjs/load-client.cjs
-@@ -943,6 +943,7 @@ async function runClientTransaction(router, tx, forceStaleReload, onReady, sync,
+@@ -875,6 +875,7 @@ async function runBackground(router, tx, base, tasks, settlement) {
+ 		}
+ 	}
+ 	publishMatches(router, next);
++	if (router._resolvedMatches === base) router._resolvedMatches = next;
+ 	transferMatchResources(router, base, next);
+ }
+ async function runClientTransaction(router, tx, forceStaleReload, onReady, sync, resolvedPrefix) {
+@@ -943,6 +944,7 @@ async function runClientTransaction(router, tx, forceStaleReload, onReady, sync,
  		if (background?.length) runBackground(router, tx, matches, background, result[3]).catch(console.error);
  		router.batch(() => {
  			router.stores.resolvedLocation.set(toLocation);
@@ -10,7 +18,7 @@ index 6284b2353bd2acb96dc6a191f9b7bb6c8648f0e0..8567083940ddd49a4ce6fc09cdcef1e5
  			router.stores.status.set("idle");
  			if (router._tx === tx) router.emit({
  				type: "onResolved",
-@@ -1287,7 +1288,10 @@ async function hydrate(router) {
+@@ -1287,7 +1289,10 @@ async function hydrate(router) {
  	router.batch(() => {
  		router.stores.setMatches(presented);
  		router.stores.status.set("idle");
@@ -207,10 +215,18 @@ index 0743b15ba4d248993f88fcdfc32eb1a8b7b3872d..6d37d003eca89cc0b6d0855d9f6f5cdb
  export declare function createRouterStores<TRouteTree extends AnyRoute>(initialLocation: RouterState<TRouteTree>['location'], config: StoreConfig): RouterStores<TRouteTree>;
  export {};
 diff --git a/dist/esm/load-client.js b/dist/esm/load-client.js
-index 3393414e381935d65e48efc9c681afabf05c4490..1e25011fe3e17ba3c6c694ecba094c2085df43db 100644
+index 3393414e381935d65e48efc9c681afabf05c4490..8f5ead85f3b1c5ff8928ed16d7ac35356e1e055b 100644
 --- a/dist/esm/load-client.js
 +++ b/dist/esm/load-client.js
-@@ -943,6 +943,7 @@ async function runClientTransaction(router, tx, forceStaleReload, onReady, sync,
+@@ -875,6 +875,7 @@ async function runBackground(router, tx, base, tasks, settlement) {
+ 		}
+ 	}
+ 	publishMatches(router, next);
++	if (router._resolvedMatches === base) router._resolvedMatches = next;
+ 	transferMatchResources(router, base, next);
+ }
+ async function runClientTransaction(router, tx, forceStaleReload, onReady, sync, resolvedPrefix) {
+@@ -943,6 +944,7 @@ async function runClientTransaction(router, tx, forceStaleReload, onReady, sync,
  		if (background?.length) runBackground(router, tx, matches, background, result[3]).catch(console.error);
  		router.batch(() => {
  			router.stores.resolvedLocation.set(toLocation);
@@ -218,7 +234,7 @@ index 3393414e381935d65e48efc9c681afabf05c4490..1e25011fe3e17ba3c6c694ecba094c20
  			router.stores.status.set("idle");
  			if (router._tx === tx) router.emit({
  				type: "onResolved",
-@@ -1287,7 +1288,10 @@ async function hydrate(router) {
+@@ -1287,7 +1289,10 @@ async function hydrate(router) {
  	router.batch(() => {
  		router.stores.setMatches(presented);
  		router.stores.status.set("idle");
@@ -415,10 +431,28 @@ index 803b74b59ff23fbf3247b5130c26d17e14ca766f..a4861bf3c89567e47eabe2584b0558c6
  		const previousIds = ids.get();
  		const nextIds = nextMatches.map((match) => match.routeId);
 diff --git a/src/load-client.ts b/src/load-client.ts
-index ea4f27044711a391125a14e556142602d78c9045..12c483ca56eeedd8c5f1a32d0cd2138e4fcd6855 100644
+index ea4f27044711a391125a14e556142602d78c9045..fa75acd62b9ef3c4be4cd9c4ecfbe998acfdfc77 100644
 --- a/src/load-client.ts
 +++ b/src/load-client.ts
-@@ -1900,6 +1900,7 @@ async function runClientTransaction(
+@@ -1792,6 +1792,17 @@ async function runBackground(
+     }
+   }
+   publishMatches(router, next)
++  // The same location, rendered newer. `_resolvedMatches` is the generation
++  // `resolvedLocation` resolved for, so left behind it would pair that
++  // location with pre-refresh data — and a framework adapter reconstructing
++  // the acknowledged publication from the pair would roll the visible route
++  // back to it for the length of the next navigation. Only where the resolved
++  // snapshot is the generation this publication replaces: a *foreground*
++  // commit advances `_committed` to a destination `resolvedLocation` has not
++  // reached yet, which is the window the pair exists to describe.
++  if (router._resolvedMatches === base) {
++    router._resolvedMatches = next
++  }
+   transferMatchResources(router, base, next)
+ }
+ 
+@@ -1900,6 +1911,7 @@ async function runClientTransaction(
      }
      router.batch(() => {
        router.stores.resolvedLocation.set(toLocation)
@@ -426,7 +460,7 @@ index ea4f27044711a391125a14e556142602d78c9045..12c483ca56eeedd8c5f1a32d0cd2138e
        router.stores.status.set('idle')
        if (router._tx === tx) {
          router.emit({ type: 'onResolved', ...changeInfo })
-@@ -2546,6 +2547,7 @@ export async function hydrate(router: AnyRouter): Promise<void> {
+@@ -2546,6 +2558,7 @@ export async function hydrate(router: AnyRouter): Promise<void> {
      router.stores.status.set('idle')
      if (!needsClientLoad) {
        router.stores.resolvedLocation.set(router.stores.location.get())
