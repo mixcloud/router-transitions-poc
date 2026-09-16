@@ -126,7 +126,7 @@ index 00d81b7ea2dc28d219be420f16f9b5123a45e4ec..4f817c1a5c518622fdfb208dd3fd2ddf
      private getStoreConfig;
      batch: (fn: () => void) => void;
 diff --git a/dist/cjs/stores.cjs b/dist/cjs/stores.cjs
-index c22bc4d735a45279c91616f9a2f3ba9e488f502f..f3a0ae731bd7b85e0de5262cd2e0a2d7f59e217e 100644
+index c22bc4d735a45279c91616f9a2f3ba9e488f502f..a8a0be66d62393e5dba797193262d222e12e233a 100644
 --- a/dist/cjs/stores.cjs
 +++ b/dist/cjs/stores.cjs
 @@ -20,19 +20,30 @@ function createNonReactiveReadonlyStore(read) {
@@ -167,6 +167,45 @@ index c22bc4d735a45279c91616f9a2f3ba9e488f502f..f3a0ae731bd7b85e0de5262cd2e0a2d7
  	function getMatchStore(routeId) {
  		let matchStore = byRoute.get(routeId);
  		if (!matchStore) {
+@@ -50,8 +61,19 @@ function createRouterStores(initialLocation, config) {
+ 		byRoute,
+ 		__store,
+ 		getMatchStore,
+-		setMatches
++		setMatches,
++		mintFrameId
+ 	};
++	/**
++	* One identity from the counter the aggregate uses, for a state a framework
++	* adapter assembles itself rather than reading from here — a presentation
++	* reconstructed for a tree that mounts mid-navigation, say. Sharing the
++	* counter is what keeps `frameId` monotonic and collision-free across both
++	* kinds of assembly, which is the contract `RouterState` documents.
++	*/
++	function mintFrameId() {
++		return nextFrameId++;
++	}
+ 	function setMatches(nextMatches) {
+ 		const previousIds = ids.get();
+ 		const nextIds = nextMatches.map((match) => match.routeId);
+diff --git a/dist/cjs/stores.d.cts b/dist/cjs/stores.d.cts
+index 0743b15ba4d248993f88fcdfc32eb1a8b7b3872d..6d37d003eca89cc0b6d0855d9f6f5cdbe9570a95 100644
+--- a/dist/cjs/stores.d.cts
++++ b/dist/cjs/stores.d.cts
+@@ -40,6 +40,13 @@ export interface RouterStores<in out TRouteTree extends AnyRoute> {
+      */
+     getMatchStore: (routeId: string) => RouterReadableStore<AnyRouteMatch | undefined>;
+     setMatches: (nextMatches: Array<AnyRouteMatch>) => void;
++    /**
++     * One identity from the counter `__store` assembles with, for a state a
++     * framework adapter builds itself rather than reading from here. Sharing the
++     * counter keeps `frameId` monotonic and collision-free across both kinds of
++     * assembly, which is the contract `RouterState` documents.
++     */
++    mintFrameId: () => number;
+ }
+ export declare function createRouterStores<TRouteTree extends AnyRoute>(initialLocation: RouterState<TRouteTree>['location'], config: StoreConfig): RouterStores<TRouteTree>;
+ export {};
 diff --git a/dist/esm/load-client.js b/dist/esm/load-client.js
 index 3393414e381935d65e48efc9c681afabf05c4490..1e25011fe3e17ba3c6c694ecba094c2085df43db 100644
 --- a/dist/esm/load-client.js
@@ -294,8 +333,26 @@ index 7a450eb62ec5ce5b2019c53d27bd319fae36e6b6..f8a116493156f345face7cdbf116ed43
  		isLoading: false,
  		status: "idle",
  		resolvedLocation: void 0,
+diff --git a/dist/esm/stores.d.ts b/dist/esm/stores.d.ts
+index 5f8b33cd6c388541091739a22cba471063123b96..c938809089246f205f5ac4983fd9bfbd8c0ae610 100644
+--- a/dist/esm/stores.d.ts
++++ b/dist/esm/stores.d.ts
+@@ -40,6 +40,13 @@ export interface RouterStores<in out TRouteTree extends AnyRoute> {
+      */
+     getMatchStore: (routeId: string) => RouterReadableStore<AnyRouteMatch | undefined>;
+     setMatches: (nextMatches: Array<AnyRouteMatch>) => void;
++    /**
++     * One identity from the counter `__store` assembles with, for a state a
++     * framework adapter builds itself rather than reading from here. Sharing the
++     * counter keeps `frameId` monotonic and collision-free across both kinds of
++     * assembly, which is the contract `RouterState` documents.
++     */
++    mintFrameId: () => number;
+ }
+ export declare function createRouterStores<TRouteTree extends AnyRoute>(initialLocation: RouterState<TRouteTree>['location'], config: StoreConfig): RouterStores<TRouteTree>;
+ export {};
 diff --git a/dist/esm/stores.js b/dist/esm/stores.js
-index 803b74b59ff23fbf3247b5130c26d17e14ca766f..2268255384e6e18dda367697bf751b6c17cb9eb8 100644
+index 803b74b59ff23fbf3247b5130c26d17e14ca766f..a4861bf3c89567e47eabe2584b0558c6767bbfad 100644
 --- a/dist/esm/stores.js
 +++ b/dist/esm/stores.js
 @@ -20,19 +20,30 @@ function createNonReactiveReadonlyStore(read) {
@@ -336,6 +393,27 @@ index 803b74b59ff23fbf3247b5130c26d17e14ca766f..2268255384e6e18dda367697bf751b6c
  	function getMatchStore(routeId) {
  		let matchStore = byRoute.get(routeId);
  		if (!matchStore) {
+@@ -50,8 +61,19 @@ function createRouterStores(initialLocation, config) {
+ 		byRoute,
+ 		__store,
+ 		getMatchStore,
+-		setMatches
++		setMatches,
++		mintFrameId
+ 	};
++	/**
++	* One identity from the counter the aggregate uses, for a state a framework
++	* adapter assembles itself rather than reading from here — a presentation
++	* reconstructed for a tree that mounts mid-navigation, say. Sharing the
++	* counter is what keeps `frameId` monotonic and collision-free across both
++	* kinds of assembly, which is the contract `RouterState` documents.
++	*/
++	function mintFrameId() {
++		return nextFrameId++;
++	}
+ 	function setMatches(nextMatches) {
+ 		const previousIds = ids.get();
+ 		const nextIds = nextMatches.map((match) => match.routeId);
 diff --git a/src/load-client.ts b/src/load-client.ts
 index ea4f27044711a391125a14e556142602d78c9045..12c483ca56eeedd8c5f1a32d0cd2138e4fcd6855 100644
 --- a/src/load-client.ts
@@ -489,10 +567,25 @@ index 1974690b39aad0ca7793a982d18e4acc199ab435..ab94e4ac0e4a73949d89200d7cca3414
      status: 'idle',
      resolvedLocation: undefined,
 diff --git a/src/stores.ts b/src/stores.ts
-index 8c2beeb2e72005c2bc500ee6070a2c0d396f8725..245e687fb157eb3b49599190e4a0dac02452e278 100644
+index 8c2beeb2e72005c2bc500ee6070a2c0d396f8725..d21a35389e1bfc4a869eb566df9d832c85b7c0ce 100644
 --- a/src/stores.ts
 +++ b/src/stores.ts
-@@ -92,6 +92,7 @@ export function createRouterStores<TRouteTree extends AnyRoute>(
+@@ -85,6 +85,14 @@ export interface RouterStores<in out TRouteTree extends AnyRoute> {
+   ) => RouterReadableStore<AnyRouteMatch | undefined>
+ 
+   setMatches: (nextMatches: Array<AnyRouteMatch>) => void
++
++  /**
++   * One identity from the counter `__store` assembles with, for a state a
++   * framework adapter builds itself rather than reading from here. Sharing the
++   * counter keeps `frameId` monotonic and collision-free across both kinds of
++   * assembly, which is the contract `RouterState` documents.
++   */
++  mintFrameId: () => number
+ }
+ 
+ export function createRouterStores<TRouteTree extends AnyRoute>(
+@@ -92,6 +100,7 @@ export function createRouterStores<TRouteTree extends AnyRoute>(
    config: StoreConfig,
  ): RouterStores<TRouteTree> {
    const { createMutableStore, createReadonlyStore, batch } = config
@@ -500,7 +593,7 @@ index 8c2beeb2e72005c2bc500ee6070a2c0d396f8725..245e687fb157eb3b49599190e4a0dac0
  
    // non reactive utilities
    const byRoute = new Map<string, MatchStore>()
-@@ -109,13 +110,37 @@ export function createRouterStores<TRouteTree extends AnyRoute>(
+@@ -109,13 +118,37 @@ export function createRouterStores<TRouteTree extends AnyRoute>(
    )
  
    // compatibility "big" state store
@@ -545,3 +638,22 @@ index 8c2beeb2e72005c2bc500ee6070a2c0d396f8725..245e687fb157eb3b49599190e4a0dac0
  
    function getMatchStore(routeId: string): MatchStore {
      let matchStore = byRoute.get(routeId)
+@@ -147,6 +180,18 @@ export function createRouterStores<TRouteTree extends AnyRoute>(
+ 
+     // methods
+     setMatches,
++    mintFrameId,
++  }
++
++  /**
++   * One identity from the counter the aggregate uses, for a state a framework
++   * adapter assembles itself rather than reading from here — a presentation
++   * reconstructed for a tree that mounts mid-navigation, say. Sharing the
++   * counter is what keeps `frameId` monotonic and collision-free across both
++   * kinds of assembly, which is the contract `RouterState` documents.
++   */
++  function mintFrameId() {
++    return nextFrameId++
+   }
+ 
+   // setters to update non-reactive utilities in sync with the reactive stores

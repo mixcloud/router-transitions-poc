@@ -522,10 +522,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5c76559584702c1d96e4e30b934a8e716496ef6a
+index 0000000000000000000000000000000000000000..7c6785d281292d3bd1f0a5f92237ae632dd9b30c
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,544 @@
+@@ -0,0 +1,565 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -711,13 +711,16 @@ index 0000000000000000000000000000000000000000..5c76559584702c1d96e4e30b934a8e71
 +* content, and this frame's content is by construction *not* the head's, so
 +* carrying the head's id would put two different publications under one
 +* identity — which is what an acknowledgement is matched against, and what
-+* `publish` compares to decide that content has not moved. Core counts its
-+* ids up from zero, so counting down from below zero here cannot collide with
-+* a publication, and a consumer versioning a cache on `frameId` sees a
-+* snapshot distinct from both the publication being left and the one being
-+* prepared.
++* `publish` compares to decide that content has not moved.
++*
++* It takes that identity from core's own counter rather than inventing one.
++* The documented contract is that every state the router assembles gets a
++* new, larger value, and consumers may order snapshots by it, so an id from
++* outside the sequence would read as older than everything and successive
++* reconstructions would run backwards. Minting is also what core does when a
++* navigation returns to content it has shown before: the identity orders
++* assemblies, not routes, and this assembly is the newest one.
 +*/
-+var reconstructedFrameId = 0;
 +function initialFrame(router) {
 +	const head = router.stores.__store.get();
 +	const resolved = router.stores.resolvedLocation.get();
@@ -725,7 +728,7 @@ index 0000000000000000000000000000000000000000..5c76559584702c1d96e4e30b934a8e71
 +	if (!resolved || !resolvedMatches.length || sameLocation(resolved, head.location)) return head;
 +	return {
 +		...head,
-+		frameId: --reconstructedFrameId,
++		frameId: router.stores.mintFrameId(),
 +		location: resolved,
 +		matches: resolvedMatches
 +	};
@@ -873,10 +876,28 @@ index 0000000000000000000000000000000000000000..5c76559584702c1d96e4e30b934a8e71
 +	return owner;
 +}
 +function RouterStateProvider({ router, children }) {
-+	const owner = _tanstack_router_core_isServer.isServer ?? router.isServer ? void 0 : ownerFor(router);
++	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateOwnerContext.Provider, {
++		value: void 0,
++		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateFrameModeContext.Provider, {
++			value: {
++				router,
++				frameMode: Boolean(router.options.experimental_concurrentRenderFrames)
++			},
++			children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateScopeContext.Provider, {
++				value: void 0,
++				children
++			})
++		})
++	});
++	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(RouterStateClientProvider, {
++		router,
++		children
++	});
++}
++function RouterStateClientProvider({ router, children }) {
++	const owner = ownerFor(router);
 +	const [frameMode] = react.useState(() => Boolean(router.options.experimental_concurrentRenderFrames));
 +	require_utils.useLayoutEffect(() => {
-+		if (!owner) return;
 +		const subscription = router.stores.__store.subscribe(() => owner.publish());
 +		owner.publish();
 +		return () => subscription.unsubscribe();
@@ -887,7 +908,7 @@ index 0000000000000000000000000000000000000000..5c76559584702c1d96e4e30b934a8e71
 +			router,
 +			frameMode,
 +			children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(routerStateScopeContext.Provider, {
-+				value: owner?.root,
++				value: owner.root,
 +				children
 +			})
 +		})
@@ -2155,10 +2176,10 @@ index 0000000000000000000000000000000000000000..2709d28c0f05741798e22fdcc6be6574
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..3c5e8f1397a8411c47701b9148feab27734055ef
+index 0000000000000000000000000000000000000000..903720898fb4f7d2a8eceaceec98eaf58be8c8fd
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,536 @@
+@@ -0,0 +1,557 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2342,13 +2363,16 @@ index 0000000000000000000000000000000000000000..3c5e8f1397a8411c47701b9148feab27
 +* content, and this frame's content is by construction *not* the head's, so
 +* carrying the head's id would put two different publications under one
 +* identity — which is what an acknowledgement is matched against, and what
-+* `publish` compares to decide that content has not moved. Core counts its
-+* ids up from zero, so counting down from below zero here cannot collide with
-+* a publication, and a consumer versioning a cache on `frameId` sees a
-+* snapshot distinct from both the publication being left and the one being
-+* prepared.
++* `publish` compares to decide that content has not moved.
++*
++* It takes that identity from core's own counter rather than inventing one.
++* The documented contract is that every state the router assembles gets a
++* new, larger value, and consumers may order snapshots by it, so an id from
++* outside the sequence would read as older than everything and successive
++* reconstructions would run backwards. Minting is also what core does when a
++* navigation returns to content it has shown before: the identity orders
++* assemblies, not routes, and this assembly is the newest one.
 +*/
-+var reconstructedFrameId = 0;
 +function initialFrame(router) {
 +	const head = router.stores.__store.get();
 +	const resolved = router.stores.resolvedLocation.get();
@@ -2356,7 +2380,7 @@ index 0000000000000000000000000000000000000000..3c5e8f1397a8411c47701b9148feab27
 +	if (!resolved || !resolvedMatches.length || sameLocation(resolved, head.location)) return head;
 +	return {
 +		...head,
-+		frameId: --reconstructedFrameId,
++		frameId: router.stores.mintFrameId(),
 +		location: resolved,
 +		matches: resolvedMatches
 +	};
@@ -2504,10 +2528,28 @@ index 0000000000000000000000000000000000000000..3c5e8f1397a8411c47701b9148feab27
 +	return owner;
 +}
 +function RouterStateProvider({ router, children }) {
-+	const owner = isServer ?? router.isServer ? void 0 : ownerFor(router);
++	if (isServer ?? router.isServer) return /* @__PURE__ */ jsx(routerStateOwnerContext.Provider, {
++		value: void 0,
++		children: /* @__PURE__ */ jsx(routerStateFrameModeContext.Provider, {
++			value: {
++				router,
++				frameMode: Boolean(router.options.experimental_concurrentRenderFrames)
++			},
++			children: /* @__PURE__ */ jsx(routerStateScopeContext.Provider, {
++				value: void 0,
++				children
++			})
++		})
++	});
++	return /* @__PURE__ */ jsx(RouterStateClientProvider, {
++		router,
++		children
++	});
++}
++function RouterStateClientProvider({ router, children }) {
++	const owner = ownerFor(router);
 +	const [frameMode] = React$1.useState(() => Boolean(router.options.experimental_concurrentRenderFrames));
 +	useLayoutEffect(() => {
-+		if (!owner) return;
 +		const subscription = router.stores.__store.subscribe(() => owner.publish());
 +		owner.publish();
 +		return () => subscription.unsubscribe();
@@ -2518,7 +2560,7 @@ index 0000000000000000000000000000000000000000..3c5e8f1397a8411c47701b9148feab27
 +			router,
 +			frameMode,
 +			children: /* @__PURE__ */ jsx(routerStateScopeContext.Provider, {
-+				value: owner?.root,
++				value: owner.root,
 +				children
 +			})
 +		})
@@ -3879,10 +3921,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..e65ad734b638ad1eff409c33771187d2949cf672
+index 0000000000000000000000000000000000000000..0180c2c28ec517802b5b42da256328f2582e9b97
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,1003 @@
+@@ -0,0 +1,1038 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -4210,14 +4252,16 @@ index 0000000000000000000000000000000000000000..e65ad734b638ad1eff409c33771187d2
 + * content, and this frame's content is by construction *not* the head's, so
 + * carrying the head's id would put two different publications under one
 + * identity — which is what an acknowledgement is matched against, and what
-+ * `publish` compares to decide that content has not moved. Core counts its
-+ * ids up from zero, so counting down from below zero here cannot collide with
-+ * a publication, and a consumer versioning a cache on `frameId` sees a
-+ * snapshot distinct from both the publication being left and the one being
-+ * prepared.
++ * `publish` compares to decide that content has not moved.
++ *
++ * It takes that identity from core's own counter rather than inventing one.
++ * The documented contract is that every state the router assembles gets a
++ * new, larger value, and consumers may order snapshots by it, so an id from
++ * outside the sequence would read as older than everything and successive
++ * reconstructions would run backwards. Minting is also what core does when a
++ * navigation returns to content it has shown before: the identity orders
++ * assemblies, not routes, and this assembly is the newest one.
 + */
-+let reconstructedFrameId = 0
-+
 +function initialFrame(router: AnyRouter): RouterRenderFrame {
 +  const head = router.stores.__store.get()
 +  const resolved = router.stores.resolvedLocation.get()
@@ -4234,7 +4278,7 @@ index 0000000000000000000000000000000000000000..e65ad734b638ad1eff409c33771187d2
 +  }
 +  return {
 +    ...head,
-+    frameId: --reconstructedFrameId,
++    frameId: router.stores.mintFrameId(),
 +    location: resolved,
 +    matches: resolvedMatches,
 +  }
@@ -4506,16 +4550,52 @@ index 0000000000000000000000000000000000000000..e65ad734b638ad1eff409c33771187d2
 +  router: AnyRouter
 +  children: React.ReactNode
 +}) {
++  // The server renders once and has no staged successor, so nothing here is
++  // reactive: no owner — it carries subscriber sets and a cached presentation,
++  // which is UI state a server render must not build — and no state to freeze
++  // a decision that cannot change. Readers resolve to a detached scope over
++  // the store head instead, which is the same publication an owner would have
++  // been seeded with, so the markup is identical to the client's hydration
++  // render and the client builds the owner at hydration.
++  //
++  // Branching here rather than inside the client component keeps every hook
++  // on the client path, where the branch is eliminated with the condition.
++  if (isServer ?? router.isServer) {
++    return (
++      <routerStateOwnerContext.Provider value={undefined}>
++        <routerStateFrameModeContext.Provider
++          value={{
++            router,
++            frameMode: Boolean(
++              router.options.experimental_concurrentRenderFrames,
++            ),
++          }}
++        >
++          <routerStateScopeContext.Provider value={undefined}>
++            {children}
++          </routerStateScopeContext.Provider>
++        </routerStateFrameModeContext.Provider>
++      </routerStateOwnerContext.Provider>
++    )
++  }
++  return (
++    <RouterStateClientProvider router={router}>
++      {children}
++    </RouterStateClientProvider>
++  )
++}
++
++function RouterStateClientProvider({
++  router,
++  children,
++}: {
++  router: AnyRouter
++  children: React.ReactNode
++}) {
 +  // Keyed by router identity. A mounted provider can be handed a different
 +  // router — a test rerender, HMR, switching tenant — and an owner built for
 +  // the previous one would keep reading and staging that router's state.
-+  //
-+  // Not on the server: an owner carries subscriber sets and a cached
-+  // presentation, which is UI state a server render must not build. Readers
-+  // there resolve to a detached scope over the store head instead, which is
-+  // the same publication an owner would have been seeded with, so the render
-+  // is identical and the client builds the owner at hydration.
-+  const owner = (isServer ?? router.isServer) ? undefined : ownerFor(router)
++  const owner = ownerFor(router)
 +  // The tree's decision: the option as it stands when this provider mounts,
 +  // kept for as long as it is mounted. Read from the router rather than from
 +  // the owner, because an owner is cached for its router's lifetime — a
@@ -4526,9 +4606,6 @@ index 0000000000000000000000000000000000000000..e65ad734b638ad1eff409c33771187d2
 +  )
 +
 +  useLayoutEffect(() => {
-+    if (!owner) {
-+      return
-+    }
 +    const subscription = router.stores.__store.subscribe(() => owner.publish())
 +    owner.publish()
 +    return () => subscription.unsubscribe()
@@ -4537,7 +4614,7 @@ index 0000000000000000000000000000000000000000..e65ad734b638ad1eff409c33771187d2
 +  return (
 +    <routerStateOwnerContext.Provider value={owner}>
 +      <RouterStateFrameMode router={router} frameMode={frameMode}>
-+        <routerStateScopeContext.Provider value={owner?.root}>
++        <routerStateScopeContext.Provider value={owner.root}>
 +          {children}
 +        </routerStateScopeContext.Provider>
 +      </RouterStateFrameMode>
