@@ -1315,7 +1315,7 @@ index be6ac493e2d8c511c227effdecadd4f9ab5a29d4..d95f27dad72d3919a05481bed1990db9
  		const location = router.stores.location.get();
  		return opts?.select ? opts.select(location) : location;
 diff --git a/dist/cjs/useMatch.cjs b/dist/cjs/useMatch.cjs
-index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..94306c075fe2f4b6748a81e9ec256d969f3cd627 100644
+index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..def37d35906b16217bd2f0737d8df5405ca22586 100644
 --- a/dist/cjs/useMatch.cjs
 +++ b/dist/cjs/useMatch.cjs
 @@ -2,6 +2,7 @@
@@ -1326,7 +1326,7 @@ index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..94306c075fe2f4b6748a81e9ec256d96
  let _tanstack_router_core = require("@tanstack/router-core");
  let react = require("react");
  react = require_runtime.__toESM(react, 1);
-@@ -9,13 +10,29 @@ let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
+@@ -9,13 +10,42 @@ let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
  let _tanstack_react_store = require("@tanstack/react-store");
  //#region src/useMatch.tsx
  var dummyMatch = {};
@@ -1334,11 +1334,24 @@ index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..94306c075fe2f4b6748a81e9ec256d96
 +* Carry a selector's cache handles onto a closure wrapping it, so a caller
 +* that selects from a frame through a structural-sharing selector stays
 +* probe-safe.
++*
++* `fromInner` says whether a value the wrapper produced came from the inner
++* selector. It does, except where the wrapper answers without running it —
++* `useMatch` returns a sentinel for an absent match. That matters because the
++* frame path commits a render by restoring the value it rendered: writing a
++* sentinel into the inner cache makes structural sharing hand that same
++* object back for the next deep-equal selection, and the sentinel is compared
++* by identity, so a match that has since become active reads as absent for as
++* long as its selection stays deep-equal. Only values the inner selector
++* produced belong in its cache; skipping the write leaves the previous one
++* there, which is the stability structural sharing promises anyway.
 +*/
-+function withSelectorCache(wrapper, inner) {
++function withSelectorCache(wrapper, inner, fromInner = () => true) {
 +	const cacheable = wrapper;
 +	cacheable.snapshotCache = inner.snapshotCache;
-+	cacheable.restoreCache = inner.restoreCache;
++	cacheable.restoreCache = (cached) => {
++		if (fromInner(cached)) inner.restoreCache?.(cached);
++	};
 +	return cacheable;
 +}
  function useStructuralSharing(opts, router) {
@@ -1357,7 +1370,7 @@ index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..94306c075fe2f4b6748a81e9ec256d96
  }
  /**
  * Read and select the nearest or targeted route match.
-@@ -26,20 +43,29 @@ function useMatch(opts) {
+@@ -26,20 +56,29 @@ function useMatch(opts) {
  	const nearestRouteId = react.useContext(opts.from ? require_matchContext.dummyMatchContext : require_matchContext.matchContext);
  	const routeId = opts.from ?? nearestRouteId;
  	const matchStore = router.stores.getMatchStore(routeId);
@@ -1389,7 +1402,7 @@ index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..94306c075fe2f4b6748a81e9ec256d96
 +		const matchSelection = require_routerStateContext.useRouterStateSelector(router, withSelectorCache((state) => {
 +			const match = state.matches.find((candidate) => candidate.routeId === routeId);
 +			return match ? selector(match) : dummyMatch;
-+		}, selector));
++		}, selector, (result) => result !== dummyMatch));
 +		if (matchSelection !== dummyMatch) return matchSelection;
  	}
 -	const selector = useStructuralSharing(opts, router);
@@ -1398,7 +1411,7 @@ index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..94306c075fe2f4b6748a81e9ec256d96
  	if (opts.shouldThrow ?? true) {
  		if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
  		(0, _tanstack_router_core.invariant)();
-@@ -48,5 +74,6 @@ function useMatch(opts) {
+@@ -48,5 +87,6 @@ function useMatch(opts) {
  //#endregion
  exports.useMatch = useMatch;
  exports.useStructuralSharing = useStructuralSharing;
@@ -1407,10 +1420,10 @@ index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..94306c075fe2f4b6748a81e9ec256d96
  //# sourceMappingURL=useMatch.cjs.map
 \ No newline at end of file
 diff --git a/dist/cjs/useMatch.d.cts b/dist/cjs/useMatch.d.cts
-index bc32be4fc07754780db3246bcea571fcad4f0cdd..155007a42b5888fb4616a7d0df8468857f8405de 100644
+index bc32be4fc07754780db3246bcea571fcad4f0cdd..c2e42290e1eb0615ee89fb452c9a266c735c739c 100644
 --- a/dist/cjs/useMatch.d.cts
 +++ b/dist/cjs/useMatch.d.cts
-@@ -1,9 +1,31 @@
+@@ -1,9 +1,42 @@
  import { StructuralSharingOption, ValidateSelected } from './structuralSharing.cjs';
  import { AnyRouter, MakeRouteMatch, MakeRouteMatchUnion, RegisteredRouter, StrictOrFrom, ThrowConstraint, ThrowOrOptional } from '@tanstack/router-core';
 +/**
@@ -1433,8 +1446,19 @@ index bc32be4fc07754780db3246bcea571fcad4f0cdd..155007a42b5888fb4616a7d0df846885
 + * Carry a selector's cache handles onto a closure wrapping it, so a caller
 + * that selects from a frame through a structural-sharing selector stays
 + * probe-safe.
++ *
++ * `fromInner` says whether a value the wrapper produced came from the inner
++ * selector. It does, except where the wrapper answers without running it —
++ * `useMatch` returns a sentinel for an absent match. That matters because the
++ * frame path commits a render by restoring the value it rendered: writing a
++ * sentinel into the inner cache makes structural sharing hand that same
++ * object back for the next deep-equal selection, and the sentinel is compared
++ * by identity, so a match that has since become active reads as absent for as
++ * long as its selection stays deep-equal. Only values the inner selector
++ * produced belong in its cache; skipping the write leaves the previous one
++ * there, which is the stability structural sharing promises anyway.
 + */
-+export declare function withSelectorCache<TOuter, TInner, TSelected>(wrapper: (slice: TOuter) => TSelected, inner: CacheableSelector<TInner, any>): CacheableSelector<TOuter, TSelected>;
++export declare function withSelectorCache<TOuter, TInner, TSelected>(wrapper: (slice: TOuter) => TSelected, inner: CacheableSelector<TInner, any>, fromInner?: (result: TSelected) => boolean): CacheableSelector<TOuter, TSelected>;
  export declare function useStructuralSharing<TRouter extends AnyRouter, TSelected, TStructuralSharing extends boolean, TStoreSlice, TSelectSlice = TStoreSlice>(opts: {
      select?: (slice: TSelectSlice) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
      structuralSharing?: boolean;
@@ -2804,10 +2828,10 @@ index 7e5736b345e089516ec3b8ce79e4da41c64c84c8..1431e28ff9485984f49c62acdb6a8e85
  		const location = router.stores.location.get();
  		return opts?.select ? opts.select(location) : location;
 diff --git a/dist/esm/useMatch.d.ts b/dist/esm/useMatch.d.ts
-index c2623c5bb27a7c301c912404de0721c2d138e1f8..4c9ecef3fca10245fbc3c5117cd4f357fbe9fd10 100644
+index c2623c5bb27a7c301c912404de0721c2d138e1f8..c673924032e30ffcf1e5c6b2845366e6372b0a95 100644
 --- a/dist/esm/useMatch.d.ts
 +++ b/dist/esm/useMatch.d.ts
-@@ -1,9 +1,31 @@
+@@ -1,9 +1,42 @@
  import { StructuralSharingOption, ValidateSelected } from './structuralSharing.js';
  import { AnyRouter, MakeRouteMatch, MakeRouteMatchUnion, RegisteredRouter, StrictOrFrom, ThrowConstraint, ThrowOrOptional } from '@tanstack/router-core';
 +/**
@@ -2830,8 +2854,19 @@ index c2623c5bb27a7c301c912404de0721c2d138e1f8..4c9ecef3fca10245fbc3c5117cd4f357
 + * Carry a selector's cache handles onto a closure wrapping it, so a caller
 + * that selects from a frame through a structural-sharing selector stays
 + * probe-safe.
++ *
++ * `fromInner` says whether a value the wrapper produced came from the inner
++ * selector. It does, except where the wrapper answers without running it —
++ * `useMatch` returns a sentinel for an absent match. That matters because the
++ * frame path commits a render by restoring the value it rendered: writing a
++ * sentinel into the inner cache makes structural sharing hand that same
++ * object back for the next deep-equal selection, and the sentinel is compared
++ * by identity, so a match that has since become active reads as absent for as
++ * long as its selection stays deep-equal. Only values the inner selector
++ * produced belong in its cache; skipping the write leaves the previous one
++ * there, which is the stability structural sharing promises anyway.
 + */
-+export declare function withSelectorCache<TOuter, TInner, TSelected>(wrapper: (slice: TOuter) => TSelected, inner: CacheableSelector<TInner, any>): CacheableSelector<TOuter, TSelected>;
++export declare function withSelectorCache<TOuter, TInner, TSelected>(wrapper: (slice: TOuter) => TSelected, inner: CacheableSelector<TInner, any>, fromInner?: (result: TSelected) => boolean): CacheableSelector<TOuter, TSelected>;
  export declare function useStructuralSharing<TRouter extends AnyRouter, TSelected, TStructuralSharing extends boolean, TStoreSlice, TSelectSlice = TStoreSlice>(opts: {
      select?: (slice: TSelectSlice) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
      structuralSharing?: boolean;
@@ -2841,10 +2876,10 @@ index c2623c5bb27a7c301c912404de0721c2d138e1f8..4c9ecef3fca10245fbc3c5117cd4f357
      select?: (match: MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict>) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
      shouldThrow?: TThrow;
 diff --git a/dist/esm/useMatch.js b/dist/esm/useMatch.js
-index 2c4d50063c492de3879a5080007dd0e040af77b4..ed4573a002d3beffc372db6911220d13d41e28d7 100644
+index 2c4d50063c492de3879a5080007dd0e040af77b4..e9820827538ec8ababb93caf1939dabf0a36d2a0 100644
 --- a/dist/esm/useMatch.js
 +++ b/dist/esm/useMatch.js
-@@ -1,19 +1,36 @@
+@@ -1,19 +1,49 @@
  "use client";
  import { dummyMatchContext, matchContext } from "./matchContext.js";
  import { useRouter } from "./useRouter.js";
@@ -2859,11 +2894,24 @@ index 2c4d50063c492de3879a5080007dd0e040af77b4..ed4573a002d3beffc372db6911220d13
 +* Carry a selector's cache handles onto a closure wrapping it, so a caller
 +* that selects from a frame through a structural-sharing selector stays
 +* probe-safe.
++*
++* `fromInner` says whether a value the wrapper produced came from the inner
++* selector. It does, except where the wrapper answers without running it —
++* `useMatch` returns a sentinel for an absent match. That matters because the
++* frame path commits a render by restoring the value it rendered: writing a
++* sentinel into the inner cache makes structural sharing hand that same
++* object back for the next deep-equal selection, and the sentinel is compared
++* by identity, so a match that has since become active reads as absent for as
++* long as its selection stays deep-equal. Only values the inner selector
++* produced belong in its cache; skipping the write leaves the previous one
++* there, which is the stability structural sharing promises anyway.
 +*/
-+function withSelectorCache(wrapper, inner) {
++function withSelectorCache(wrapper, inner, fromInner = () => true) {
 +	const cacheable = wrapper;
 +	cacheable.snapshotCache = inner.snapshotCache;
-+	cacheable.restoreCache = inner.restoreCache;
++	cacheable.restoreCache = (cached) => {
++		if (fromInner(cached)) inner.restoreCache?.(cached);
++	};
 +	return cacheable;
 +}
  function useStructuralSharing(opts, router) {
@@ -2882,7 +2930,7 @@ index 2c4d50063c492de3879a5080007dd0e040af77b4..ed4573a002d3beffc372db6911220d13
  }
  /**
  * Read and select the nearest or targeted route match.
-@@ -24,26 +41,35 @@ function useMatch(opts) {
+@@ -24,26 +54,35 @@ function useMatch(opts) {
  	const nearestRouteId = React$1.useContext(opts.from ? dummyMatchContext : matchContext);
  	const routeId = opts.from ?? nearestRouteId;
  	const matchStore = router.stores.getMatchStore(routeId);
@@ -2914,7 +2962,7 @@ index 2c4d50063c492de3879a5080007dd0e040af77b4..ed4573a002d3beffc372db6911220d13
 +		const matchSelection = useRouterStateSelector(router, withSelectorCache((state) => {
 +			const match = state.matches.find((candidate) => candidate.routeId === routeId);
 +			return match ? selector(match) : dummyMatch;
-+		}, selector));
++		}, selector, (result) => result !== dummyMatch));
 +		if (matchSelection !== dummyMatch) return matchSelection;
  	}
 -	const selector = useStructuralSharing(opts, router);
@@ -5024,7 +5072,7 @@ index 5fa39fa92ef55de0aeda0919f9e0b5622c16436b..8bbe93afff4f5597bd8ece6d6b37142c
      const location = router.stores.location.get()
      return (
 diff --git a/src/useMatch.tsx b/src/useMatch.tsx
-index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..7f757c2b8f7071332f3e9d4177ded683c95f565f 100644
+index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..0813ccec2dce2e0d03bd99e47f7a358adcd1fd3b 100644
 --- a/src/useMatch.tsx
 +++ b/src/useMatch.tsx
 @@ -6,6 +6,10 @@ import { invariant, replaceEqualDeep } from '@tanstack/router-core'
@@ -5046,7 +5094,7 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..7f757c2b8f7071332f3e9d4177ded683
    StrictOrFrom,
    ThrowConstraint,
    ThrowOrOptional,
-@@ -22,6 +27,40 @@ import type {
+@@ -22,6 +27,56 @@ import type {
  
  const dummyMatch = {}
  
@@ -5073,21 +5121,37 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..7f757c2b8f7071332f3e9d4177ded683
 + * Carry a selector's cache handles onto a closure wrapping it, so a caller
 + * that selects from a frame through a structural-sharing selector stays
 + * probe-safe.
++ *
++ * `fromInner` says whether a value the wrapper produced came from the inner
++ * selector. It does, except where the wrapper answers without running it —
++ * `useMatch` returns a sentinel for an absent match. That matters because the
++ * frame path commits a render by restoring the value it rendered: writing a
++ * sentinel into the inner cache makes structural sharing hand that same
++ * object back for the next deep-equal selection, and the sentinel is compared
++ * by identity, so a match that has since become active reads as absent for as
++ * long as its selection stays deep-equal. Only values the inner selector
++ * produced belong in its cache; skipping the write leaves the previous one
++ * there, which is the stability structural sharing promises anyway.
 + */
 +export function withSelectorCache<TOuter, TInner, TSelected>(
 +  wrapper: (slice: TOuter) => TSelected,
 +  inner: CacheableSelector<TInner, any>,
++  fromInner: (result: TSelected) => boolean = () => true,
 +): CacheableSelector<TOuter, TSelected> {
 +  const cacheable: CacheableSelector<TOuter, TSelected> = wrapper
 +  cacheable.snapshotCache = inner.snapshotCache
-+  cacheable.restoreCache = inner.restoreCache
++  cacheable.restoreCache = (cached) => {
++    if (fromInner(cached as TSelected)) {
++      inner.restoreCache?.(cached)
++    }
++  }
 +  return cacheable
 +}
 +
  export function useStructuralSharing<
    TRouter extends AnyRouter,
    TSelected,
-@@ -38,14 +77,18 @@ export function useStructuralSharing<
+@@ -38,14 +93,18 @@ export function useStructuralSharing<
        }
      | undefined,
    router: TRouter,
@@ -5110,7 +5174,7 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..7f757c2b8f7071332f3e9d4177ded683
      const selected = opts?.select
        ? opts.select(slice as unknown as TSelectSlice)
        : (slice as ValidateSelected<TRouter, TSelected, TStructuralSharing>)
-@@ -59,6 +102,12 @@ export function useStructuralSharing<
+@@ -59,6 +118,12 @@ export function useStructuralSharing<
  
      return selected
    }
@@ -5123,7 +5187,7 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..7f757c2b8f7071332f3e9d4177ded683
  }
  
  export interface UseMatchBaseOptions<
-@@ -150,36 +199,53 @@ export function useMatch<
+@@ -150,36 +215,53 @@ export function useMatch<
    const routeId = opts.from ?? nearestRouteId
    const matchStore = router.stores.getMatchStore(routeId!)
  
@@ -5159,10 +5223,6 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..7f757c2b8f7071332f3e9d4177ded683
  
 -    return (opts.select ? opts.select(match as any) : match) as any
 -  }
--
--  const selector =
--    // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
--    useStructuralSharing(opts, router)
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
 +    const selector = useStructuralSharing(opts, router)
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
@@ -5170,6 +5230,10 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..7f757c2b8f7071332f3e9d4177ded683
 +      match ? selector(match as any) : dummyMatch,
 +    )
  
+-  const selector =
+-    // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
+-    useStructuralSharing(opts, router)
+-
 -  // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
 -  const matchSelection = useSelector(matchStore, (match) =>
 -    match ? selector(match as any) : dummyMatch,
@@ -5188,7 +5252,7 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..7f757c2b8f7071332f3e9d4177ded683
 +          (candidate) => candidate.routeId === routeId,
 +        )
 +        return match ? selector(match as any) : dummyMatch
-+      }, selector),
++      }, selector, (result) => result !== dummyMatch),
 +    )
  
 -  if (matchSelection !== dummyMatch) {
