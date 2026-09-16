@@ -1315,7 +1315,7 @@ index be6ac493e2d8c511c227effdecadd4f9ab5a29d4..d95f27dad72d3919a05481bed1990db9
  		const location = router.stores.location.get();
  		return opts?.select ? opts.select(location) : location;
 diff --git a/dist/cjs/useMatch.cjs b/dist/cjs/useMatch.cjs
-index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..def37d35906b16217bd2f0737d8df5405ca22586 100644
+index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..d7661db16e839b59539e52ff5665ee81f074e6af 100644
 --- a/dist/cjs/useMatch.cjs
 +++ b/dist/cjs/useMatch.cjs
 @@ -2,6 +2,7 @@
@@ -1326,7 +1326,7 @@ index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..def37d35906b16217bd2f0737d8df540
  let _tanstack_router_core = require("@tanstack/router-core");
  let react = require("react");
  react = require_runtime.__toESM(react, 1);
-@@ -9,13 +10,42 @@ let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
+@@ -9,13 +10,43 @@ let _tanstack_router_core_isServer = require("@tanstack/router-core/isServer");
  let _tanstack_react_store = require("@tanstack/react-store");
  //#region src/useMatch.tsx
  var dummyMatch = {};
@@ -1355,6 +1355,7 @@ index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..def37d35906b16217bd2f0737d8df540
 +	return cacheable;
 +}
  function useStructuralSharing(opts, router) {
++	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return (slice) => opts?.select ? opts.select(slice) : slice;
  	const previousResult = react.useRef();
 -	return (slice) => {
 +	const select = (slice) => {
@@ -1370,7 +1371,7 @@ index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..def37d35906b16217bd2f0737d8df540
  }
  /**
  * Read and select the nearest or targeted route match.
-@@ -26,20 +56,29 @@ function useMatch(opts) {
+@@ -26,20 +57,29 @@ function useMatch(opts) {
  	const nearestRouteId = react.useContext(opts.from ? require_matchContext.dummyMatchContext : require_matchContext.matchContext);
  	const routeId = opts.from ?? nearestRouteId;
  	const matchStore = router.stores.getMatchStore(routeId);
@@ -1411,7 +1412,7 @@ index 38fc0d12fd86db9c5afcbaa744e728a4ff066ab6..def37d35906b16217bd2f0737d8df540
  	if (opts.shouldThrow ?? true) {
  		if (process.env.NODE_ENV !== "production") throw new Error(`Invariant failed: Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`);
  		(0, _tanstack_router_core.invariant)();
-@@ -48,5 +87,6 @@ function useMatch(opts) {
+@@ -48,5 +88,6 @@ function useMatch(opts) {
  //#endregion
  exports.useMatch = useMatch;
  exports.useStructuralSharing = useStructuralSharing;
@@ -2876,10 +2877,10 @@ index c2623c5bb27a7c301c912404de0721c2d138e1f8..c673924032e30ffcf1e5c6b2845366e6
      select?: (match: MakeRouteMatch<TRouter['routeTree'], TFrom, TStrict>) => ValidateSelected<TRouter, TSelected, TStructuralSharing>;
      shouldThrow?: TThrow;
 diff --git a/dist/esm/useMatch.js b/dist/esm/useMatch.js
-index 2c4d50063c492de3879a5080007dd0e040af77b4..e9820827538ec8ababb93caf1939dabf0a36d2a0 100644
+index 2c4d50063c492de3879a5080007dd0e040af77b4..cac5d97d27b61d23f876c1820bc634eb10fada3e 100644
 --- a/dist/esm/useMatch.js
 +++ b/dist/esm/useMatch.js
-@@ -1,19 +1,49 @@
+@@ -1,19 +1,50 @@
  "use client";
  import { dummyMatchContext, matchContext } from "./matchContext.js";
  import { useRouter } from "./useRouter.js";
@@ -2915,6 +2916,7 @@ index 2c4d50063c492de3879a5080007dd0e040af77b4..e9820827538ec8ababb93caf1939dabf
 +	return cacheable;
 +}
  function useStructuralSharing(opts, router) {
++	if (isServer ?? router.isServer) return (slice) => opts?.select ? opts.select(slice) : slice;
  	const previousResult = React$1.useRef();
 -	return (slice) => {
 +	const select = (slice) => {
@@ -2930,7 +2932,7 @@ index 2c4d50063c492de3879a5080007dd0e040af77b4..e9820827538ec8ababb93caf1939dabf
  }
  /**
  * Read and select the nearest or targeted route match.
-@@ -24,26 +54,35 @@ function useMatch(opts) {
+@@ -24,26 +55,35 @@ function useMatch(opts) {
  	const nearestRouteId = React$1.useContext(opts.from ? dummyMatchContext : matchContext);
  	const routeId = opts.from ?? nearestRouteId;
  	const matchStore = router.stores.getMatchStore(routeId);
@@ -5072,7 +5074,7 @@ index 5fa39fa92ef55de0aeda0919f9e0b5622c16436b..8bbe93afff4f5597bd8ece6d6b37142c
      const location = router.stores.location.get()
      return (
 diff --git a/src/useMatch.tsx b/src/useMatch.tsx
-index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..0813ccec2dce2e0d03bd99e47f7a358adcd1fd3b 100644
+index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..5ba28d4866e6eaa5b1ae2e66ff2cfa4f175e2bb5 100644
 --- a/src/useMatch.tsx
 +++ b/src/useMatch.tsx
 @@ -6,6 +6,10 @@ import { invariant, replaceEqualDeep } from '@tanstack/router-core'
@@ -5151,7 +5153,7 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..0813ccec2dce2e0d03bd99e47f7a358a
  export function useStructuralSharing<
    TRouter extends AnyRouter,
    TSelected,
-@@ -38,14 +93,18 @@ export function useStructuralSharing<
+@@ -38,14 +93,33 @@ export function useStructuralSharing<
        }
      | undefined,
    router: TRouter,
@@ -5162,9 +5164,24 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..0813ccec2dce2e0d03bd99e47f7a358a
 +  TStoreSlice,
 +  ValidateSelected<TRouter, TSelected, TStructuralSharing>
 +> {
++  // The server renders once and has nobody to keep a reference stable for, so
++  // a cache has nothing to do there — and allocating one is router reactivity
++  // during server rendering, which the runtime rules forbid. Branching before
++  // the ref rather than around it also lets the whole allocation be eliminated
++  // with the condition, and callers reach this before any frame-path setup,
++  // which is where `useRouterStateSelector` returns for the server too.
++  if (isServer ?? router.isServer) {
++    return (slice) =>
++      (opts?.select
++        ? opts.select(slice as unknown as TSelectSlice)
++        : slice) as ValidateSelected<TRouter, TSelected, TStructuralSharing>
++  }
++
++  /* eslint-disable react-hooks/rules-of-hooks -- server return above, condition is static */
    const previousResult =
      // @ts-expect-error -- init to undefined, but without writing `undefined` to shave bytes
      React.useRef<ValidateSelected<TRouter, TSelected, TStructuralSharing>>()
++  /* eslint-enable react-hooks/rules-of-hooks */
  
 -  return (slice) => {
 +  const select: CacheableSelector<
@@ -5174,7 +5191,7 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..0813ccec2dce2e0d03bd99e47f7a358a
      const selected = opts?.select
        ? opts.select(slice as unknown as TSelectSlice)
        : (slice as ValidateSelected<TRouter, TSelected, TStructuralSharing>)
-@@ -59,6 +118,12 @@ export function useStructuralSharing<
+@@ -59,6 +133,12 @@ export function useStructuralSharing<
  
      return selected
    }
@@ -5187,7 +5204,7 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..0813ccec2dce2e0d03bd99e47f7a358a
  }
  
  export interface UseMatchBaseOptions<
-@@ -150,36 +215,53 @@ export function useMatch<
+@@ -150,36 +230,53 @@ export function useMatch<
    const routeId = opts.from ?? nearestRouteId
    const matchStore = router.stores.getMatchStore(routeId!)
  
@@ -5223,6 +5240,10 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..0813ccec2dce2e0d03bd99e47f7a358a
  
 -    return (opts.select ? opts.select(match as any) : match) as any
 -  }
+-
+-  const selector =
+-    // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
+-    useStructuralSharing(opts, router)
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
 +    const selector = useStructuralSharing(opts, router)
 +    // eslint-disable-next-line react-hooks/rules-of-hooks -- frozen at mount
@@ -5230,10 +5251,6 @@ index 95a4aaa286b52d78602a28360b4e6f0ba28a7500..0813ccec2dce2e0d03bd99e47f7a358a
 +      match ? selector(match as any) : dummyMatch,
 +    )
  
--  const selector =
--    // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
--    useStructuralSharing(opts, router)
--
 -  // eslint-disable-next-line react-hooks/rules-of-hooks -- condition is static
 -  const matchSelection = useSelector(matchStore, (match) =>
 -    match ? selector(match as any) : dummyMatch,

@@ -326,7 +326,7 @@ Five caveats worth knowing:
   commit for `1.170.37` / `1.171.31` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `1a5394fb`, five commits on from `81418ff`, the merge of that commit,
+  is `931aa046`, six commits on from `81418ff`, the merge of that commit,
   which restructured three files this branch had already touched: script
   assembly moved behind
   `getSsrBodyScriptParts` / `composeSsrBodyScripts`, the link selector's
@@ -335,7 +335,7 @@ Five caveats worth knowing:
   also moves `@tanstack/react-start` to `1.168.55`: `start-client-core`
   before that imports `defaultSerovalPlugins` from the root of
   `@tanstack/router-core`, which `1.171.31` no longer exports, so the pins
-  move together. The published measurements are from `cc08459`, forty-six
+  move together. The published measurements are from `cc08459`, forty-seven
   commits back: every commit since is correctness bookkeeping raised in review — a
   scope-keyed presentation identity, a head subscription for pending matchers,
   a per-router frame queue, weakly held owners, a structural-sharing cache
@@ -347,8 +347,9 @@ Five caveats worth knowing:
   state nor an owner during server rendering, and the reconstructed seed
   minting its identity from core's own counter, and the absent-match sentinel
   kept out of the structural-sharing cache, and a parity test for a head that
-  moves inside a commit — and none of it changes the publication path the
-  experiment measures.
+  moves inside a commit, and no selector cache built during server
+  rendering — and none of it changes the publication path the experiment
+  measures.
   Re-run the sweep if you want the numbers pinned to the exact head; the
   commands are above and every witness is live.
 - Until now only the `@tanstack/react-router` patch was regenerated on each
