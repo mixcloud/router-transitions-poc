@@ -536,7 +536,7 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..09c6053be1cbc67dfada8baa70cdb3d42998e653
+index 0000000000000000000000000000000000000000..82d0f7438e70f7d46e86fc62a659867b5414c148
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
 @@ -0,0 +1,575 @@
@@ -1028,9 +1028,9 @@ index 0000000000000000000000000000000000000000..09c6053be1cbc67dfada8baa70cdb3d4
 +	return mode;
 +}
 +function useRouterStateSelector(router, selector, compare = defaultCompare, presentedFrame) {
++	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return selector(router.stores.__store.get());
 +	const ownerScope = react.useContext(routerStateScopeContext);
 +	const scope = ownerScope && ownerScope.router === router ? ownerScope : detachedScope(router);
-+	if (_tanstack_router_core_isServer.isServer ?? router.isServer) return selector(offeredFrame(scope));
 +	const [stored, setPresenting] = react.useState(() => ({
 +		scope,
 +		frameId: offeredFrame(scope).frameId,
@@ -2246,7 +2246,7 @@ index 0000000000000000000000000000000000000000..a0a34622298100ecb5d7ef7f44bdeca2
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..acd93093abcb42ad89a6f6cd6885d8c893586b2a
+index 0000000000000000000000000000000000000000..53c549cce3ae30798f981e868babb54c65186c04
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
 @@ -0,0 +1,567 @@
@@ -2736,9 +2736,9 @@ index 0000000000000000000000000000000000000000..acd93093abcb42ad89a6f6cd6885d8c8
 +	return mode;
 +}
 +function useRouterStateSelector(router, selector, compare = defaultCompare, presentedFrame) {
++	if (isServer ?? router.isServer) return selector(router.stores.__store.get());
 +	const ownerScope = React$1.useContext(routerStateScopeContext);
 +	const scope = ownerScope && ownerScope.router === router ? ownerScope : detachedScope(router);
-+	if (isServer ?? router.isServer) return selector(offeredFrame(scope));
 +	const [stored, setPresenting] = React$1.useState(() => ({
 +		scope,
 +		frameId: offeredFrame(scope).frameId,
@@ -4057,10 +4057,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..a1e35ddf3d6090f8edc75d40b04680754a2515b3
+index 0000000000000000000000000000000000000000..3ca6847c9418061eb3e8092f48ee051219888f3b
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,1072 @@
+@@ -0,0 +1,1078 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -4927,6 +4927,18 @@ index 0000000000000000000000000000000000000000..a1e35ddf3d6090f8edc75d40b0468075
 +   */
 +  presentedFrame?: React.MutableRefObject<(() => RouterRenderFrame) | undefined>,
 +): TSelected {
++  // The server has one publication and nothing to subscribe to, so it selects
++  // from the head directly. Before the scope, deliberately: a server render
++  // has no owner scope, so resolving one would build a detached scope —
++  // subscriber set and all — and cache it for the router's lifetime, which is
++  // router reactivity the server must not create. The value is the same, since
++  // a detached scope's committed publication *is* the head and nothing is
++  // staged there.
++  if (isServer ?? router.isServer) {
++    return selector(router.stores.__store.get())
++  }
++
++  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
 +  const ownerScope = React.useContext(routerStateScopeContext)
 +  // Not conditional on anything that can change: whichever scope this reader
 +  // resolves to, the hooks below run, in this order, on every render.
@@ -4934,12 +4946,6 @@ index 0000000000000000000000000000000000000000..a1e35ddf3d6090f8edc75d40b0468075
 +    ownerScope && ownerScope.router === router
 +      ? ownerScope
 +      : detachedScope(router)
-+
-+  if (isServer ?? router.isServer) {
-+    // One render, no reactivity, so nothing to subscribe to. `offeredFrame` is
-+    // what the client path would resolve on its first render.
-+    return selector(offeredFrame(scope))
-+  }
 +
 +  // Which publication this consumer is presenting. It lives in React state, so
 +  // React versions it per tree: a work-in-progress render can accept the staged
