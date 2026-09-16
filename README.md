@@ -326,7 +326,7 @@ Five caveats worth knowing:
   commit for `1.170.37` / `1.171.31` — the exact versions these patches target.
   So unlike earlier revisions, the patches carry **only** the render-frame
   change: every file they touch is one the change itself touches. Branch head
-  is `03d4dc8c`, eleven commits on from `81418ff`, the merge of that commit,
+  is `7d900090`, twelve commits on from `81418ff`, the merge of that commit,
   which restructured three files this branch had already touched: script
   assembly moved behind
   `getSsrBodyScriptParts` / `composeSsrBodyScripts`, the link selector's
@@ -335,7 +335,7 @@ Five caveats worth knowing:
   also moves `@tanstack/react-start` to `1.168.55`: `start-client-core`
   before that imports `defaultSerovalPlugins` from the root of
   `@tanstack/router-core`, which `1.171.31` no longer exports, so the pins
-  move together. The published measurements are from `cc08459`, fifty-two
+  move together. The published measurements are from `cc08459`, fifty-three
   commits back: every commit since is correctness bookkeeping raised in review — a
   scope-keyed presentation identity, a head subscription for pending matchers,
   a per-router frame queue, weakly held owners, a structural-sharing cache

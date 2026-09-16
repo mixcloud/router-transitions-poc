@@ -536,10 +536,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..82d0f7438e70f7d46e86fc62a659867b5414c148
+index 0000000000000000000000000000000000000000..ae7f322573d889b29af8facd014f0d7aa737c6b4
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,575 @@
+@@ -0,0 +1,597 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -742,16 +742,30 @@ index 0000000000000000000000000000000000000000..82d0f7438e70f7d46e86fc62a659867b
 +* navigation returns to content it has shown before: the identity orders
 +* assemblies, not routes, and this assembly is the newest one.
 +*/
-+function initialFrame(router) {
-+	const head = router.stores.__store.get();
++function reconstructedContent(router, head) {
 +	const resolved = router.stores.resolvedLocation.get();
 +	const resolvedMatches = router._resolvedMatches;
-+	if (!resolved || !resolvedMatches.length || sameLocation(resolved, head.location)) return head;
++	if (!resolved || !resolvedMatches.length || sameLocation(resolved, head.location)) return;
++	return {
++		location: resolved,
++		matches: resolvedMatches
++	};
++}
++/**
++* The content and its identity are minted together, and only where the frame
++* is actually taken up. Separating them is what lets a caller ask whether the
++* reconstruction says anything new before spending an identity on it: minting
++* first and comparing afterwards makes every comparison unequal by
++* construction, since the id is fresh each time.
++*/
++function initialFrame(router) {
++	const head = router.stores.__store.get();
++	const content = reconstructedContent(router, head);
++	if (!content) return head;
 +	return {
 +		...head,
 +		frameId: router.stores.mintFrameId(),
-+		location: resolved,
-+		matches: resolvedMatches
++		...content
 +	};
 +}
 +function createOwner(router) {
@@ -800,8 +814,16 @@ index 0000000000000000000000000000000000000000..82d0f7438e70f7d46e86fc62a659867b
 +				route.staged = void 0;
 +			}
 +			if (pending || route.staged) return;
-+			const next = initialFrame(router);
-+			if (next.frameId === root.committed.frameId && sameLocation(next.location, root.committed.location)) return;
++			const head = router.stores.__store.get();
++			const content = reconstructedContent(router, head);
++			const nextLocation = content?.location ?? head.location;
++			const nextMatches = content?.matches ?? head.matches;
++			if (sameLocation(nextLocation, root.committed.location) && nextMatches === root.committed.matches) return;
++			const next = content ? {
++				...head,
++				frameId: router.stores.mintFrameId(),
++				...content
++			} : head;
 +			root.committed = next;
 +			route.committed = next;
 +		},
@@ -2246,10 +2268,10 @@ index 0000000000000000000000000000000000000000..a0a34622298100ecb5d7ef7f44bdeca2
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..53c549cce3ae30798f981e868babb54c65186c04
+index 0000000000000000000000000000000000000000..4e336b06e8addaa1adbcef6c4b5445847a6b07c3
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,567 @@
+@@ -0,0 +1,589 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2450,16 +2472,30 @@ index 0000000000000000000000000000000000000000..53c549cce3ae30798f981e868babb54c
 +* navigation returns to content it has shown before: the identity orders
 +* assemblies, not routes, and this assembly is the newest one.
 +*/
-+function initialFrame(router) {
-+	const head = router.stores.__store.get();
++function reconstructedContent(router, head) {
 +	const resolved = router.stores.resolvedLocation.get();
 +	const resolvedMatches = router._resolvedMatches;
-+	if (!resolved || !resolvedMatches.length || sameLocation(resolved, head.location)) return head;
++	if (!resolved || !resolvedMatches.length || sameLocation(resolved, head.location)) return;
++	return {
++		location: resolved,
++		matches: resolvedMatches
++	};
++}
++/**
++* The content and its identity are minted together, and only where the frame
++* is actually taken up. Separating them is what lets a caller ask whether the
++* reconstruction says anything new before spending an identity on it: minting
++* first and comparing afterwards makes every comparison unequal by
++* construction, since the id is fresh each time.
++*/
++function initialFrame(router) {
++	const head = router.stores.__store.get();
++	const content = reconstructedContent(router, head);
++	if (!content) return head;
 +	return {
 +		...head,
 +		frameId: router.stores.mintFrameId(),
-+		location: resolved,
-+		matches: resolvedMatches
++		...content
 +	};
 +}
 +function createOwner(router) {
@@ -2508,8 +2544,16 @@ index 0000000000000000000000000000000000000000..53c549cce3ae30798f981e868babb54c
 +				route.staged = void 0;
 +			}
 +			if (pending || route.staged) return;
-+			const next = initialFrame(router);
-+			if (next.frameId === root.committed.frameId && sameLocation(next.location, root.committed.location)) return;
++			const head = router.stores.__store.get();
++			const content = reconstructedContent(router, head);
++			const nextLocation = content?.location ?? head.location;
++			const nextMatches = content?.matches ?? head.matches;
++			if (sameLocation(nextLocation, root.committed.location) && nextMatches === root.committed.matches) return;
++			const next = content ? {
++				...head,
++				frameId: router.stores.mintFrameId(),
++				...content
++			} : head;
 +			root.committed = next;
 +			route.committed = next;
 +		},
@@ -4057,10 +4101,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..3ca6847c9418061eb3e8092f48ee051219888f3b
+index 0000000000000000000000000000000000000000..f9c10943eedde4bedec6ffd32e43b2cb6e458f77
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,1078 @@
+@@ -0,0 +1,1103 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -4410,8 +4454,10 @@ index 0000000000000000000000000000000000000000..3ca6847c9418061eb3e8092f48ee0512
 + * navigation returns to content it has shown before: the identity orders
 + * assemblies, not routes, and this assembly is the newest one.
 + */
-+function initialFrame(router: AnyRouter): RouterRenderFrame {
-+  const head = router.stores.__store.get()
++function reconstructedContent(
++  router: AnyRouter,
++  head: RouterRenderFrame,
++): Pick<RouterRenderFrame, 'location' | 'matches'> | undefined {
 +  const resolved = router.stores.resolvedLocation.get()
 +  const resolvedMatches = router._resolvedMatches
 +  // When the location has not moved there is no navigation to be mid-way
@@ -4422,14 +4468,25 @@ index 0000000000000000000000000000000000000000..3ca6847c9418061eb3e8092f48ee0512
 +    !resolvedMatches.length ||
 +    sameLocation(resolved, head.location)
 +  ) {
++    return undefined
++  }
++  return { location: resolved, matches: resolvedMatches }
++}
++
++/**
++ * The content and its identity are minted together, and only where the frame
++ * is actually taken up. Separating them is what lets a caller ask whether the
++ * reconstruction says anything new before spending an identity on it: minting
++ * first and comparing afterwards makes every comparison unequal by
++ * construction, since the id is fresh each time.
++ */
++function initialFrame(router: AnyRouter): RouterRenderFrame {
++  const head = router.stores.__store.get()
++  const content = reconstructedContent(router, head)
++  if (!content) {
 +    return head
 +  }
-+  return {
-+    ...head,
-+    frameId: router.stores.mintFrameId(),
-+    location: resolved,
-+    matches: resolvedMatches,
-+  }
++  return { ...head, frameId: router.stores.mintFrameId(), ...content }
 +}
 +
 +function createOwner(router: AnyRouter): RouterStateOwner {
@@ -4525,13 +4582,25 @@ index 0000000000000000000000000000000000000000..3ca6847c9418061eb3e8092f48ee0512
 +      if (pending || route.staged) {
 +        return
 +      }
-+      const next = initialFrame(router)
++      // Compared as content, never as identity. A reconstruction mints a new
++      // identity, so comparing ids would find every resync different and
++      // replace both scopes on any re-render that happens to run one — and a
++      // consumer re-reading for an unrelated reason would see its `frameId`
++      // move for a publication nobody staged. The identity is spent only once
++      // the content is genuinely new.
++      const head = router.stores.__store.get()
++      const content = reconstructedContent(router, head)
++      const nextLocation = content?.location ?? head.location
++      const nextMatches = content?.matches ?? head.matches
 +      if (
-+        next.frameId === root.committed.frameId &&
-+        sameLocation(next.location, root.committed.location)
++        sameLocation(nextLocation, root.committed.location) &&
++        nextMatches === root.committed.matches
 +      ) {
 +        return
 +      }
++      const next = content
++        ? { ...head, frameId: router.stores.mintFrameId(), ...content }
++        : head
 +      root.committed = next
 +      route.committed = next
 +    },
