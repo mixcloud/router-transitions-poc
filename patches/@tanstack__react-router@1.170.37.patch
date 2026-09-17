@@ -536,10 +536,10 @@ index 7a3424238060d5ecadc7e5ef292d28f192332954..f72043971e7c377f5ad245193e5ef4df
           *
 diff --git a/dist/cjs/routerStateContext.cjs b/dist/cjs/routerStateContext.cjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ae7f322573d889b29af8facd014f0d7aa737c6b4
+index 0000000000000000000000000000000000000000..acf5543d436527fa962135863a92778f434e647d
 --- /dev/null
 +++ b/dist/cjs/routerStateContext.cjs
-@@ -0,0 +1,597 @@
+@@ -0,0 +1,601 @@
 +"use client";
 +const require_runtime = require("./_virtual/_rolldown/runtime.cjs");
 +const require_utils = require("./utils.cjs");
@@ -818,7 +818,11 @@ index 0000000000000000000000000000000000000000..ae7f322573d889b29af8facd014f0d7a
 +			const content = reconstructedContent(router, head);
 +			const nextLocation = content?.location ?? head.location;
 +			const nextMatches = content?.matches ?? head.matches;
-+			if (sameLocation(nextLocation, root.committed.location) && nextMatches === root.committed.matches) return;
++			if (sameLocation(nextLocation, root.committed.location) && nextMatches === root.committed.matches) {
++				root.committed = withProgress(root.committed, head);
++				route.committed = withProgress(route.committed, head);
++				return;
++			}
 +			const next = content ? {
 +				...head,
 +				frameId: router.stores.mintFrameId(),
@@ -2268,10 +2272,10 @@ index 0000000000000000000000000000000000000000..a0a34622298100ecb5d7ef7f44bdeca2
 +export {};
 diff --git a/dist/esm/routerStateContext.js b/dist/esm/routerStateContext.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..4e336b06e8addaa1adbcef6c4b5445847a6b07c3
+index 0000000000000000000000000000000000000000..178a972262200ea7e493d05ea102599acdaade01
 --- /dev/null
 +++ b/dist/esm/routerStateContext.js
-@@ -0,0 +1,589 @@
+@@ -0,0 +1,593 @@
 +"use client";
 +import { useLayoutEffect } from "./utils.js";
 +import * as React$1 from "react";
@@ -2548,7 +2552,11 @@ index 0000000000000000000000000000000000000000..4e336b06e8addaa1adbcef6c4b544584
 +			const content = reconstructedContent(router, head);
 +			const nextLocation = content?.location ?? head.location;
 +			const nextMatches = content?.matches ?? head.matches;
-+			if (sameLocation(nextLocation, root.committed.location) && nextMatches === root.committed.matches) return;
++			if (sameLocation(nextLocation, root.committed.location) && nextMatches === root.committed.matches) {
++				root.committed = withProgress(root.committed, head);
++				route.committed = withProgress(route.committed, head);
++				return;
++			}
 +			const next = content ? {
 +				...head,
 +				frameId: router.stores.mintFrameId(),
@@ -4101,10 +4109,10 @@ index de5e89a9fbc65595bec661d084bb99016aa70b5d..9e4aa43e01c9ef8dc3ca59aff9466353
       *
 diff --git a/src/routerStateContext.tsx b/src/routerStateContext.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..f9c10943eedde4bedec6ffd32e43b2cb6e458f77
+index 0000000000000000000000000000000000000000..a681c48f10963c14045aef931a10645aa21e1216
 --- /dev/null
 +++ b/src/routerStateContext.tsx
-@@ -0,0 +1,1103 @@
+@@ -0,0 +1,1112 @@
 +'use client'
 +
 +import * as React from 'react'
@@ -4596,6 +4604,15 @@ index 0000000000000000000000000000000000000000..f9c10943eedde4bedec6ffd32e43b2cb
 +        sameLocation(nextLocation, root.committed.location) &&
 +        nextMatches === root.committed.matches
 +      ) {
++        // Route content has not moved, but progress is not route content: the
++        // head can be `pending` for a navigation that has staged nothing yet,
++        // and returning without the overlay leaves both scopes on the progress
++        // of whenever this owner was last driven. The mounting tree's own
++        // effects read the scope before the provider's `publish` runs, being
++        // deeper. Assigned rather than notified, because this runs during
++        // render — the same reason the rest of `resync` notifies nobody.
++        root.committed = withProgress(root.committed, head)
++        route.committed = withProgress(route.committed, head)
 +        return
 +      }
 +      const next = content
