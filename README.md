@@ -126,22 +126,13 @@ The stamp is not `HEAD` alone, for a second reason raised in review: two arms
 built either side of an *uncommitted* edit carry the same commit, so the
 identical-source premise the whole comparison rests on would be satisfied by
 two different builds. `scripts/build-id.mjs` prints the commit plus, when the
-tree holds anything the commit does not, a short hash of it — the diff against
+tree is not clean, a short hash of what makes it not clean — the diff against
 `HEAD`, staged changes included, and the untracked files with their contents:
 
 ```
 ac593e5                     # clean tree: this commit, as committed
-ac593e5-gen.0f31a7c4        # this commit plus exactly this generated source
-ac593e5-dirty.35dd7cb2      # ...and uncommitted changes on top
+ac593e5-dirty.35dd7cb2      # this commit plus exactly these uncommitted changes
 ```
-
-Generated source is the third case, raised in review: `src/routeTree.gen.ts` is
-ignored by git, so it is neither a tracked change nor an untracked file, yet
-`src/router.tsx` imports it. Two arms built from one commit with different
-route trees would have carried one stamp. Ignored files under the roots that
-hold generated source — `src` — are hashed too, and read `-gen.` rather than
-`-dirty.`, since every working tree has them and none of it is uncommitted
-work.
 
 Any edit between the two builds changes it, and the run then refuses to
 compare them.
