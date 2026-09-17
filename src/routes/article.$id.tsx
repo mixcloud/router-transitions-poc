@@ -1,8 +1,11 @@
 import { Link, createFileRoute, notFound } from '@tanstack/react-router'
 import { ViewTransition } from '../ViewTransition'
+import { SyntheticRows } from '../SyntheticRows'
 import { getArticle } from '../data/articles'
+import { validateRows } from '../rows'
 
 export const Route = createFileRoute('/article/$id')({
+  validateSearch: validateRows,
   loader: ({ params }) => {
     const article = getArticle(params.id)
     if (!article) throw notFound()
@@ -13,6 +16,7 @@ export const Route = createFileRoute('/article/$id')({
 
 function ArticleDetail() {
   const article = Route.useLoaderData()
+  const { rows = 0 } = Route.useSearch()
 
   return (
     <div className="page article">
@@ -31,6 +35,7 @@ function ArticleDetail() {
       {article.body.split('\n\n').map((paragraph, i) => (
         <p key={i}>{paragraph}</p>
       ))}
+      <SyntheticRows rows={rows} />
     </div>
   )
 }
