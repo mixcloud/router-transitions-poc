@@ -100,7 +100,7 @@ index 1bc492c29f06575241b9928529556cf04ac48723..568f96f88890c31aa2e142abb2ae36c1
      match: AnyRouteMatch;
  }) => any>;
 diff --git a/dist/cjs/Matches.cjs b/dist/cjs/Matches.cjs
-index b13f8aca089525915aa00f55f3f5456a3e30d3ef..1afc314afa72e985785c348d064a6920dee2ee95 100644
+index b13f8aca089525915aa00f55f3f5456a3e30d3ef..b939b124a45c0a402ba20edd22c90912060df852 100644
 --- a/dist/cjs/Matches.cjs
 +++ b/dist/cjs/Matches.cjs
 @@ -4,6 +4,7 @@ const require_utils = require("./utils.cjs");
@@ -205,7 +205,7 @@ index b13f8aca089525915aa00f55f3f5456a3e30d3ef..1afc314afa72e985785c348d064a6920
  		});
  	};
 +	if (require_routerStateContext.useFrameMode(router)) {
-+		const state = require_routerStateContext.useRouterStateSelector(router, (frameState) => frameState);
++		const presentedLocation = require_routerStateContext.useRouterStateSelector(router, (frameState) => frameState.location);
 +		return react.useCallback((opts) => {
 +			const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
 +			return router.matchRoute(rest, {
@@ -213,11 +213,11 @@ index b13f8aca089525915aa00f55f3f5456a3e30d3ef..1afc314afa72e985785c348d064a6920
 +				caseSensitive,
 +				fuzzy,
 +				includeSearch,
-+				_state: state
++				_state: { location: presentedLocation }
 +			});
 +		}, [
 +			router,
-+			state,
++			presentedLocation,
 +			(0, _tanstack_react_store.useSelector)(router.stores.location, (location) => location.href)
 +		]);
 +	}
@@ -1665,7 +1665,7 @@ index 61bdaf0190e7067af284f4fbb24a4d03b0a25003..a81ecd0fb30238823993c2329649f9cb
  		children: nextMatch
  	});
 diff --git a/dist/esm/Matches.js b/dist/esm/Matches.js
-index c4d69f186bc0175f07bc2550f0ceb461e767a7e3..bbad21e53d3471b9d0562c57b53ce5ddf2f94cf3 100644
+index c4d69f186bc0175f07bc2550f0ceb461e767a7e3..4f0ba765aa844e4e49a9365af9f85f62e508aa17 100644
 --- a/dist/esm/Matches.js
 +++ b/dist/esm/Matches.js
 @@ -3,7 +3,8 @@ import { useLayoutEffect } from "./utils.js";
@@ -1772,7 +1772,7 @@ index c4d69f186bc0175f07bc2550f0ceb461e767a7e3..bbad21e53d3471b9d0562c57b53ce5dd
  		});
  	};
 +	if (useFrameMode(router)) {
-+		const state = useRouterStateSelector(router, (frameState) => frameState);
++		const presentedLocation = useRouterStateSelector(router, (frameState) => frameState.location);
 +		return React$1.useCallback((opts) => {
 +			const { pending, caseSensitive, fuzzy, includeSearch, ...rest } = opts;
 +			return router.matchRoute(rest, {
@@ -1780,11 +1780,11 @@ index c4d69f186bc0175f07bc2550f0ceb461e767a7e3..bbad21e53d3471b9d0562c57b53ce5dd
 +				caseSensitive,
 +				fuzzy,
 +				includeSearch,
-+				_state: state
++				_state: { location: presentedLocation }
 +			});
 +		}, [
 +			router,
-+			state,
++			presentedLocation,
 +			useSelector(router.stores.location, (location) => location.href)
 +		]);
 +	}
@@ -3265,7 +3265,7 @@ index 1ba756053a0600f0204f87b854de017d7ca507f2..4d4bb308f58b2eb6823003e8f499acf2
        <React.Suspense fallback={renderPending(router)}>
          {nextMatch}
 diff --git a/src/Matches.tsx b/src/Matches.tsx
-index 6dea1032f22bb981067e5b3872b9d9f3880164e6..f612a73693b8bfdb4a8cbfa82bd95c7253a90cf5 100644
+index 6dea1032f22bb981067e5b3872b9d9f3880164e6..c707e59d6520aed0ec42b4c4a1baf9a5e7611f3b 100644
 --- a/src/Matches.tsx
 +++ b/src/Matches.tsx
 @@ -6,18 +6,26 @@ import { rootRouteId } from '@tanstack/router-core'
@@ -3543,14 +3543,26 @@ index 6dea1032f22bb981067e5b3872b9d9f3880164e6..f612a73693b8bfdb4a8cbfa82bd95c72
  
    const matchComponent = routeId ? <Match routeId={routeId} /> : null
  
-@@ -177,6 +363,45 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
+@@ -177,6 +363,57 @@ export function useMatchRoute<TRouter extends AnyRouter = RegisteredRouter>(): <
      }
    }
  
 +  // eslint-disable-next-line react-hooks/rules-of-hooks -- server return above, condition is static
 +  if (useFrameMode(router)) {
++    // Only the presented *location*. `matchRoute` needs no more from a frame:
++    // selecting the whole thing re-rendered every consumer, and handed back a
++    // new callback, whenever anything else in it moved — a background loader
++    // finishing under an unchanged location produces a new matches array, and
++    // so a new frame. Progress is deliberately not taken from the frame
++    // either: `status` is navigation progress rather than route content, and
++    // `matchRoute` falls back to the head for it, which is what the store path
++    // has always used and keeps this callback's identity as stable as that
++    // path's.
 +    // eslint-disable-next-line react-hooks/rules-of-hooks
-+    const state = useRouterStateSelector(router, (frameState) => frameState)
++    const presentedLocation = useRouterStateSelector(
++      router,
++      (frameState) => frameState.location,
++    )
 +    // eslint-disable-next-line react-hooks/rules-of-hooks
 +    return React.useCallback(
 +      (opts) => {
@@ -3565,13 +3577,13 @@ index 6dea1032f22bb981067e5b3872b9d9f3880164e6..f612a73693b8bfdb4a8cbfa82bd95c72
 +            caseSensitive,
 +            fuzzy,
 +            includeSearch,
-+            _state: state,
++            _state: { location: presentedLocation },
 +          } as any,
 +        )
 +      },
 +      [
 +        router,
-+        state,
++        presentedLocation,
 +        // An explicit `matchRoute({ pending: true })` resolves against the
 +        // head, so this hook has to re-render when the head moves — and a
 +        // second navigation starting while the first is still pending changes
@@ -3589,7 +3601,7 @@ index 6dea1032f22bb981067e5b3872b9d9f3880164e6..f612a73693b8bfdb4a8cbfa82bd95c72
    // eslint-disable-next-line react-hooks/rules-of-hooks
    return React.useCallback(
      (opts) => {
-@@ -267,6 +492,19 @@ export function useMatches<
+@@ -267,6 +504,19 @@ export function useMatches<
  ): UseMatchesResult<TRouter, TSelected> {
    const router = useRouter<TRouter>()
  
