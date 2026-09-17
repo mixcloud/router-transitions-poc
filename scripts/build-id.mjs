@@ -13,6 +13,15 @@
  * contents. Any edit between two builds changes it, and the run then refuses
  * to compare them.
  *
+ * Ignored files are usually build output, but not always: `src/routeTree.gen.ts`
+ * is generated, ignored, and imported by `src/router.tsx`, so it is a build
+ * input the stamp has to cover. Rather than guess, the roots that hold ignored
+ * source are declared below, and everything git ignores inside them is hashed
+ * alongside the untracked files. A generated input is present in every working
+ * tree, including a freshly cloned one, so it earns its own suffix rather than
+ * calling every build dirty: `-gen.` is a committed tree plus its generated
+ * inputs, `-dirty.` is that plus uncommitted work.
+ *
  * Printed by one script so the build commands and the benchmark's default
  * expectation cannot drift apart.
  */
@@ -27,6 +36,14 @@ const git = (args) =>
     stdio: ['ignore', 'pipe', 'ignore'],
   })
 
+/**
+ * Directories whose ignored files are build inputs rather than build output.
+ * `dist`, `.tanstack` and `node_modules` are outputs and dependencies and stay
+ * out of the stamp; `src` holds the generated route tree, which the app
+ * imports.
+ */
+const IGNORED_INPUT_ROOTS = ['src']
+
 export function buildId() {
   let head
   try {
@@ -35,15 +52,27 @@ export function buildId() {
     // No git, no answer, and no basis for a freshness claim.
     return undefined
   }
-  const dirt = createHash('sha256')
+  const lines = (out) => out.split('\n').filter(Boolean)
   // Tracked changes, staged and unstaged alike.
-  dirt.update(git(['diff', 'HEAD']))
+  const diff = git(['diff', 'HEAD'])
   // Untracked files are source too - a new module the build imports.
-  const untracked = git(['ls-files', '--others', '--exclude-standard'])
-    .split('\n')
-    .filter(Boolean)
-    .sort()
-  for (const path of untracked) {
+  const untracked = lines(git(['ls-files', '--others', '--exclude-standard']))
+  // Ignored files under the roots that hold generated source are build inputs
+  // rather than build output, so they belong in the identity as well.
+  const generated = lines(
+    git([
+      'ls-files',
+      '--others',
+      '--ignored',
+      '--exclude-standard',
+      '--',
+      ...IGNORED_INPUT_ROOTS,
+    ]),
+  ).filter((path) => !untracked.includes(path))
+
+  const dirt = createHash('sha256')
+  dirt.update(diff)
+  for (const path of [...untracked, ...generated].sort()) {
     dirt.update(`|${path}|`)
     try {
       dirt.update(readFileSync(path))
@@ -51,12 +80,14 @@ export function buildId() {
       // Vanished between listing and reading; the name still counts.
     }
   }
-  const digest = dirt.digest('hex')
-  // The digest of an empty stream is the clean tree, and a clean tree is just
-  // its commit - so a stamp with no suffix means exactly "this commit, as
-  // committed".
-  const clean = createHash('sha256').update('').digest('hex')
-  return digest === clean ? head : `${head}-dirty.${digest.slice(0, 8)}`
+  const digest = dirt.digest('hex').slice(0, 8)
+
+  // Nothing beyond the commit: the stamp is exactly "this commit, as
+  // committed". Generated inputs alone are the ordinary case and say so;
+  // uncommitted work is the one the benchmark warns about.
+  if (!diff && !untracked.length && !generated.length) return head
+  const uncommitted = Boolean(diff) || untracked.length > 0
+  return `${head}-${uncommitted ? 'dirty' : 'gen'}.${digest}`
 }
 
 /**
